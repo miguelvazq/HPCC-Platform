@@ -1,0 +1,182 @@
+﻿<!DOCTYPE html>
+<!--
+##############################################################################
+#    Copyright (C) 2011 HPCC Systems.
+#
+#    All rights reserved. This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#    You should have received a copy of the GNU Affero General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+##############################################################################
+-->
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HPCC: Platform</title>
+    <link href="CodeMirror2/lib/codemirror.css" rel="stylesheet">
+    <script src="CodeMirror2/lib/codemirror.js"></script>
+    <script src="CodeMirror2/mode/ecl/ecl.js"></script>
+    <link href="css/ecl.css" rel="stylesheet">
+    <link href="dijit/themes/claro/claro.css" media="screen" rel="stylesheet">
+    <link href="dojox/grid/resources/Grid.css" rel="stylesheet">
+    <link href="dojox/grid/enhanced/resources/claro/EnhancedGrid.css" rel="stylesheet">
+    <link href="dojox/grid/resources/claroGrid.css" rel="stylesheet">
+    <link href="ECLPlayground.css" media="screen" rel="stylesheet">
+    <!-- load dojo and provide config via dojoConfig global -->
+    <script>
+        var dojoConfig = (function () {
+            var base = location.href.split("/");
+            var developerMode = base[0] == "file:"; //  If URL is local then we are in web developer mode!
+            base.pop();
+            base = base.join("/");
+
+            return {
+                async: true,
+                isDebug: developerMode,
+                parseOnLoad: true,
+                urlBase: base,
+                serverIP: developerMode ? "192.168.2.68" : "", //IP of any ESP server
+                packages: [{
+                    name: "main",
+                    location: base + "/"
+                }, {
+                    name: "hpcc",
+                    location: base + "/scripts/"
+                }]
+            };
+        })();
+    </script>
+    <script src="dojo/dojo.js">
+    </script>
+    <script>
+        var breadcrumbControl = null;
+
+        require(["main/HPCCPlatform",
+            "dijit/layout/BorderContainer", "dijit/layout/ContentPane", "dijit/layout/TabContainer", "dijit/layout/StackContainer", "dijit/layout/StackController",
+            "dijit/MenuBar", "dijit/MenuBarItem", "dijit/PopupMenuBarItem",
+            "dijit/TitlePane",
+            "scripts/ESPFilter",
+            "dijit/form/TextBox",
+            "dojo/domReady!"], function (app) {
+                globalApp = app;
+                app.init();
+            });
+
+        go = function (uri) {
+            var queryStr = uri.substring(uri.indexOf("?") + 1, uri.length);
+            var queryObj = dojo.queryToObject(queryStr);
+            var Wuid = queryObj["Wuid"];
+            var inner = queryObj["inner"];
+
+            breadcrumbControl.openPage({
+                title: Wuid,
+                href: inner ? inner : uri
+            });
+        };
+
+    </script>
+</head>
+<body class="claro">
+    <!-- overlay -->
+    <div id="loadingOverlay" class="pageOverlay">
+        <div class="loadingMessage">
+            Loading...
+        </div>
+    </div>
+    <!-- application -->
+    <div id="appPlatform" class="demoLayout" data-dojo-props="design: 'headline'" data-dojo-type="dijit.layout.BorderContainer">
+        <div id="topPanel" class="topPanel" data-dojo-props="region: 'top'" data-dojo-type="dijit.layout.ContentPane">
+            <div id="title" style="float: left">
+                HPCC Platform</div>
+            <div id="header" style="float: right" data-dojo-type="dijit.MenuBar">
+                <div id="edit" data-dojo-type="dijit.PopupMenuBarItem">
+                    <span>Account</span>
+                    <div id="editMenu" data-dojo-type="dijit.Menu">
+                        <div id="Logout" data-dojo-type="dijit.MenuItem">
+                            Logout</div>
+                        <div id="ChangePassword" data-dojo-type="dijit.MenuItem">
+                            Change Password</div>
+                        <div id="separator" data-dojo-type="dijit.MenuSeparator">
+                        </div>
+                        <div id="MyAccount" data-dojo-type="dijit.MenuItem">
+                            My Account</div>
+                    </div>
+                </div>
+                <div id="help" data-dojo-type="dijit.PopupMenuBarItem">
+                    <span>Help</span>
+                    <div id="helpMenu" data-dojo-type="dijit.Menu">
+                        <div data-dojo-type="dijit.MenuItem">
+                            Help Topics</div>
+                        <div id="Div1" data-dojo-type="dijit.MenuSeparator"></div>
+                        <div data-dojo-type="dijit.MenuItem">
+                            About</div>
+                    </div>
+                </div>
+            </div>
+            <div style="float: right">
+                &nbsp;
+            </div>
+            <div style="float: right" data-dojo-type="dijit.MenuBar">
+                <div style="float: left; "data-dojo-type="dijit.layout.StackController" data-dojo-props="containerId:'mainStack'">
+                </div>
+            </div>
+            <div style="clear: both">
+                <div id="breadcrumb" style="float: left; "data-dojo-type="dijit.layout.StackController" data-dojo-props="containerId:'breadcrumbStack'">
+                </div>
+                <div style="float: right; padding-top: 5px;">
+                    <label for="Search">Search:</label>         
+                    <input id="Search" style="width: 16em" data-dojo-type="dijit.form.TextBox" data-dojo-props="placeHolder:'WUID, LogicalFile, Query, etc.'"> 
+                </div>
+            </div>
+        </div>
+        <div class="leftPanel" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="minSize:120, region: 'left', splitter:true" style="width: 240px">
+            <div id="topologyTreeDiv">
+            </div>
+        </div>
+        <div id="centerPanel" class="centerPanel" data-dojo-type="dijit.layout.StackContainer" data-dojo-props="region: 'center',id: 'breadcrumbStack'">
+            <div id="breadcrumbMainDiv" class="centerContent" data-dojo-type="dijit.layout.ContentPane" title="Main">
+                <div class="centerPanel" data-dojo-type="dijit.layout.StackContainer" data-dojo-props="region: 'center',id: 'mainStack'">
+                    <div data-dojo-type="dijit.layout.ContentPane" title="Home">
+                        Breadcrumb Test:
+                        <div  id="Div2" >
+                            <button id="breadcrumbTest">Add Depth</button>
+                        </div>
+                        <br />
+                        Dashboard Stuff:
+                        <div  id="Div4" >
+                            TODO
+                        </div>
+                        <br />
+                        Active Workunits (ECL):
+                        <div  id="Div3" >
+                            TODO
+                        </div>
+                        <br />
+                        Active Workunits (DFU):
+                        <div  id="Div5" >
+                            TODO
+                        </div>
+                    </div>
+                    <div class="centerContent" id="TargetsDiv" data-dojo-type="dijit.layout.ContentPane" title="Targets">
+                    </div>
+                    <div class="centerContent" id="ECLWorkunitsDiv" data-dojo-type="dijit.layout.ContentPane" title="Workunits">
+                    </div>
+                    <div class="centerContent" id="DFUWorkunitsDiv"  data-dojo-type="dijit.layout.ContentPane" title="Sprays">
+                    </div>
+                    <div class="centerContent" id="LogicalFilesDiv" data-dojo-type="dijit.layout.ContentPane" title="Logical Files">
+                    </div>
+                    <div class="centerContent" id="DropZoneFilesDiv" data-dojo-type="dijit.layout.ContentPane" title="Drop Zone Files">
+                    </div>
+                </div>
+          </div>
+    </div>
+</body>
+</html>
