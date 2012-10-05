@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!--
+##############################################################################
+#    HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License");
+#    you may not use this file except in compliance with the License.
+#    You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#    See the License for the specific language governing permissions and
+#    limitations under the License.
+##############################################################################
+-->
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Miguel: Playground</title>
+    <!--<link href="CodeMirror2/lib/codemirror.css" rel="stylesheet">
+    <script src="CodeMirror2/lib/codemirror.js"></script>
+    <script src="CodeMirror2/mode/ecl/ecl.js"></script>
+    <link href="css/ecl.css" rel="stylesheet">-->
+    <link href="css/miguelstyle.css" rel="stylesheet">
+    <link href="dijit/themes/claro/claro.css" media="screen" rel="stylesheet">
+    <!--<link href="dojox/grid/resources/Grid.css" rel="stylesheet">
+    <link href="dojox/grid/enhanced/resources/claro/EnhancedGrid.css" rel="stylesheet">
+    <link href="dojox/grid/resources/claroGrid.css" rel="stylesheet">-->
+    
+
+    <!-- load dojo and provide config via dojoConfig global -->
+    <script>
+        var dojoConfig = (function () {
+            var base = location.href.split("/");
+            base.pop();
+            base = base.join("/");
+
+            return {
+                async: true,
+                parseOnLoad: true,
+                urlBase: base,
+                packages: [{
+                    name: "main",
+                    location: base + "/"
+                }, {
+                    name: "hpcc",
+                    location: base + "/scripts/"
+                }]
+            };
+        })();
+    </script>    
+    <!--might already be set in config-->
+    <script src="dojo/dojo.js" data-dojo-config="async: 1, parseOnLoad: 1"></script>
+    <script>
+        require([
+            "dojo/parser",
+            "dijit/layout/BorderContainer",
+            "dijit/layout/TabContainer",
+            "dijit/layout/AccordionContainer",
+            "dijit/layout/ContentPane",
+            "dijit/layout/AccordionPane",
+            "dijit/Menu",
+            "dijit/MenuItem", 
+            "dijit/MenuBar",
+            "dijit/MenuBarItem",
+            ]);
+    </script>
+</head>
+<body class="claro">
+    <nav data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'top'">
+        <div id="innernav">
+            <h1 class="logo">HPCC Systems</h1>
+        </div>
+    </nav>
+<div data-dojo-type="dijit/layout/BorderContainer" style="width: 100%; height: 90%;">
+    <!--Option #1 for editing tools-->
+    <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'leading'" id="leftnav">
+        <ul id="taskList" class="tasks">
+        <li id="task_0" class="task">Cluster</li>
+        <li id="task_1" class="task">ECL</li>
+        <li id="task_2" class="task">Prototype UI</li>
+    </ul>
+
+    </div>
+    <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'center'" id="centercontent">
+<h1>Workunit Details</h1>
+        <div id="mainMenu" data-dojo-type="dijit/MenuBar">
+            <div id="edit"
+                    data-dojo-type="dijit/MenuBarItem">
+                Abort
+            </div>
+            <div id="delete"
+                    data-dojo-type="dijit/MenuBarItem">
+                Delete
+            </div>
+            <div id="resubmit"
+                    data-dojo-type="dijit/MenuBarItem">
+                Resubmit
+            </div>
+            <div id="restart"
+                    data-dojo-type="dijit/MenuBarItem">
+                Restart
+            </div>
+            <div id="clone"
+                    data-dojo-type="dijit/MenuBarItem">
+                Clone
+            </div>
+            
+        </div>
+        <div class="container">
+         
+            <table>                
+                <tr>
+                    <td><h2>WUID</h2></td>
+                    <td><span id="showWuid"></span></td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Action:</span></td>
+                    <td>more content</td>
+                </tr>
+                <tr>
+                    <td><span class="bold">State:</span></td>
+                    <td>
+                    <select data-dojo-type="dijit/form/ComboBox" id="state" name="state"><option selected>Completed</option>
+                    <option>Failed</option>
+                    </select>
+                    </td>
+                </tr>
+                <tr><td><span class="bold">Owner:</span></td><td>Empty</td></tr>
+                <tr>
+                    <td><span class="bold">Scope:</span></td>
+                    <td><input type="text" value="" placeHolder="Scope"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true"/>
+                    </td>                                    
+                </tr>
+                <tr>
+                    <td><span class="bold">Job Name:</span></td>
+                    <td><input type="text" value="" placeHolder="Job Name"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true" />
+                    </td>
+                    <td>
+                        <button data-dojo-type="dijit/form/Button" type="button">Publish
+                        </button>
+                    </td>                
+                </tr>
+                <tr>
+                    <td><span class="bold">Description:</span></td>
+                    <td><input type="text" name="scope" value="" placeHolder="Description"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true" id="scope"/></td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Protected:</span></td>
+                    <td>
+                        <form id="myform">
+                            <input type="radio" name="protected" id="protected" checked value="protected"/> <label for="protected">Protected</label>
+                            <input type="radio" data-dojo-type="dijit/form/RadioButton" name="unprotected" id="unprotected" value="unprotected"/>
+                            <label for="unprotected">Unprotected</label>
+                        </form>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Cluster:</span></td>
+                    <td id="showTarget"></td>
+                </tr>
+                <tr>
+                <td><label for="reset"><button data-dojo-type="dijit/form/Button" type="button">Reset</button>
+            <label for="save"><button data-dojo-type="dijit/form/Button" type="button">Save</button></td>
+                </tr>
+            </table>
+            <!-- the other option for editing tools
+            <h2>Editing Tools</h2>
+            <div id="tools">
+            <label for="abort"><button data-dojo-type="dijit/form/Button" type="button">Abort</button>
+            <label for="delete"><button data-dojo-type="dijit/form/Button" type="button">Delete</button>
+            <label for="resubmit"><button data-dojo-type="dijit/form/Button" type="button">Resubmit</button>
+            <label for="Restart"><button data-dojo-type="dijit/form/Button" type="button">Restart</button>
+            <label for="clone"><button data-dojo-type="dijit/form/Button" type="button">Clone</button>
+
+            </div>-->
+
+    </div>
+
+    </div>
+    <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'bottom'">
+        <div data-dojo-type="dijit/layout/TabContainer" data-dojo-props="region:'top'">
+            <div data-dojo-type="dijit/layout/ContentPane" title="Results">Results</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Graphs">Graphs</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Timings">Timings</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Query">Query</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Helpers">Helpers</div>
+        </div>
+    </div>
+    <!--<div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'trailing'">Trailing pane</div>-->
+    
+</div>
+
+
+</body>
+</html>
