@@ -1,0 +1,106 @@
+<div class="${baseClass}">
+    <div id="${id}BorderContainer" style="width: 100%; height: 100%" data-dojo-props="tabPosition: 'bottom'" data-dojo-type="dijit.layout.BorderContainer">
+    <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'center'" id="centercontent">
+        <h1>Workunit Details</h1>
+              <div id="mainMenu" data-dojo-type="dijit/MenuBar">
+            <div id="edit"
+                    data-dojo-type="dijit/MenuBarItem">
+                Abort
+            </div>
+            <div id="delete"
+                    data-dojo-type="dijit/MenuBarItem">
+                Delete
+            </div>
+            <div id="resubmit"
+                    data-dojo-type="dijit/MenuBarItem">
+                Resubmit
+            </div>
+            <div id="restart"
+                    data-dojo-type="dijit/MenuBarItem">
+                Restart
+            </div>
+            <div id="clone"
+                    data-dojo-type="dijit/MenuBarItem">
+                Clone
+            </div>
+            
+        </div>  
+        <table>                
+                <tr>
+                    <td><h2>WUID</h2></td>
+                    <td><span id="showWuid"></span></td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Action:</span></td>
+                    <td>more content</td>
+                </tr>
+                <tr>
+                    <td><span class="bold">State:</span></td>
+                    <td>
+                    <select data-dojo-type="dijit/form/ComboBox" id="state" name="state"><option selected>Completed</option>
+                    <option>Failed</option>
+                    </select>
+                    </td>
+                </tr>
+                <tr><td><span class="bold">Owner:</span></td><td>Empty</td></tr>
+                <tr>
+                    <td><span class="bold">Scope:</span></td>
+                    <td><input type="text" value="" placeHolder="Scope"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true"/>
+                    </td>                                    
+                </tr>
+                <tr>
+                    <td><span class="bold">Job Name:</span></td>
+                    <td><input type="text" value="" placeHolder="Job Name"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true" />
+                    </td>
+                    <td>
+                        <button data-dojo-type="dijit/form/Button" type="button">Publish
+                        </button>
+                    </td>                
+                </tr>
+                <tr>
+                    <td><span class="bold">Description:</span></td>
+                    <td><input type="text" name="scope" value="" placeHolder="Description"
+                        data-dojo-type="dijit/form/TextBox"
+                        data-dojo-props="trim:true, propercase:true" id="scope"/></td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Protected:</span></td>
+                    <td>
+                        <form id="myform">
+                            <input type="radio" name="protected" id="protected" checked value="protected"/> <label for="protected">Protected</label>
+                            <input type="radio" data-dojo-type="dijit/form/RadioButton" name="unprotected" id="unprotected" value="unprotected"/>
+                            <label for="unprotected">Unprotected</label>
+                        </form>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="bold">Cluster:</span></td>
+                    <!--<td id="${id}TargetSelect" data-dojo-type="TargetSelectWidget">-->
+                <td id="showTarget">
+                </td>
+                </tr>
+                <tr>
+                <td><label for="reset"><button data-dojo-type="dijit/form/Button" type="button">Reset</button>
+            <label for="save"><button data-dojo-type="dijit.form.Button" type="button">Save</button></td>
+                </tr>
+            </table>
+
+            <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'bottom'">
+        <div data-dojo-type="dijit.layout.TabContainer" data-dojo-props="region:'top'">
+            <div id="${id}Results" data-dojo-type="ResultsWidget" title="Results"></div>
+            <div data-dojo-type="dijit.layout.ContentPane" title="Graphs">Graphs</div>
+            <div data-dojo-type="dijit.layout.ContentPane" title="Timings">Timings</div>
+            <div data-dojo-type="dijit.layout.ContentPane" title="Query">Query</div>
+            <div data-dojo-type="dijit.layout.ContentPane" title="Helpers">Helpers</div>
+        </div>
+    </div>
+
+
+
+    </div>
+    </div>
+</div>
