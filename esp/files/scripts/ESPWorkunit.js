@@ -76,7 +76,7 @@ define([
 					context.stateID = workunit.StateID;
 					context.state = workunit.State;
 					if (callback) {
-						callback(context);
+						callback(workunit);
 					}
 
 					if (!context.isComplete()) {
@@ -201,6 +201,8 @@ define([
 				load: function (response) {
 					//var workunit = context.getValue(xmlDom, "Workunit", ["ECLException", "ECLResult", "ECLGraph", "ECLTimer", "ECLSchemaItem", "ApplicationValue"]);
 					var workunit = response.WUInfoResponse.Workunit;
+					context.WUInfoResponse = workunit;
+		
 					if (args.onGetText && workunit.Query.Text) {
 						context.text = workunit.Query.Text;
 						args.onGetText(context.text);
