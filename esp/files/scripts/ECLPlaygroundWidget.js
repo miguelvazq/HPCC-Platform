@@ -13,31 +13,31 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 ############################################################################## */
-define([
-	"dojo/_base/declare",
-	"dojo/_base/xhr",
-	"dojo/dom",
+require([
+    "dojo/_base/declare",
+    "dojo/_base/xhr",
+    "dojo/dom",
 
-	"dijit/layout/_LayoutWidget",
-	"dijit/_TemplatedMixin",
-	"dijit/_WidgetsInTemplateMixin",
-	"dijit/layout/BorderContainer",
-	"dijit/layout/TabContainer",
-	"dijit/layout/ContentPane",
-	"dijit/registry",
+    "dijit/layout/_LayoutWidget",
+    "dijit/_TemplatedMixin",
+    "dijit/_WidgetsInTemplateMixin",
+    "dijit/layout/BorderContainer",
+    "dijit/layout/TabContainer",
+    "dijit/layout/ContentPane",
+    "dijit/registry",
 
-	"hpcc/ECLSourceWidget",
-	"hpcc/TargetSelectWidget",
-	"hpcc/SampleSelectWidget",
-	"hpcc/GraphWidget",
-	"hpcc/ResultsWidget",
-	"hpcc/ESPWorkunit",
+    "hpcc/ECLSourceWidget",
+    "hpcc/TargetSelectWidget",
+    "hpcc/SampleSelectWidget",
+    "hpcc/GraphWidget",
+    "hpcc/ResultsWidget",
+    "hpcc/ESPWorkunit",
 
-    "dojo/text!../templates/ECLPlaygroundWidget.html"
+    "dojo/text!./templates/ECLPlaygroundWidget.html"
 ], function (declare, xhr, dom,
-				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, registry,
-				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, Workunit,
-				template) {
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, registry,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, Workunit,
+                template) {
     return declare("ECLPlaygroundWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
         baseClass: "ECLPlaygroundWidget",
@@ -47,6 +47,10 @@ define([
         resultsWidget: null,
         targetSelectWidget: null,
         sampleSelectWidget: null,
+
+    constructor: function (args) {
+        declare.safeMixin(this, args);
+    },
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -87,21 +91,19 @@ define([
             this.borderContainer.resize();
         },
 
-        init: function (params) {
-            if (params.Wuid) {
-                this.hideTitle();
-            }
-
-            this.wuid = params.Wuid;
-            this.targetSelectWidget.setValue(params.Target);
+        init: function (wuid, target) {
+            this.wuid = wuid;
+            this.targetSelectWidget.setValue(target);
 
             this.initEditor();
+            //this.initresultsWidget();
 
+            //  ActiveX will flicker if created before initial layout
             var context = this;
             this.initGraph();
-            if (params.Wuid) {
+            if (wuid) {
                 this.wu = new Workunit({
-                    wuid: params.Wuid
+                    wuid: wuid
                 });
                 this.wu.fetchText(function (text) {
                     context.editorControl.setText(text);
@@ -128,7 +130,7 @@ define([
         },
 
         initEditor: function () {
-            this.editorControl = registry.byId(this.id + "Source");
+                this.editorControl = registry.byId(this.id + "Source");
         },
 
         initGraph: function () {

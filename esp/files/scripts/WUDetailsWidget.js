@@ -73,9 +73,10 @@ require([
 		},
 
 		init: function (params) {
-			if (params.Wuid) {
+			this.wuid = params["Wuid"];
+			if (this.wuid) {
 				this.wu = new Workunit({
-					wuid: params.Wuid
+					wuid: this.wuid
 				});
 				var context = this;
 				this.wu.monitor(function (workunit) {
