@@ -97,3 +97,37 @@ h1 {
     padding: 0px;
     overflow: hidden;
 }
+
+
+/*start styles for WUDetails*/
+    #container{
+        width:960px;
+        
+
+    }
+
+    #mainMenu{
+        margin-bottom:10px;
+    }
+
+    #widgetWUInfoResponse{
+        padding-left:10px;
+    }
+
+    table{
+        margin-left:5px;
+    }
+
+
+   table tr td:first-child{
+    padding : 10px 20px 10px 0px;
+    font-size:13px;
+    font-weight:normal;
+}
+
+    textarea{
+    font-size: 13px;
+    font-family: Arial;
+    width:250px;}
+    
+

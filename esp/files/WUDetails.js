@@ -23,15 +23,21 @@ define([
 	"dojo/ready",
 
 	"hpcc/ECLPlaygroundWidget",
-
+	"hpcc/ResultsWidget",
+	
+	"dijit/layout/TabContainer",            
+    "dijit/layout/ContentPane",
 	"dijit/registry",
 	"dijit/Menu",
     "dijit/MenuItem", 
     "dijit/MenuBar",
     "dijit/MenuBarItem",
+    "dijit/InlineEditBox",
     "dijit/form/Textarea",
+    "dijit/form/CheckBox",
+    "dijit/form/Select",
   
-], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready, ECLPlaygroundWidget,registry, Menu, MenuItem, MenuBar, MenuBarItem, Textarea) {
+], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready, ECLPlaygroundWidget, ResultsWidget, TabContainer, ContentPane, registry, Menu, MenuItem, MenuBar, MenuBarItem, InlineEditBox, Textarea, CheckBox, Select) {
 	var initUi = function () {
 		var params = ioQuery.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search.substr(0, 1) == "?" ? 1 : 0)));
 /*		if (params["Widget"] == "ECLPlaygroundWidget") {
@@ -72,11 +78,7 @@ define([
 		This method will also work for anything the user saves and comes back to as a placeholder. This looks promising
 		does dojo.data do this that you know of?
 		**/
-		var textarea = new Textarea({
-            		name: "showDescription",
-            		value: "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.",
-            		style: "width:300px;",
-        		}, "showDescription");
+
 		
 	},
 

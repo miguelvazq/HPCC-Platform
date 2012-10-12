@@ -26,6 +26,7 @@ require([
 	"dijit/layout/ContentPane",
 	"dijit/registry",
 
+
 	"hpcc/ECLSourceWidget",
 	"hpcc/TargetSelectWidget",
 	"hpcc/SampleSelectWidget",
@@ -89,6 +90,8 @@ require([
 					context.monitorEclPlayground(workunit);
 				});
 			}
+
+			
 		
 		},
 
@@ -116,7 +119,6 @@ require([
 			}
 			return text;
 
-
 		},
 
 		checkIfProtected:function(response){
@@ -124,23 +126,17 @@ require([
 				alert("protected");
 			}
 		},
+		
 
 		monitorEclPlayground: function (response) {
 			if (!this.loaded) {				
-				//dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);
-				dom.byId("showAction").innerHTML = response.ActionEx;
-				dom.byId("showState").innerHTML = response.StateID;
+				//dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
+				dom.byId("showAction").innerHTML = response.ActionId;					
+				//dom.byId("showState").innerHTML = response.State;
 				dom.byId("showOwner").innerHTML = response.Owner;
-				dom.byId("showScope").innerHTML = response.Scope;
-				dom.byId("showJobName").innerHTML = response.Jobname;
-				dom.byId("showCluster").innerHTML = response.Cluster;
-				dom.byId("showDescription").innerHTML = response.Description;
-				
-
-
-
-				
-				//dom.byId(this.id + "showAction").innerHTML = response.StateID;
+				//dom.byId("showScope").value = response.Scope;
+				dom.byId("showJobName").value = response.Jobname;
+				dom.byId("showCluster").innerHTML = response.Cluster;												
 				this.loaded = true;
 			}
 			
@@ -148,12 +144,29 @@ require([
 			if (this.wu.isComplete()) {
 				this.wu.getInfo({
 					onGetResults: function(response) {
-
+					//alert(response);
 					},
 					
 					onGetAll: function(response) {
 						//dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-
+						dom.byId("showDescription").value = response.Description;
+						
+						/*TODO have to compact this some ******/
+						if (response.Protected == true) {
+							var pro = new dijit.form.CheckBox({
+       							id: "true",       							
+       							title: "Protected",
+        						checked: true
+    						});							
+							pro.placeAt("showProtected", "first");
+						}else{
+							var unpro = new dijit.form.CheckBox({
+								id:"false",
+								title:"Unprotected",
+								checked: false
+							});							
+						}
+						unpro.placeAt("showProtected", "first");
 					}
 				});
 			}

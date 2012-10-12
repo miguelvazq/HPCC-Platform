@@ -41,9 +41,9 @@
                 <tr>
                     <td><span class="bold">State:</span></td>
                     <td id="showState">
-                    <!--<select data-dojo-type="dijit/form/ComboBox" id="state" name="state"><option selected>Completed</option>
+                    <select data-dojo-type="dijit/form/ComboBox" id="state" name="state"><option selected>Completed</option>
                     <option>Failed</option>
-                    </select>-->
+                    </select>
                     </td>
                 </tr>
                 <tr><td><span class="bold">Owner:</span></td>
@@ -51,32 +51,30 @@
                 </tr>
                 <tr>
                     <td><span class="bold">Scope:</span></td>
-                    <td><input type="text" value="" placeHolder="showScope" style="width:300px" id="showScope"
+                    <td><input type="text" value="" style="width:300px" id="showScope"
                         data-dojo-type="dijit/form/TextBox"
                         data-dojo-props="trim:true, propercase:true"/>
                     </td>                                    
                 </tr>
                 <tr>
                     <td><span class="bold">Job Name:</span></td>
-                    <td><input id="showJobName" style="width:300px"data-dojo-type="dijit/form/TextBox" placeholder="showJobName"
+                    <td><input id="showJobName" style="width:300px"data-dojo-type="dijit/form/TextBox"
                         data-dojo-props="trim:true, propercase:true"></td>
                     
                     <td>
-                        <button data-dojo-type="dijit/form/Button" title="Publish" type="button">Publish
+                        <button data-dojo-type="dijit/form/Button" title="Publish" type="button" onClick="this.wu.publishWorkunit()";>Publish
                         </button>
                     </td>                
                 </tr>
                 <tr>
                     <!--Not valid HTML5 will change--><td valign="top"><span class="bold">Description:</span></td>
-                    <td><textarea id="showDescription"></textarea></td>
+                    <td><textarea id="showDescription" name="showDescription" dojoType="dijit.form.Textarea" style="width:300px;"></textarea></td>
                 </tr>
                 <tr>
                     <td><span class="bold">Protected:</span></td>
                     <td>
-                        <form id="myform">
-                            <input type="radio" name="protected" id="protected" checked value="protected"/> <label for="protected">Protected</label>
-                            <input type="radio" data-dojo-type="dijit/form/RadioButton" name="unprotected" id="unprotected" value="unprotected"/>
-                            <label for="unprotected">Unprotected</label>
+                        <form id="showProtected">
+
                         </form>
                     </td>
                 </tr>
@@ -89,6 +87,17 @@
             <label for="save"><button data-dojo-type="dijit.form.Button" type="button">Save</button></td>
                 </tr>
             </table> 
+                <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'bottom'">
+        <div data-dojo-type="dijit/layout/TabContainer" data-dojo-props="region:'top'">
+            <div data-dojo-type="ResultsWidget" title="Results">Results</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Graphs">Graphs</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Timings">Timings</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Query">Query</div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Helpers">Helpers</div>
+             <div data-dojo-type="dijit/layout/ContentPane" title="Info">Info</div>
+        </div>
+    </div>
+
             <div id="${id}WUInfoResponse"></div>
 
         </div>
