@@ -74,24 +74,33 @@ require([
 
 		init: function (params) {
 			this.wuid = params["Wuid"];
+			dom.byId("showWuid").innerHTML = this.wuid;
+			 
+				
 			if (this.wuid) {
 				this.wu = new Workunit({
-					wuid: this.wuid
+					wuid: this.wuid,
+					
 				});
+
+			
 				var context = this;
 				this.wu.monitor(function (workunit) {
 					context.monitorEclPlayground(workunit);
 				});
 			}
+		
 		},
 
 		resetPage: function () {
 		},
 
+
+
 		objectToText: function(obj) {
 		  	var text = ""
-			for (var key in obj) {
-			    text += "<b>" + key + " (" + typeof obj[key] + "):</b>  ";
+			for (var key in obj) {				
+			    text += "<tr><td>" + key + ":</td>";
 				if (typeof obj[key] == "object") {
 				    text += "[<br>";
 					for (var i = 0; i < obj[key].length; ++i) {
@@ -99,23 +108,52 @@ require([
 					}
 					text += "<br>]<br>";
 				} else {
-					text += obj[key] + "<br>";
+					text += "<td>" +  obj[key] + "</td></tr>";
+				
 				}
+
+				
 			}
 			return text;
+
+
+		},
+
+		checkIfProtected:function(response){
+			if (typeof response == "Protected"){
+				alert("protected");
+			}
 		},
 
 		monitorEclPlayground: function (response) {
-			if (!this.loaded) {
+			if (!this.loaded) {				
+				//dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);
+				dom.byId("showAction").innerHTML = response.ActionEx;
+				dom.byId("showState").innerHTML = response.StateID;
+				dom.byId("showOwner").innerHTML = response.Owner;
+				dom.byId("showScope").innerHTML = response.Scope;
+				dom.byId("showJobName").innerHTML = response.Jobname;
+				dom.byId("showCluster").innerHTML = response.Cluster;
+				dom.byId("showDescription").innerHTML = response.Description;
+				
+
+
+
+				
+				//dom.byId(this.id + "showAction").innerHTML = response.StateID;
 				this.loaded = true;
-				dom.byId(this.id + "WUQueryResponse").innerHTML = this.objectToText(response);
 			}
 			
 			var context = this;
 			if (this.wu.isComplete()) {
 				this.wu.getInfo({
+					onGetResults: function(response) {
+
+					},
+					
 					onGetAll: function(response) {
-						dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+						//dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+
 					}
 				});
 			}
