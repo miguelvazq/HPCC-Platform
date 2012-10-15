@@ -136,37 +136,76 @@ require([
 				dom.byId("showOwner").innerHTML = response.Owner;
 				//dom.byId("showScope").value = response.Scope;
 				dom.byId("showJobName").value = response.Jobname;
-				dom.byId("showCluster").innerHTML = response.Cluster;												
+				dom.byId("showCluster").innerHTML = response.Cluster;
+
+				
 				this.loaded = true;
 			}
 			
 			var context = this;
 			if (this.wu.isComplete()) {
+				var tc = new TabContainer({
+           style: "height: 100%; width: 100%;"
+        		}, "tc1-prog");
+
+				tc.startup();
 				this.wu.getInfo({
 					onGetResults: function(response) {
-					//alert(response);
+						var cp1 = new ContentPane({
+	             		title: "Results " + "(" + response.length +")",
+	             		content: "Results content in here"
+	        			});
+        				tc.addChild(cp1);				
 					},
-					
-					onGetAll: function(response) {
-						//dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-						dom.byId("showDescription").value = response.Description;
+
+					onGetGraphs: function(response){
+						var cp2 = new ContentPane({
+	             		title: "Graphs " + "(" + response.length +")",
+	             		content: "Graphs content in here"
+	        			});
+        				tc.addChild(cp2);
+					},	
+
+					onGetTimers: function(response){
+						var cp3 = new ContentPane({
+	             		title: "Timers " + "(" + response.length +")",
+	             		content: "Timers content in here"
+	        			});
+        				tc.addChild(cp3);
 						
-						/*TODO have to compact this some ******/
-						if (response.Protected == true) {
-							var pro = new dijit.form.CheckBox({
-       							id: "true",       							
-       							title: "Protected",
-        						checked: true
-    						});							
+					},
+					onGetAll: function(response) {
+						dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+						dom.byId("showDescription").value = response.Description;
+							if(response.Protected){						
+								var pro = new dijit.form.CheckBox({
+	       							id: "true",       							
+	       							title: "Protected",
+	        						checked: true
+	    						});							
+								
+							}else{
+								var	pro = new dijit.form.CheckBox({
+	       							id: "false",       							
+	       							title: "Unprotected",
+	        						checked: false
+	    						});				
+							}
 							pro.placeAt("showProtected", "first");
+							
+						if(response.State == "failed"){
+						dom.byId("showState").innerHTML = "Failed";	
+						alert("failed");				
 						}else{
-							var unpro = new dijit.form.CheckBox({
-								id:"false",
-								title:"Unprotected",
-								checked: false
-							});							
-						}
-						unpro.placeAt("showProtected", "first");
+							var completed = new dijit.form.Select({
+            					name: "showCompleted",
+            					options: [
+                					{ label: "Failed", value: "Failed" },
+                					{ label: "Completed", value: "Completed", selected: true }
+               					]
+        					});
+        					completed.placeAt("showState", "first");
+        				}        				
 					}
 				});
 			}

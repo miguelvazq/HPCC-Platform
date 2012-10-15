@@ -40,11 +40,11 @@
                 </tr>
                 <tr>
                     <td><span class="bold">State:</span></td>
+                    
                     <td id="showState">
-                    <select data-dojo-type="dijit/form/ComboBox" id="state" name="state"><option selected>Completed</option>
-                    <option>Failed</option>
-                    </select>
-                    </td>
+                        <form id="showState">                    
+                        </form>
+                </td>
                 </tr>
                 <tr><td><span class="bold">Owner:</span></td>
                     <td id="showOwner"></td>
@@ -68,7 +68,7 @@
                 </tr>
                 <tr>
                     <!--Not valid HTML5 will change--><td valign="top"><span class="bold">Description:</span></td>
-                    <td><textarea id="showDescription" name="showDescription" dojoType="dijit.form.Textarea" style="width:300px;"></textarea></td>
+                    <td><textarea id="showDescription" class="showDescription" name="showDescription" dojoType="dijit.form.Textarea"></textarea></td>
                 </tr>
                 <tr>
                     <td><span class="bold">Protected:</span></td>
@@ -87,15 +87,15 @@
             <label for="save"><button data-dojo-type="dijit.form.Button" type="button">Save</button></td>
                 </tr>
             </table> 
-                <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'bottom'">
-        <div data-dojo-type="dijit/layout/TabContainer" data-dojo-props="region:'top'">
-            <div data-dojo-type="ResultsWidget" title="Results">Results</div>
+    <div id="tc1-prog" style="width: 350px; height: 290px">
+        <!--<div data-dojo-type="dijit/layout/TabContainer" data-dojo-props="region:'top'">
+            <div data-dojo-type="dijit/layout/ContentPane" title="Results">Results</div>
             <div data-dojo-type="dijit/layout/ContentPane" title="Graphs">Graphs</div>
             <div data-dojo-type="dijit/layout/ContentPane" title="Timings">Timings</div>
             <div data-dojo-type="dijit/layout/ContentPane" title="Query">Query</div>
             <div data-dojo-type="dijit/layout/ContentPane" title="Helpers">Helpers</div>
-             <div data-dojo-type="dijit/layout/ContentPane" title="Info">Info</div>
-        </div>
+            <div data-dojo-type="dijit/layout/ContentPane" title="Info">Info</div>
+        </div>-->
     </div>
 
             <div id="${id}WUInfoResponse"></div>

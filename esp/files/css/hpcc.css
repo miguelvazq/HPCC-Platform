@@ -129,5 +129,9 @@ h1 {
     font-size: 13px;
     font-family: Arial;
     width:250px;}
-    
+
+.showDescription{
+    padding:10px;
+    height:100px;   
+}
 
