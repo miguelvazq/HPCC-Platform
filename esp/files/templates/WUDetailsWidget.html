@@ -35,7 +35,14 @@
                     <td><span id="showWuid"></span></td>
                 </tr>
                 <tr>
-                    <td><span class="bold">Action:</span></td>
+                    <td>
+                       <span class="bold">Action: </span>
+                        <a href="#">
+                            <img src="img/ui/help1.png" alt="information" id="helpAction"/>
+                        </a>
+                    <div data-dojo-type="dijit/Tooltip" data-dojo-props="connectId:'helpAction',position:['below']" style="width:10px;">
+                        Action is about this and<br/>that and more text.</div>
+                    </td>
                     <td id="showAction"></td>
                 </tr>
                 <tr>
@@ -50,11 +57,13 @@
                     <td id="showOwner"></td>
                 </tr>
                 <tr>
-                    <td><span class="bold">Scope:</span></td>
-                    <td><input type="text" value="" style="width:300px" id="showScope"
-                        data-dojo-type="dijit/form/TextBox"
-                        data-dojo-props="trim:true, propercase:true"/>
-                    </td>                                    
+                    <td><span class="bold">Scope: </span>
+                        <a href="#"><img src="img/ui/help1.png" id="helpScope" alt="help"/></a>
+                        <div data-dojo-type="dijit/Tooltip" data-dojo-props="connectId:'helpScope',position:['below']">
+                        Scope is about this and<br/>that and more text.</div>                        
+                    </td>
+                    <td id="showScope"></td>
+
                 </tr>
                 <tr>
                     <td><span class="bold">Job Name:</span></td>
@@ -83,11 +92,11 @@
                     <td id="showCluster"></td>               
                 </tr>
                 <tr>
-                <td><label for="reset"><button data-dojo-type="dijit/form/Button" type="button">Reset</button>
+                <td><!--<label for="reset"><button data-dojo-type="dijit/form/Button" type="button">Reset</button>-->
             <label for="save"><button data-dojo-type="dijit.form.Button" type="button">Save</button></td>
                 </tr>
             </table> 
-    <div id="tc1-prog" style="width: 350px; height: 290px">
+    <div id="tc1-prog" style="width: 800px;">
         <!--<div data-dojo-type="dijit/layout/TabContainer" data-dojo-props="region:'top'">
             <div data-dojo-type="dijit/layout/ContentPane" title="Results">Results</div>
             <div data-dojo-type="dijit/layout/ContentPane" title="Graphs">Graphs</div>

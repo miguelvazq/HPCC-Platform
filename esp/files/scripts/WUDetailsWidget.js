@@ -72,33 +72,23 @@ require([
 			var context = this;
 			this.borderContainer = registry.byId(this.id + "BorderContainer");
 		},
-
 		init: function (params) {
 			this.wuid = params["Wuid"];
 			dom.byId("showWuid").innerHTML = this.wuid;
-			 
-				
 			if (this.wuid) {
 				this.wu = new Workunit({
 					wuid: this.wuid,
-					
-				});
-
-			
+				});			
 				var context = this;
 				this.wu.monitor(function (workunit) {
 					context.monitorEclPlayground(workunit);
 				});
 			}
-
-			
-		
 		},
 
 		resetPage: function () {
+
 		},
-
-
 
 		objectToText: function(obj) {
 		  	var text = ""
@@ -114,18 +104,10 @@ require([
 					text += "<td>" +  obj[key] + "</td></tr>";
 				
 				}
-
-				
 			}
 			return text;
 
-		},
-
-		checkIfProtected:function(response){
-			if (typeof response == "Protected"){
-				alert("protected");
-			}
-		},
+		},		
 		
 
 		monitorEclPlayground: function (response) {
@@ -134,7 +116,7 @@ require([
 				dom.byId("showAction").innerHTML = response.ActionId;					
 				//dom.byId("showState").innerHTML = response.State;
 				dom.byId("showOwner").innerHTML = response.Owner;
-				//dom.byId("showScope").value = response.Scope;
+				dom.byId("showScope").value = response.Scope;
 				dom.byId("showJobName").value = response.Jobname;
 				dom.byId("showCluster").innerHTML = response.Cluster;
 
@@ -145,15 +127,17 @@ require([
 			var context = this;
 			if (this.wu.isComplete()) {
 				var tc = new TabContainer({
-           style: "height: 100%; width: 100%;"
-        		}, "tc1-prog");
+           		style: "width: 100%;height:100%;",
+           		useMenu:false,
+           		useSlider:false,
+           	}, "tc1-prog");
 
 				tc.startup();
 				this.wu.getInfo({
 					onGetResults: function(response) {
 						var cp1 = new ContentPane({
 	             		title: "Results " + "(" + response.length +")",
-	             		content: "Results content in here"
+	             		content: "response.results"
 	        			});
         				tc.addChild(cp1);				
 					},
@@ -174,16 +158,24 @@ require([
         				tc.addChild(cp3);
 						
 					},
+					onGetSourceFiles: function(response){
+						var cp4 = new ContentPane({
+	             		title: "Source " + "(" + response.length +")",
+	             		content: "Source content in here"
+	        			
+	        			});
+        				tc.addChild(cp4);        				
+					},
+
 					onGetAll: function(response) {
-						dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+						//dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
 						dom.byId("showDescription").value = response.Description;
 							if(response.Protected){						
 								var pro = new dijit.form.CheckBox({
 	       							id: "true",       							
 	       							title: "Protected",
 	        						checked: true
-	    						});							
-								
+	    						});															
 							}else{
 								var	pro = new dijit.form.CheckBox({
 	       							id: "false",       							
@@ -194,8 +186,7 @@ require([
 							pro.placeAt("showProtected", "first");
 							
 						if(response.State == "failed"){
-						dom.byId("showState").innerHTML = "Failed";	
-						alert("failed");				
+						dom.byId("showState").innerHTML = "Failed";							
 						}else{
 							var completed = new dijit.form.Select({
             					name: "showCompleted",

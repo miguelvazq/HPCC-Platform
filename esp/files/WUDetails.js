@@ -36,8 +36,9 @@ define([
     "dijit/form/Textarea",
     "dijit/form/CheckBox",
     "dijit/form/Select",
+    "dijit/Tooltip",
   
-], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready, ECLPlaygroundWidget, ResultsWidget, TabContainer, ContentPane, registry, Menu, MenuItem, MenuBar, MenuBarItem, InlineEditBox, Textarea, CheckBox, Select) {
+], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready, ECLPlaygroundWidget, ResultsWidget, TabContainer, ContentPane, registry, Menu, MenuItem, MenuBar, MenuBarItem, InlineEditBox, Textarea, CheckBox, Select, Tooltip) {
 	var initUi = function () {
 		var params = ioQuery.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search.substr(0, 1) == "?" ? 1 : 0)));
 /*		if (params["Widget"] == "ECLPlaygroundWidget") {
@@ -50,36 +51,7 @@ define([
 		alert(params);
 */
 		var widget = registry.byId("widget");
-		widget.init(params);
-	
-		/************TODO****************\
-		build tabs using the items in the object
-
-	    	var tabs = ["Results","Graphs","Timings","Query","Helpers"];
-	      	var tc = new TabContainer({
-            style: "height: 100%; width: 100%;",
-            	
-        	}, "tabs");		   
-	    	on(dom.byId("tabs"),function(){
-    			array.forEach(tabs, function(item, i){      		
-        //tab generation
-        		var item = new ContentPane({
-	             	title: item,	             	
-	             	content: item + " go here",	             	
-        		});
-        		tc.addChild(item);      		   
-      		    tc.startup();
-      		    console.log(tabs[i]);
-    			});
-
-  			});*/
-		/************TODO**************
-		I want to pass the response.Description to the value: area of this textarea so it constantly updates. 
-		This method will also work for anything the user saves and comes back to as a placeholder. This looks promising
-		does dojo.data do this that you know of?
-		**/
-
-		
+		widget.init(params);			
 	},
 
 	startLoading = function (targetNode) {
