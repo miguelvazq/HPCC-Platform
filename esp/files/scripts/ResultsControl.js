@@ -32,7 +32,7 @@ define([
 	return declare(null, {
 		workunit: null,
 		paneNum: 0,
-		resultsSheetID: "",
+		id: "",
 		dataGridSheet: {},
 		resultIdStoreMap: [],
 		resultIdGridMap: [],
@@ -46,7 +46,7 @@ define([
 		constructor: function (args) {
 			declare.safeMixin(this, args);
 
-			this.dataGridSheet = registry.byId(this.resultsSheetID);
+			this.dataGridSheet = registry.byId(this.id);
 			var context = this;
 			this.dataGridSheet.watch("selectedChildWidget", function (name, oval, nval) {
 				if (nval.id in context.delayLoad) {
@@ -73,7 +73,7 @@ define([
 		},
 
 		getNextPaneID: function () {
-			return "Pane_" + ++this.paneNum;
+		    return this.id + "Pane_" + ++this.paneNum;
 		},
 
 		addTab: function (label, paneID) {

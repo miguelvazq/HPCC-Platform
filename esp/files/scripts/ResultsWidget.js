@@ -72,7 +72,7 @@ define([
 
             var context = this;
             this.resultsControl = new ResultsControl({
-                resultsSheetID: this.id + "ResultsPane",
+                id: this.id + "ResultsPane",
                 sequence: 0,
                 onErrorClick: function (line, col) {
                     context.onErrorClick(line, col);
