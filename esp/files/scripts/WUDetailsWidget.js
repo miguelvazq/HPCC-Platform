@@ -13,7 +13,7 @@
 #	See the License for the specific language governing permissions and
 #	limitations under the License.
 ############################################################################## */
-require([
+define([
 	"dojo/_base/declare",
 	"dojo/_base/xhr",
 	"dojo/dom",
@@ -24,8 +24,9 @@ require([
 	"dijit/layout/BorderContainer",
 	"dijit/layout/TabContainer",
 	"dijit/layout/ContentPane",
+	"dijit/Toolbar",
+	"dijit/form/Textarea",
 	"dijit/registry",
-
 
 	"hpcc/ECLSourceWidget",
 	"hpcc/TargetSelectWidget",
@@ -34,172 +35,216 @@ require([
 	"hpcc/ResultsWidget",
 	"hpcc/ESPWorkunit",
 
-	"dojo/text!./templates/WUDetailsWidget.html"
+	"dojo/text!../templates/WUDetailsWidget.html"
 ], function (declare, xhr, dom,
-				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, registry,
+				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, registry,
 				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, Workunit,
 				template) {
-	return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
-		templateString: template,
-		baseClass: "WUDetailsWidget",
-		wu: null,
-	loaded: false,
+    return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+        templateString: template,
+        baseClass: "WUDetailsWidget",
+        borderContainer: null,
+        tabContainer: null,
+        resultsWidget: null,
+        resultsWidgetLoaded: false,
+        filesWidget: null,
+        filesWidgetLoaded: false,
+        timersWidget: null,
+        timersWidgetLoaded: false,
+        graphsWidget: null,
+        graphsWidgetLoaded: false,
+        sourceWidget: null,
+        sourceWidgetLoaded: false,
+        playgroundWidget: null,
+        playgroundWidgetLoaded: false,
 
-		buildRendering: function (args) {
-			this.inherited(arguments);
-		},
+        wu: null,
+        loaded: false,
 
-		postCreate: function (args) {
-			this.inherited(arguments);
-			this._initControls();
-		},
+        buildRendering: function (args) {
+            this.inherited(arguments);
+        },
 
-		startup: function (args) {
-			this.inherited(arguments);
-		},
+        postCreate: function (args) {
+            this.inherited(arguments);
+            this.borderContainer = registry.byId(this.id + "BorderContainer");
+            this.tabContainer = registry.byId(this.id + "TabContainer");
+            this.resultsWidget = registry.byId(this.id + "Results");
+            this.filesWidget = registry.byId(this.id + "Files");
+            this.timersWidget = registry.byId(this.id + "Timers");
+            this.graphsWidget = registry.byId(this.id + "Graphs");
+            this.sourceWidget = registry.byId(this.id + "Source");
+            this.playgroundWidget = registry.byId(this.id + "Playground");
+            var context = this;
+            this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
+                if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
+                    context.resultsWidgetLoaded = true;
+                    context.resultsWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                } else if (nval.id == context.id + "Files" && !context.filesWidgetLoaded) {
+                    context.filesWidgetLoaded = true;
+                    context.filesWidget.init({
+                        Wuid: context.wu.wuid,
+                        SourceFiles: true
+                    });
+                } else if (nval.id == context.id + "Timers" && !context.timersWidgetLoaded) {
+                    context.timersWidgetLoaded = true;
+                    context.timersWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                } else if (nval.id == context.id + "Graphs" && !context.graphsWidgetLoaded) {
+                    context.graphsWidgetLoaded = true;
+                    context.graphsWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
+                    context.sourceWidgetLoaded = true;
+                    context.sourceWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
+                    context.playgroundWidgetLoaded = true;
+                    context.playgroundWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                }
+            });
+        },
 
-		resize: function (args) {
-			this.inherited(arguments);
-			this.borderContainer.resize();
-		},
+        startup: function (args) {
+            this.inherited(arguments);
+        },
 
-		layout: function (args) {
-			this.inherited(arguments);
-		},
+        resize: function (args) {
+            this.inherited(arguments);
+            this.borderContainer.resize();
+        },
 
-		//  Implementation  ---
-		_initControls: function () {
-			var context = this;
-			this.borderContainer = registry.byId(this.id + "BorderContainer");
-		},
-		init: function (params) {
-			this.wuid = params["Wuid"];
-			dom.byId("showWuid").innerHTML = this.wuid;
-			if (this.wuid) {
-				this.wu = new Workunit({
-					wuid: this.wuid,
-				});			
-				var context = this;
-				this.wu.monitor(function (workunit) {
-					context.monitorEclPlayground(workunit);
-				});
-			}
-		},
+        layout: function (args) {
+            this.inherited(arguments);
+        },
 
-		resetPage: function () {
+        //  Hitched actions  ---
+        _onSave: function (event) {
+        },
+        _onReset: function (event) {
+        },
+        _onClone: function (event) {
+        },
+        _onDelete: function (event) {
+        },
+        _onAbort: function (event) {
+        },
+        _onResubmit: function (event) {
+        },
+        _onRestart: function (event) {
+        },
+        _onPublish: function (event) {
+        },
 
-		},
+        //  Implementation  ---
+        init: function (params) {
+            dom.byId("showWuid").innerHTML = params.Wuid;
+            if (params.Wuid) {
+                dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
+                this.wu = new Workunit({
+                    wuid: params.Wuid
+                });
+                var context = this;
+                this.wu.monitor(function (workunit) {
+                    context.monitorEclPlayground(workunit);
+                });
+            }
+        },
 
-		objectToText: function(obj) {
-		  	var text = ""
-			for (var key in obj) {				
-			    text += "<tr><td>" + key + ":</td>";
-				if (typeof obj[key] == "object") {
-				    text += "[<br>";
-					for (var i = 0; i < obj[key].length; ++i) {
-						text += this.objectToText(obj[key][i]);
-					}
-					text += "<br>]<br>";
-				} else {
-					text += "<td>" +  obj[key] + "</td></tr>";
-				
-				}
-			}
-			return text;
+        resetPage: function () {
+        },
 
-		},		
-		
+        objectToText: function (obj) {
+            var text = ""
+            for (var key in obj) {
+                text += "<tr><td>" + key + ":</td>";
+                if (typeof obj[key] == "object") {
+                    text += "[<br>";
+                    for (var i = 0; i < obj[key].length; ++i) {
+                        text += this.objectToText(obj[key][i]);
+                    }
+                    text += "<br>]<br>";
+                } else {
+                    text += "<td>" + obj[key] + "</td></tr>";
 
-		monitorEclPlayground: function (response) {
-			if (!this.loaded) {				
-				//dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
-				dom.byId("showAction").innerHTML = response.ActionId;					
-				//dom.byId("showState").innerHTML = response.State;
-				dom.byId("showOwner").innerHTML = response.Owner;
-				dom.byId("showScope").value = response.Scope;
-				dom.byId("showJobName").value = response.Jobname;
-				dom.byId("showCluster").innerHTML = response.Cluster;
+                }
+            }
+            return text;
 
-				
-				this.loaded = true;
-			}
-			
-			var context = this;
-			if (this.wu.isComplete()) {
-				var tc = new TabContainer({
-           		style: "width: 100%;height:100%;",
-           		useMenu:false,
-           		useSlider:false,
-           	}, "tc1-prog");
+        },
 
-				tc.startup();
-				this.wu.getInfo({
-					onGetResults: function(response) {
-						var cp1 = new ContentPane({
-	             		title: "Results " + "(" + response.length +")",
-	             		content: "response.results"
-	        			});
-        				tc.addChild(cp1);				
-					},
+        monitorEclPlayground: function (response) {
+            if (!this.loaded) {
+                //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
+                dom.byId("showAction").innerHTML = response.ActionId;
+                //dom.byId("showState").innerHTML = response.State;
+                dom.byId("showOwner").innerHTML = response.Owner;
+                dom.byId("showScope").value = response.Scope;
+                dom.byId("showJobName").value = response.Jobname;
+                dom.byId("showCluster").innerHTML = response.Cluster;
 
-					onGetGraphs: function(response){
-						var cp2 = new ContentPane({
-	             		title: "Graphs " + "(" + response.length +")",
-	             		content: "Graphs content in here"
-	        			});
-        				tc.addChild(cp2);
-					},	
+                this.loaded = true;
+            }
 
-					onGetTimers: function(response){
-						var cp3 = new ContentPane({
-	             		title: "Timers " + "(" + response.length +")",
-	             		content: "Timers content in here"
-	        			});
-        				tc.addChild(cp3);
-						
-					},
-					onGetSourceFiles: function(response){
-						var cp4 = new ContentPane({
-	             		title: "Source " + "(" + response.length +")",
-	             		content: "Source content in here"
-	        			
-	        			});
-        				tc.addChild(cp4);        				
-					},
+            var context = this;
+            if (this.wu.isComplete()) {
+                this.wu.getInfo({
+                    onGetResults: function (response) {
+                        context.resultsWidget.set("title", "Results " + "(" + response.length + ")");
+                    },
 
-					onGetAll: function(response) {
-						//dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-						dom.byId("showDescription").value = response.Description;
-							if(response.Protected){						
-								var pro = new dijit.form.CheckBox({
-	       							id: "true",       							
-	       							title: "Protected",
-	        						checked: true
-	    						});															
-							}else{
-								var	pro = new dijit.form.CheckBox({
-	       							id: "false",       							
-	       							title: "Unprotected",
-	        						checked: false
-	    						});				
-							}
-							pro.placeAt("showProtected", "first");
-							
-						if(response.State == "failed"){
-						dom.byId("showState").innerHTML = "Failed";							
-						}else{
-							var completed = new dijit.form.Select({
-            					name: "showCompleted",
-            					options: [
+                    onGetSourceFiles: function (response) {
+                        context.filesWidget.set("title", "Files " + "(" + response.length + ")");
+                    },
+
+                    onGetTimers: function (response) {
+                        context.timersWidget.set("title", "Timers " + "(" + response.length + ")");
+                    },
+
+                    onGetGraphs: function (response) {
+                        context.graphsWidget.set("title", "Graphs " + "(" + response.length + ")");
+                    },
+
+                    onGetAll: function (response) {
+                        //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+                        dom.byId("showDescription").value = response.Description;
+                        if (response.Protected) {
+                            var pro = new dijit.form.CheckBox({
+                                id: "true",
+                                title: "Protected",
+                                checked: true
+                            });
+                        } else {
+                            var pro = new dijit.form.CheckBox({
+                                id: "false",
+                                title: "Unprotected",
+                                checked: false
+                            });
+                        }
+                        pro.placeAt("showProtected", "first");
+
+                        if (response.State == "failed") {
+                            dom.byId("showState").innerHTML = "Failed";
+                        } else {
+                            var completed = new dijit.form.Select({
+                                name: "showCompleted",
+                                options: [
                 					{ label: "Failed", value: "Failed" },
                 					{ label: "Completed", value: "Completed", selected: true }
-               					]
-        					});
-        					completed.placeAt("showState", "first");
-        				}        				
-					}
-				});
-			}
-		}
-	});
+                                ]
+                            });
+                            completed.placeAt("showState", "first");
+                        }
+                    }
+                });
+            }
+        }
+    });
 });
