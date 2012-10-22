@@ -154,6 +154,10 @@ h1 {
     width:200px;
 }
 
+.iconAlign{
+    vertical-align: middle;
+}
+
 .bold{
 
     font-weight:bold;
