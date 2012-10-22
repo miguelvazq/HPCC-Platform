@@ -128,7 +128,7 @@ define([
         },
 
         initEditor: function () {
-                this.editorControl = registry.byId(this.id + "Source");
+            this.editorControl = registry.byId(this.id + "Source");
         },
 
         initGraph: function () {

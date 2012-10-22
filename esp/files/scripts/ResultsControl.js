@@ -73,7 +73,7 @@ define([
 		},
 
 		getNextPaneID: function () {
-		    return this.id + "Pane_" + ++this.paneNum;
+			return this.id + "Pane_" + ++this.paneNum;
 		},
 
 		addTab: function (label, paneID) {
