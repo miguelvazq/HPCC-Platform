@@ -25,11 +25,12 @@ define([
     "hpcc/ECLPlaygroundWidget",
     "hpcc/GraphPageWidget",
     "hpcc/ResultsWidget",
+    "hpcc/TimingPageWidget",
     "hpcc/TimingTreeMapWidget",
     "hpcc/ECLSourceWidget",
     "hpcc/WUDetailsWidget"
 ], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready,
-        ECLPlaygroundWidget, GraphPageWidget, ResultsWidget, TimingTreeMapWidget, ECLSourceWidget, WUDetailsWidget) {
+        ECLPlaygroundWidget, GraphPageWidget, ResultsWidget, TimingPageWidget, TimingTreeMapWidget, ECLSourceWidget, WUDetailsWidget) {
 
     var initUi = function () {
         var params = ioQuery.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search.substr(0, 1) == "?" ? 1 : 0)));

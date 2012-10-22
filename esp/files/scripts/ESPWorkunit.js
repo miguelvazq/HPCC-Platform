@@ -239,15 +239,16 @@ define([
 					if (args.onGetTimers && workunit.Timers && workunit.Timers.ECLTimer) {
 						context.timers = [];
 						for (var i = 0; i < workunit.Timers.ECLTimer.length; ++i) {
-							if (workunit.Timers.ECLTimer[i].GraphName && workunit.Timers.ECLTimer[i].SubGraphId) {
-								var timeParts = workunit.Timers.ECLTimer[i].Value.split(":");
-								var secs = 0;
-								for (var j = 0; j < timeParts.length; ++j) {
-									secs = secs * 60 + timeParts[j] * 1;
-								}
-
-								context.timers.push(lang.mixin(workunit.Timers.ECLTimer[i], { Seconds: Math.round(secs * 1000) / 1000 }));
+							var timeParts = workunit.Timers.ECLTimer[i].Value.split(":");
+							var secs = 0;
+							for (var j = 0; j < timeParts.length; ++j) {
+								secs = secs * 60 + timeParts[j] * 1;
 							}
+
+							context.timers.push(lang.mixin(workunit.Timers.ECLTimer[i], {
+							    Seconds: Math.round(secs * 1000) / 1000,
+							    HasSubGraphId: workunit.Timers.ECLTimer[i].SubGraphId && workunit.Timers.ECLTimer[i].SubGraphId != "" ? true : false
+							}));
 						}
 						args.onGetTimers(context.timers);
 					}

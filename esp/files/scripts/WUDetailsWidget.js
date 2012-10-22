@@ -184,7 +184,7 @@ define([
             if (!this.loaded) {
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
                 dom.byId("showAction").innerHTML = response.ActionId;
-                //dom.byId("showState").innerHTML = response.State;
+                dom.byId("showStateReadOnly").innerHTML = response.State;
                 dom.byId("showOwner").innerHTML = response.Owner;
                 dom.byId("showScope").value = response.Scope;
                 dom.byId("showJobName").value = response.Jobname;
@@ -214,20 +214,14 @@ define([
 
                     onGetAll: function (response) {
                         //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-                        dom.byId("showDescription").value = response.Description;
-                        if (response.Protected) {
-                            var pro = new dijit.form.CheckBox({
+                        dom.byId("showDescription").value = response.Description;                        
+                            
+                        var pro = new dijit.form.CheckBox({
                                 id: "true",
                                 title: "Protected",
-                                checked: true
+                                checked: response.Protected
                             });
-                        } else {
-                            var pro = new dijit.form.CheckBox({
-                                id: "false",
-                                title: "Unprotected",
-                                checked: false
-                            });
-                        }
+                         
                         pro.placeAt("showProtected", "first");
 
                         if (response.State == "failed") {

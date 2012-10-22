@@ -1,25 +1,24 @@
 <div class="${baseClass}">
     <div id="${id}BorderContainer" class="${baseClass}BorderContainer" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.BorderContainer">
-        <div id="${id}TabContainer" data-dojo-props="region: 'center', tabPosition: 'top'" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.TabContainer">
-            <div id="${id}Summary" title="Summary" data-dojo-type="dijit.layout.ContentPane">
-        <div id="${id}Toolbar" data-dojo-type="dijit.Toolbar">
-            <b id="${id}Wuid">WUID</b>
-            <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onSave" data-dojo-type="dijit.form.Button">Save</div>
-            <div data-dojo-attach-event="onClick:_onReset" data-dojo-type="dijit.form.Button">Reset</div>
-            <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onClone" data-dojo-type="dijit.form.Button">Clone</div>
-            <div data-dojo-attach-event="onClick:_onDelete" data-dojo-type="dijit.form.Button">Delete</div>
-            <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onAbort" data-dojo-type="dijit.form.Button">Abort</div>
-            <div data-dojo-attach-event="onClick:_onResubmit" data-dojo-type="dijit.form.Button">Resubmit</div>
-            <div data-dojo-attach-event="onClick:_onRestart" data-dojo-type="dijit.form.Button">Restart</div>
-            <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onPublish" data-dojo-type="dijit.form.Button">Publish</div>
+        <div id="${id}Toolbar" class="topPanel"  data-dojo-props="region: 'top'" data-dojo-type="dijit.Toolbar">
+                <span id="${id}Wuid" class="bold">WUID</span>
+                <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                <div data-dojo-attach-event="onClick:_onReset" data-dojo-type="dijit.form.Button">Reset</div>
+                <div data-dojo-attach-event="onClick:_onSave" data-dojo-type="dijit.form.Button">Save</div>            
+                <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                <div data-dojo-attach-event="onClick:_onClone" data-dojo-type="dijit.form.Button">Clone</div>
+                <div data-dojo-attach-event="onClick:_onDelete" data-dojo-type="dijit.form.Button">Delete</div>
+                <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                <div data-dojo-attach-event="onClick:_onAbort" data-dojo-type="dijit.form.Button">Abort</div>
+                <div data-dojo-attach-event="onClick:_onResubmit" data-dojo-type="dijit.form.Button">Resubmit</div>
+                <div data-dojo-attach-event="onClick:_onRestart" data-dojo-type="dijit.form.Button">Restart</div>
+                <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                <div data-dojo-attach-event="onClick:_onPublish" data-dojo-type="dijit.form.Button">Publish</div>
+                <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                <img src="img/ui/thumbs-up.png"/><span class="bold"> State: <i id="showStateReadOnly"></i></span><br/>
         </div>
-                <!--<div id="${id}WUQueryResponse">
-            ...
-            </div>-->
+        <div id="${id}TabContainer" class="WuDetailsTabContainer" data-dojo-props="region: 'center', tabPosition: 'top'" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.TabContainer">
+            <div id="${id}Summary" title="Summary" data-dojo-type="dijit.layout.ContentPane">
                 <table>
                     <tr>
                         <td>
@@ -62,14 +61,12 @@
                             </div>
                         </td>
                         <td id="showScope"></td>
-
                     </tr>
                     <tr>
                         <td><span class="bold">Job Name:</span></td>
                         <td>
-                            <input id="showJobName" style="width: 300px" data-dojo-type="dijit/form/TextBox"
+                            <input id="showJobName" style="width:220px" data-dojo-type="dijit/form/TextBox"
                                 data-dojo-props="trim:true, propercase:true"></td>
-
                     </tr>
                     <tr>
                         <!--Not valid HTML5 will change-->
@@ -94,7 +91,7 @@
             </div>
             <div id="${id}Files" title="Files" data-dojo-type="ResultsWidget">
             </div>
-            <div id="${id}Timers" title="Timings" data-dojo-type="TimingTreeMapWidget">
+            <div id="${id}Timers" title="Timings" data-dojo-type="TimingPageWidget">
             </div>
             <div id="${id}Graphs" title="Graphs" data-dojo-type="GraphPageWidget">
             </div>

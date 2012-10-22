@@ -28,96 +28,7 @@ html, body {
     padding-left: 0px;
 }
 
-@font-face {
-    font-family: 'entypo';
-    src:url('../fonts/fonts/fonts/entypo.eot');
-    src:url('../fonts/fonts/fonts/entypo.eot?#iefix') format('embedded-opentype'),
-        url('../fonts/fonts/fonts/entypo.svg#entypo') format('svg'),
-        url('../fonts/fonts/fonts/entypo.woff') format('woff'),
-        url('../fonts/fonts/fonts/entypo.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-    color:red;
-}
 
-/* Use the following CSS code if you want to use data attributes for inserting your icons */
-[data-icon]:before {
-    font-family: 'entypo';
-    content: attr(data-icon);
-    speak: none;
-    font-weight: normal;
-    -webkit-font-smoothing: antialiased;
-}
-
-/* Use the following CSS code if you want to have a class per icon */
-[class^="icon-"]:before, [class*=" icon-"]:before {
-    font-family: 'entypo';
-    font-style: normal;
-    speak: none;
-    font-weight: normal;
-    -webkit-font-smoothing: antialiased;
-}
-.icon-user:before {
-    content: "\21";
-}
-.icon-users:before {
-    content: "\22";
-}
-.icon-contact:before {
-    content: "\23";
-}
-.icon-comment:before {
-    content: "\24";
-}
-.icon-checkmark:before {
-    content: "\25";
-}
-.icon-help:before {
-    content: "\26";
-    /*color:rgb(6,6,6);*/
-}
-.icon-help-2:before {
-    content: "\27";
-}
-.icon-warning:before {
-    content: "\28";
-}
-.icon-minus:before {
-    content: "\29";
-}
-.icon-plus:before {
-    content: "\2a";
-}
-.icon-close:before {
-    content: "\2b";
-}
-.icon-trashcan:before {
-    content: "\2c";
-}
-.icon-info:before {
-    content: "\2d";
-}
-.icon-cancel:before {
-    content: "\2e";
-}
-.icon-heart:before {
-    content: "\2f";
-}
-.icon-thumbs-up:before {
-    content: "\30";
-}
-.icon-chat:before {
-    content: "\31";
-}
-.icon-export:before {
-    content: "\32";
-}
-.icon-card:before {
-    content: "\33";
-}
-.icon-location:before {
-    content: "\34";
-}
 
 #helpAction, #helpScope{
 width:12px; height:12px; }
@@ -144,6 +55,8 @@ button:hover {
 h1 {
     font-size: 1.5em;
 }
+
+
 
 .CodeMirror {
 }
@@ -222,10 +135,27 @@ h1 {
     textarea{
     font-size: 13px;
     font-family: Arial;
-    width:250px;}
+    width:200px;}
 
 .showDescription{
     padding:10px;
     height:100px;   
+}
+
+.toolbar{
+    height:25px;
+    margin:10px 0px;
+    padding:10px;
+    border: dashed 1px #666;
+}
+
+.WuDetailsTabContainer .dijitSelect .dijitButtonContents{
+
+    width:200px;
+}
+
+.bold{
+
+    font-weight:bold;
 }
 
