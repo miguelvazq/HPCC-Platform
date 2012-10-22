@@ -96,15 +96,13 @@ define([
             this.targetSelectWidget.setValue(params.Target);
 
             this.initEditor();
+            this.editorControl.init(params);
 
             var context = this;
             this.initGraph();
             if (params.Wuid) {
                 this.wu = new Workunit({
                     wuid: params.Wuid
-                });
-                this.wu.fetchText(function (text) {
-                    context.editorControl.setText(text);
                 });
                 this.wu.monitor(function () {
                     context.monitorEclPlayground();

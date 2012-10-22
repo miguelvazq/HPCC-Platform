@@ -163,7 +163,15 @@ define([
 		},
 
 		addExceptionTab: function (exceptions) {
-			if (exceptions.length) {
+			var hasErrorWarning = false;
+			for (var i = 0; i < exceptions.length; ++i) {
+				if (exceptions[i].Severity == "Error" || exceptions[i].Severity == "Warning") {
+					hasErrorWarning = true;
+					break;
+				}
+			}
+
+			if (hasErrorWarning) {
 				var resultNode = this.addTab("Error/Warning(s)");
 				store = new Memory({ data: exceptions });
 				dataStore = new ObjectStore({ objectStore: store });

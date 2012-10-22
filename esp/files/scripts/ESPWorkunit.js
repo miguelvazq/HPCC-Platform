@@ -210,8 +210,6 @@ define([
 					if (args.onGetExceptions && workunit.Exceptions && workunit.Exceptions.ECLException) {
 						context.exceptions = [];
 						for (var i = 0; i < workunit.Exceptions.ECLException.length; ++i) {
-							if (workunit.Exceptions.ECLException[i].Severity == "Error" || 
-								workunit.Exceptions.ECLException[i].Severity == "Warning")
 							context.exceptions.push(workunit.Exceptions.ECLException[i]);						
 						}
 						args.onGetExceptions(context.exceptions);
@@ -307,6 +305,30 @@ define([
 
 			this.getInfo({
 				onGetText: onFetchText
+			});
+		},
+		fetchXML: function (onFetchXML) {
+			if (this.xml) {
+				onFetchXML(this.xml);
+				return;
+			}
+
+			var request = {
+				Wuid: this.wuid,
+				Type: "XML"
+			};
+
+			var context = this;
+			xhr.post({
+				url: this.getBaseURL() + "/WUFile.json",
+				handleAs: "text",
+				content: request,
+				load: function (response) {
+					context.xml = response;
+					onFetchXML(response);
+				},
+				error: function (e) {
+				}
 			});
 		},
 		fetchResults: function (onFetchResults) {

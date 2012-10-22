@@ -26,6 +26,7 @@ define([
 	"dijit/layout/ContentPane",
 	"dijit/Toolbar",
 	"dijit/form/Textarea",
+	"dijit/TitlePane",
 	"dijit/registry",
 
 	"hpcc/ECLSourceWidget",
@@ -33,12 +34,13 @@ define([
 	"hpcc/SampleSelectWidget",
 	"hpcc/GraphWidget",
 	"hpcc/ResultsWidget",
+	"hpcc/InfoGridWidget",
 	"hpcc/ESPWorkunit",
 
 	"dojo/text!../templates/WUDetailsWidget.html"
 ], function (declare, xhr, dom,
-				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, registry,
-				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, Workunit,
+				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, TitlePane, registry,
+				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, Workunit,
 				template) {
     return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -57,6 +59,8 @@ define([
         sourceWidgetLoaded: false,
         playgroundWidget: null,
         playgroundWidgetLoaded: false,
+        xmlWidget: null,
+        xmlWidgetLoaded: false,
 
         wu: null,
         loaded: false,
@@ -75,6 +79,8 @@ define([
             this.graphsWidget = registry.byId(this.id + "Graphs");
             this.sourceWidget = registry.byId(this.id + "Source");
             this.playgroundWidget = registry.byId(this.id + "Playground");
+            this.xmlWidget = registry.byId(this.id + "XML");
+            this.infoGridWidget = registry.byId(this.id + "InfoContainer");
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
                 if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
@@ -106,6 +112,11 @@ define([
                 } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
                     context.playgroundWidgetLoaded = true;
                     context.playgroundWidget.init({
+                        Wuid: context.wu.wuid
+                    });
+                } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
+                    context.xmlWidgetLoaded = true;
+                    context.xmlWidget.init({
                         Wuid: context.wu.wuid
                     });
                 }
@@ -156,6 +167,7 @@ define([
                     context.monitorEclPlayground(workunit);
                 });
             }
+            this.infoGridWidget.init(params);
         },
 
         resetPage: function () {
