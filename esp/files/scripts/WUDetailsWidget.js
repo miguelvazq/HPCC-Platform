@@ -181,16 +181,61 @@ define([
         },
 
         monitorEclPlayground: function (response) {
-            if (!this.loaded) {
+            if (!this.loaded) {                
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
-                dom.byId("showAction").innerHTML = response.ActionId;
-                dom.byId("showStateReadOnly").innerHTML = response.State;
+                 dom.byId("showStateReadOnly").innerHTML = response.State;
+                dom.byId("showAction").innerHTML = response.ActionId;                
                 dom.byId("showOwner").innerHTML = response.Owner;
                 dom.byId("showScope").value = response.Scope;
                 dom.byId("showJobName").value = response.Jobname;
                 dom.byId("showCluster").innerHTML = response.Cluster;
+                
+                 function getStateImage(url){
+
+                    dom.byId("showStateIdImage").src = url;                    
+                 }
+
+                 switch(response.StateID){
+                    case 1: getStateImage("img/workunit_completed.png");                
+                    break;
+                    case 2: getStateImage("img/workunit_running.png");                
+                    break;
+                    case 3: getStateImage("img/workunit_completed.png");
+                    break;
+                    case 4: getStateImage("img/workunit_failed.png");                
+                    break;
+                    case 5: getStateImage("img/workunit_warning.png");                
+                    break;
+                    case 6: getStateImage("img/workunit_aborting.png");                
+                    break;
+                    case 7: getStateImage("img/workunit_failed.png");                
+                    break;
+                    case 8: getStateImage("img/workunit_warning.png");
+                    break;
+                    case 9: getStateImage("img/workunit_submitted.png");
+                    break;
+                    case 10: getStateImage("img/workunit_warning.png");                
+                    break;
+                    case 11: getStateImage("img/workunit_running.png");                
+                    break;
+                    case 12: getStateImage("img/workunit_warning.png");                
+                    break;
+                    case 13: getStateImage("img/workunit_warning.png");                
+                    break;
+                    case 14: getStateImage("img/workunit_warning.png");                
+                    break;
+                    case 15: getStateImage("img/workunit_running.png");                
+                    break;
+                    case 999: getStateImage("img/workunit_deleted.png");                
+                    break;
+                    default: getStateImage("img/workunit.png");
+                 }
+
 
                 this.loaded = true;
+
+
+
             }
 
             var context = this;
@@ -236,6 +281,7 @@ define([
                             });
                             completed.placeAt("showState", "first");
                         }
+                        //demonstrate server state
                     }
                 });
             }
