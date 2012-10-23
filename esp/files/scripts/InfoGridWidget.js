@@ -49,11 +49,33 @@ define([
                 this.inherited(arguments);
             },
 
+            test: function (value, rowIdx, cell) {
+                switch (value) {
+                    case "Error":
+                        cell.customClasses.push("ErrorCell");
+                        cell.customStyles += "background-color: red;";
+                        return "<span style='background-color: red; color: white'>" + value + "</span>";
+
+                    case "Warning":
+                        cell.customClasses.push("WarningCell");
+                        cell.customStyles += "background-color: yellow;";
+                        return "<span style='background-color: yellow'>" + value + "</span>";
+                }
+                return value;
+            },
+
             postCreate: function (args) {
                 this.inherited(arguments);
                 this.infoGrid = registry.byId(this.id + "InfoGrid");
 
                 var context = this;
+                this.infoGrid.setStructure([
+                    { name: "Severity", field: "Severity", width: 8, formatter: context.test },
+                    { name: "Source", field: "Source", width: 10 },
+                    { name: "Code", field: "Code", width: 4 },
+                    { name: "Message", field: "Message", width: "100%" }
+                ]);
+
                 this.infoGrid.on("RowClick", function (evt) {
                 });
 
@@ -75,6 +97,20 @@ define([
             },
 
             //  Plugin wrapper  ---
+            _onStyleRow: function (row) {
+                var item = this.infoGrid.getItem(row.index);
+                if (item) {
+                    var severity = this.store.getValue(item, "Severity", null);
+                    if (severity == "Error") {
+                        row.customStyles += "background-color: red;";
+                    } else if (severity == "Warning") {
+                        row.customStyles += "background-color: yellow;";
+                    }
+                }
+                this.infoGrid.focus.styleRow(row);
+                this.infoGrid.edit.styleRow(row);
+            },
+
             onClick: function (items) {
             },
 
@@ -121,9 +157,9 @@ define([
             },
 
             loadExceptions: function (exceptions) {
-                var store = new Memory({ data: exceptions });
-                var dataStore = new ObjectStore({ objectStore: store });
-                this.infoGrid.setStore(dataStore);
+                var memory = new Memory({ data: exceptions });
+                this.store = new ObjectStore({ objectStore: memory });
+                this.infoGrid.setStore(this.store);
                 this.setQuery("*");
             }
         });

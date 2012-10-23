@@ -297,6 +297,46 @@ define([
 			}
 			return -1;
 		},
+		getState: function () {
+            return this.state;
+		},
+		getStateImage: function () {
+		    switch (this.stateID) {
+		        case 1: 
+		            return "img/workunit_completed.png";
+		        case 2:
+		            return "img/workunit_running.png";
+		        case 3:
+		            return "img/workunit_completed.png";
+		        case 4:
+		            return "img/workunit_failed.png";
+		        case 5:
+		            return "img/workunit_warning.png";
+		        case 6:
+		            return "img/workunit_aborting.png";
+		        case 7:
+		            return "img/workunit_failed.png";
+		        case 8:
+		            return "img/workunit_warning.png";
+		        case 9:
+		            return "img/workunit_submitted.png";
+		        case 10:
+		            return "img/workunit_warning.png";
+		        case 11:
+		            return "img/workunit_running.png";
+		        case 12:
+		            return "img/workunit_warning.png";
+		        case 13:
+		            return "img/workunit_warning.png";
+		        case 14:
+		            return "img/workunit_warning.png";
+		        case 15:
+		            return "img/workunit_running.png";
+		        case 999:
+		            return "img/workunit_deleted.png";
+		    }
+		    return "img/workunit.png";
+		},
 		fetchText: function (onFetchText) {
 			if (this.text) {
 				onFetchText(this.text);

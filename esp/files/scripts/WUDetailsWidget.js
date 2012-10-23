@@ -193,61 +193,17 @@ define([
         },
 
         monitorEclPlayground: function (response) {
-            if (!this.loaded) {                
+            if (!this.loaded) {
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
-                 dom.byId("showStateReadOnly").innerHTML = response.State;
-                dom.byId("showAction").innerHTML = response.ActionId;                
+                dom.byId("showStateIdImage").src = this.wu.getStateImage();
+                dom.byId("showStateIdImage").title = response.State;
+                dom.byId("showStateReadOnly").innerHTML = response.State;
+                dom.byId("showAction").innerHTML = response.ActionId;
                 dom.byId("showOwner").innerHTML = response.Owner;
                 dom.byId("showScope").value = response.Scope;
                 dom.byId("showJobName").value = response.Jobname;
                 dom.byId("showCluster").innerHTML = response.Cluster;
-                
-                 function getStateImage(url){
-
-                    dom.byId("showStateIdImage").src = url;                    
-                 }
-
-                 switch(response.StateID){
-                    case 1: getStateImage("img/workunit_completed.png");                
-                    break;
-                    case 2: getStateImage("img/workunit_running.png");                
-                    break;
-                    case 3: getStateImage("img/workunit_completed.png");
-                    break;
-                    case 4: getStateImage("img/workunit_failed.png");                
-                    break;
-                    case 5: getStateImage("img/workunit_warning.png");                
-                    break;
-                    case 6: getStateImage("img/workunit_aborting.png");                
-                    break;
-                    case 7: getStateImage("img/workunit_failed.png");                
-                    break;
-                    case 8: getStateImage("img/workunit_warning.png");
-                    break;
-                    case 9: getStateImage("img/workunit_submitted.png");
-                    break;
-                    case 10: getStateImage("img/workunit_warning.png");                
-                    break;
-                    case 11: getStateImage("img/workunit_running.png");                
-                    break;
-                    case 12: getStateImage("img/workunit_warning.png");                
-                    break;
-                    case 13: getStateImage("img/workunit_warning.png");                
-                    break;
-                    case 14: getStateImage("img/workunit_warning.png");                
-                    break;
-                    case 15: getStateImage("img/workunit_running.png");                
-                    break;
-                    case 999: getStateImage("img/workunit_deleted.png");                
-                    break;
-                    default: getStateImage("img/workunit.png");
-                 }
-
-
                 this.loaded = true;
-
-
-
             }
 
             var context = this;
@@ -255,18 +211,56 @@ define([
                 this.wu.getInfo({
                     onGetResults: function (response) {
                         context.resultsWidget.set("title", "Results " + "(" + response.length + ")");
+                        var tooltip = "";
+                        for (var i = 0; i < response.length; ++i) {
+                            if (tooltip != "")
+                                tooltip += "\n";
+                            tooltip += response[i].Name;
+                            if (response[i].Value)
+                                tooltip += " " + response[i].Value;
+                        }
+                        context.resultsWidget.set("tooltip", tooltip);
                     },
 
                     onGetSourceFiles: function (response) {
                         context.filesWidget.set("title", "Files " + "(" + response.length + ")");
+                        var tooltip = "";
+                        for (var i = 0; i < response.length; ++i) {
+                            if (tooltip != "")
+                                tooltip += "\n";
+                            tooltip += response[i].Name;
+                        }
+                        context.filesWidget.set("tooltip", tooltip);
                     },
 
                     onGetTimers: function (response) {
                         context.timersWidget.set("title", "Timers " + "(" + response.length + ")");
+                        var tooltip = "";
+                        for (var i = 0; i < response.length; ++i) {
+                            if (response[i].GraphName)
+                                continue;
+                            if (response[i].Name == "Process")
+                                dom.byId("showTime").innerHTML = response[i].Value;
+                            if (tooltip != "")
+                                tooltip += "\n";
+                            tooltip += response[i].Name;
+                            if (response[i].Value)
+                                tooltip += " " + response[i].Value;
+                        }
+                        context.timersWidget.set("tooltip", tooltip);
                     },
 
                     onGetGraphs: function (response) {
                         context.graphsWidget.set("title", "Graphs " + "(" + response.length + ")");
+                        var tooltip = "";
+                        for (var i = 0; i < response.length; ++i) {
+                            if (tooltip != "")
+                                tooltip += "\n";
+                            tooltip += response[i].Name;
+                            if (response[i].Time)
+                                tooltip += " " + response[i].Time;
+                        }
+                        context.graphsWidget.set("tooltip", tooltip);
                     },
 
                     onGetAll: function (response) {
