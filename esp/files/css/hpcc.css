@@ -169,11 +169,12 @@ form h2{
 /*dijit specific styles*/
 
 .ErrorCell{
-background:rgb(255, 0, 0)
+background: red;
+color: white;
 }
 
-.Warning{
-background:rgb(239, 252, 164)
+.WarningCell{
+background: yellow;
 }
 
 .showDescription{
