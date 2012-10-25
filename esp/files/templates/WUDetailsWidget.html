@@ -1,77 +1,62 @@
 <div class="${baseClass}">
     <div id="${id}BorderContainer" class="${baseClass}BorderContainer" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.BorderContainer">
         <div id="${id}Toolbar" class="topPanel" data-dojo-props="region: 'top'" data-dojo-type="dijit.Toolbar">
-            <img id="showStateIdImage" class="iconAlign" src="img/workunit.png"/>&nbsp<span id="${id}Wuid" class="bold">WUID</span>
+            <img id="showProtectedImage" class="iconAlign" src="img/unlocked.png"/>&nbsp<img id="showStateIdImage" class="iconAlign" src="img/workunit.png"/>&nbsp<span id="${id}Wuid" class="bold">WUID</span>
+            <div id="${id}Reload" data-dojo-attach-event="onClick:_onReload" data-dojo-type="dijit.form.Button">Refresh</div>
             <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onReset" data-dojo-type="dijit.form.Button">Reset</div>
-            <div data-dojo-attach-event="onClick:_onSave" data-dojo-type="dijit.form.Button">Save</div>
+            <div id="${id}Save" data-dojo-attach-event="onClick:_onSave" data-dojo-type="dijit.form.Button">Save</div>
+            <div id="${id}Delete" data-dojo-attach-event="onClick:_onDelete" data-dojo-type="dijit.form.Button">Delete</div>
             <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onClone" data-dojo-type="dijit.form.Button">Clone</div>
-            <div data-dojo-attach-event="onClick:_onDelete" data-dojo-type="dijit.form.Button">Delete</div>
+            <div id="${id}Abort" data-dojo-attach-event="onClick:_onAbort" data-dojo-type="dijit.form.Button">Abort</div>
             <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onAbort" data-dojo-type="dijit.form.Button">Abort</div>
-            <div data-dojo-attach-event="onClick:_onResubmit" data-dojo-type="dijit.form.Button">Resubmit</div>
-            <div data-dojo-attach-event="onClick:_onRestart" data-dojo-type="dijit.form.Button">Restart</div>
+            <div id="${id}Clone" data-dojo-attach-event="onClick:_onClone" data-dojo-type="dijit.form.Button">Clone</div>
+            <div id="${id}Resubmit" data-dojo-attach-event="onClick:_onResubmit" data-dojo-type="dijit.form.Button">Resubmit</div>
+            <div id="${id}Restart" data-dojo-attach-event="onClick:_onRestart" data-dojo-type="dijit.form.Button">Restart</div>
             <span data-dojo-type="dijit.ToolbarSeparator"></span>
-            <div data-dojo-attach-event="onClick:_onPublish" data-dojo-type="dijit.form.Button">Publish</div>
+            <div id="${id}Publish" data-dojo-type="dijit.form.DropDownButton">
+                <span>Publish</span>
+                <div data-dojo-type="dijit.TooltipDialog">
+                    <label class="Prompt" for="showJobName2">Job Name:</label>
+                    <input id="showJobName2" data-dojo-props="trim: true" data-dojo-type="dijit.form.TextBox"/>
+                    <button data-dojo-attach-event="onClick:_onPublish" data-dojo-type="dijit.form.Button">Submit</button>
+                </div>
+            </div>
             <span data-dojo-type="dijit.ToolbarSeparator"></span>
         </div>
         <div id="${id}TabContainer" data-dojo-props="region: 'center', tabPosition: 'top'" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.TabContainer">
             <div title="Summary" style="width: 100%; height: 100%" data-dojo-type="dijit.layout.BorderContainer">
                 <div id="${id}Summary" data-dojo-props="region: 'center'" data-dojo-type="dijit.layout.ContentPane">
-                    <h2 id="showWuid"></h2>
+                    <h2>
+                        <img id="showProtectedImage2" class="iconAlign" src="img/locked.png"/>&nbsp<img id="showStateIdImage2" class="iconAlign" src="img/workunit.png"/>&nbsp<span id="${id}Wuid2" class="bold">WUID</span>
+                    </h2>
                     <table>
                         <tr>
-                            <td>
-                                <span class="Prompt">Action: </span>
-                                <a href="#">
-                                    <img src="img/ui/help1.png" alt="information" id="helpAction" />
-                                </a>
-                                <div data-dojo-type="dijit/Tooltip" data-dojo-props="connectId:'helpAction',position:['below']" style="width: 10px;">
-                                    Action is about this and<br />
-                                    that and more text.
-                                </div>
-                            </td>
+                            <td><span class="Prompt">Action: </span></td>
                             <td id="showAction"></td>
                         </tr>
                         <tr>
                             <td><span class="Prompt">State:</span></td>
-                            <td id="showStateReadOnly">
-                            </td>
+                            <td id="showState"></td>
                         </tr>
                         <tr>
                             <td><span class="Prompt">Owner:</span></td>
                             <td id="showOwner"></td>
                         </tr>
                         <tr>
-                            <td><span class="Prompt">Scope: </span>
-                                <a href="#">
-                                    <img src="img/ui/help1.png" id="helpScope" alt="help" /></a>
-                                <div data-dojo-type="dijit/Tooltip" data-dojo-props="connectId:'helpScope',position:['below']">
-                                    Scope is about this and<br />
-                                    that and more text.
-                                </div>
-                            </td>
+                            <td><span class="Prompt">Scope: </span></td>
                             <td id="showScope"></td>
                         </tr>
                         <tr>
                             <td><span class="Prompt">Job Name:</span></td>
-                            <td>
-                                <input id="showJobName" style="width: 220px" data-dojo-type="dijit/form/TextBox"
-                                    data-dojo-props="trim:true, propercase:true"></td>
+                            <td><input id="showJobName" style="width: 220px" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></td>
                         </tr>
                         <tr>
-                            <!--Not valid HTML5 will change-->
-                            <td valign="top"><span class="Prompt">Description:</span></td>
-                            <td>
-                                <textarea id="showDescription" class="showDescription" name="showDescription" dojotype="dijit.form.Textarea"></textarea></td>
+                            <td><span class="Prompt">Description:</span></td>
+                            <td><input id="showDescription" style="width: 220px" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></td>
                         </tr>
                         <tr>
                             <td><span class="Prompt">Protected:</span></td>
-                            <td>
-                                <form id="showProtected">
-                                </form>
-                            </td>
+                            <td><input id="showProtected" data-dojo-type="dijit.form.CheckBox"/></td>
                         </tr>
                         <tr>
                             <td><span class="Prompt">Cluster:</span></td>
@@ -86,6 +71,10 @@
                 <div id="${id}InfoContainer" style="height: 33%" data-dojo-props="region: 'bottom', splitter: true, minSize: 120" data-dojo-type="InfoGridWidget">
                 </div>
             </div>
+            <div id="${id}Variables" title="Variables" data-dojo-type="dijit.layout.ContentPane">
+                <div id="${id}VariablesGrid" data-dojo-type="dojox.grid.DataGrid">
+                </div>
+            </div>
             <div id="${id}Results" title="Results" data-dojo-type="ResultsWidget">
             </div>
             <div id="${id}Files" title="Files" data-dojo-type="ResultsWidget">
@@ -95,6 +84,8 @@
             <div id="${id}Graphs" title="Graphs" data-dojo-type="GraphPageWidget">
             </div>
             <div id="${id}Source" title="ECL" data-dojo-type="ECLSourceWidget">
+            </div>
+            <div id="${id}Logs" title="Helpers" data-dojo-type="LogsWidget">
             </div>
             <div id="${id}Playground" title="Playground" data-dojo-type="ECLPlaygroundWidget">
             </div>

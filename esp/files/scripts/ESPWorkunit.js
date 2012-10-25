@@ -51,6 +51,11 @@ define([
 		},
 		isComplete: function () {
 			switch (this.stateID) {
+				case 1: //WUStateCompiled
+					if (lang.exists("WUInfoResponse.ActionEx", this) && this.WUInfoResponse.ActionEx == "compile") {
+						return true;
+					}
+					break;
 				case 3:	//WUStateCompleted:
 				case 4:	//WUStateFailed:
 				case 5:	//WUStateArchived:
@@ -75,6 +80,7 @@ define([
 					var workunit = response.WUQueryResponse.Workunits.ECLWorkunit[0];
 					context.stateID = workunit.StateID;
 					context.state = workunit.State;
+					context.protected = workunit.Protected;
 					if (callback) {
 						callback(workunit);
 					}
@@ -120,29 +126,31 @@ define([
 				}
 			});
 		},
-		update: function (ecl, graphName, svg) {
-			var request = {};
-			request['Wuid'] = this.wuid;
-			if (ecl) {
-				request['QueryText'] = ecl;
+		update: function (request, appData, callback) {
+			lang.mixin(request, {
+				Wuid: this.wuid,
+				rawxml_: true
+			});
+			if (this.WUInfoResponse) {
+				lang.mixin(request, {
+					StateOrig: this.WUInfoResponse.State,
+					JobnameOrig: this.WUInfoResponse.Jobname,
+					DescriptionOrig: this.WUInfoResponse.Description,
+					ProtectedOrig: this.WUInfoResponse.Protected,
+					ScopeOrig: this.WUInfoResponse.Scope,
+					ClusterOrig: this.WUInfoResponse.Cluster,
+				});
 			}
-			if (graphName && svg) {
-				/*
-				request['ApplicationValues'] = {
-					ApplicationValue: {
-						itemcount: 1,
-						Application: "ESPWorkunit.js",
-						Name: graphName + "_SVG",
-						Value: svg
-					}
+			if (appData) {
+				request['ApplicationValues.ApplicationValue.itemcount'] = appData.length;
+				var i = 0;
+				for (key in appData) {
+					request['ApplicationValues.ApplicationValue.' + i + '.Application'] = "ESPWorkunit.js";
+					request['ApplicationValues.ApplicationValue.' + i + '.Name'] = key;
+					request['ApplicationValues.ApplicationValue.' + i + '.Value'] = appData[key];
+					++i;
 				}
-				*/
-				request['ApplicationValues.ApplicationValue.itemcount'] = 1;
-				request['ApplicationValues.ApplicationValue.0.Application'] = "ESPWorkunit.js";
-				request['ApplicationValues.ApplicationValue.0.Name'] = graphName + "_SVG";
-				request['ApplicationValues.ApplicationValue.0.Value'] = svg;
 			}
-			request['rawxml_'] = "1";
 
 			var context = this;
 			xhr.post({
@@ -150,9 +158,16 @@ define([
 				handleAs: "json",
 				content: request,
 				load: function (response) {
+					context.WUInfoResponse = lang.mixin(context.WUInfoResponse, response.WUUpdateResponse.Workunit);
 					context.onUpdate();
+					if (callback && callback.load) {
+						callback.load(response);
+					}
 				},
 				error: function (error) {
+					if (callback && callback.error) {
+						callback.error(e);
+					}
 				}
 			});
 		},
@@ -175,6 +190,91 @@ define([
 				}
 			});
 		},
+		_resubmit: function (clone, resetWorkflow, callback) {
+			var request = {
+				Wuids: this.wuid,
+				CloneWorkunit: clone,
+				ResetWorkflow: resetWorkflow,
+				rawxml_: true
+			};
+
+			var context = this;
+			xhr.post({
+				url: this.getBaseURL() + "/WUResubmit.json",
+				handleAs: "json",
+				content: request,
+				load: function (response) {
+					if (callback && callback.load) {
+						callback.load(response);
+					}
+				},
+				error: function (e) {
+					if (callback && callback.error) {
+						callback.error(e);
+					}
+				}
+			});
+		},
+		clone: function (callback) {
+			this._resubmit(true, false, callback);
+		},
+		resubmit: function (callback) {
+			this._resubmit(false, false, callback);
+		},
+		restart: function (callback) {
+			this._resubmit(false, true, callback);
+		},
+		_action: function (action, callback) {
+			var request = {
+				Wuids: this.wuid,
+				ActionType: action,
+				rawxml_: true
+			};
+
+			var context = this;
+			xhr.post({
+				url: this.getBaseURL() + "/WUAction.json",
+				handleAs: "json",
+				content: request,
+				load: function (response) {
+					if (callback && callback.load) {
+						callback.load(response);
+					}
+				},
+				error: function (e) {
+					if (callback && callback.error) {
+						callback.error(e);
+					}
+				}
+			});
+		},
+		abort: function (callback) {
+			this._action("Abort", callback);
+		},
+		delete: function (callback) {
+			this._action("Delete", callback);
+		},
+		publish: function (jobName) {
+			var request = {
+				Wuid: this.wuid,
+				JobName: jobName,
+				Activate: 1, 
+				UpdateWorkUnitName: 1, 
+				Wait: 5000,
+				rawxml_: true
+			};
+
+			var context = this;
+			xhr.post({
+				url: this.getBaseURL() + "/WUPublishWorkunit.json",
+				handleAs: "json",
+				content: request,
+				load: function (response) {
+				},
+				error: function (e) {
+				}
+			});
+		},
 		getInfo: function (args) {
 			var request = {
 				Wuid: this.wuid,
@@ -184,7 +284,7 @@ define([
 				IncludeSourceFiles: args.onGetSourceFiles ? true : false,
 				IncludeResults: args.onGetResults ? true : false,
 				IncludeResultsViewNames: false,
-				IncludeVariables: false,
+				IncludeVariables: args.onGetVariables ? true : false,
 				IncludeTimers: args.onGetTimers ? true : false,
 				IncludeDebugValues: false,
 				IncludeApplicationValues: args.onGetApplicationValues ? true : false,
@@ -218,6 +318,16 @@ define([
 						context.applicationValues = workunit.ApplicationValues.ApplicationValue;
 						args.onGetApplicationValues(context.applicationValues)
 					}
+					if (args.onGetVariables && workunit.Variables && workunit.Variables.ECLResult) {
+						context.variables = [];
+						var variables = workunit.Variables.ECLResult;
+						for (var i = 0; i < variables.length; ++i) {
+							context.variables.push(lang.mixin({
+								ColumnType: variables[i].ECLSchemas && variables[i].ECLSchemas.ECLSchemaItem.length ? variables[i].ECLSchemas.ECLSchemaItem[0].ColumnType : "unknown"
+							}, variables[i]));
+						}
+						args.onGetVariables(context.variables);
+					}
 					if (args.onGetResults && workunit.Results && workunit.Results.ECLResult) {
 						context.results = [];
 						var results = workunit.Results.ECLResult;
@@ -244,8 +354,8 @@ define([
 							}
 
 							context.timers.push(lang.mixin(workunit.Timers.ECLTimer[i], {
-							    Seconds: Math.round(secs * 1000) / 1000,
-							    HasSubGraphId: workunit.Timers.ECLTimer[i].SubGraphId && workunit.Timers.ECLTimer[i].SubGraphId != "" ? true : false
+								Seconds: Math.round(secs * 1000) / 1000,
+								HasSubGraphId: workunit.Timers.ECLTimer[i].SubGraphId && workunit.Timers.ECLTimer[i].SubGraphId != "" ? true : false
 							}));
 						}
 						args.onGetTimers(context.timers);
@@ -298,44 +408,50 @@ define([
 			return -1;
 		},
 		getState: function () {
-            return this.state;
+			return this.state;
 		},
 		getStateImage: function () {
-		    switch (this.stateID) {
-		        case 1: 
-		            return "img/workunit_completed.png";
-		        case 2:
-		            return "img/workunit_running.png";
-		        case 3:
-		            return "img/workunit_completed.png";
-		        case 4:
-		            return "img/workunit_failed.png";
-		        case 5:
-		            return "img/workunit_warning.png";
-		        case 6:
-		            return "img/workunit_aborting.png";
-		        case 7:
-		            return "img/workunit_failed.png";
-		        case 8:
-		            return "img/workunit_warning.png";
-		        case 9:
-		            return "img/workunit_submitted.png";
-		        case 10:
-		            return "img/workunit_warning.png";
-		        case 11:
-		            return "img/workunit_running.png";
-		        case 12:
-		            return "img/workunit_warning.png";
-		        case 13:
-		            return "img/workunit_warning.png";
-		        case 14:
-		            return "img/workunit_warning.png";
-		        case 15:
-		            return "img/workunit_running.png";
-		        case 999:
-		            return "img/workunit_deleted.png";
-		    }
-		    return "img/workunit.png";
+			switch (this.stateID) {
+				case 1: 
+					return "img/workunit_completed.png";
+				case 2:
+					return "img/workunit_running.png";
+				case 3:
+					return "img/workunit_completed.png";
+				case 4:
+					return "img/workunit_failed.png";
+				case 5:
+					return "img/workunit_warning.png";
+				case 6:
+					return "img/workunit_aborting.png";
+				case 7:
+					return "img/workunit_failed.png";
+				case 8:
+					return "img/workunit_warning.png";
+				case 9:
+					return "img/workunit_submitted.png";
+				case 10:
+					return "img/workunit_warning.png";
+				case 11:
+					return "img/workunit_running.png";
+				case 12:
+					return "img/workunit_warning.png";
+				case 13:
+					return "img/workunit_warning.png";
+				case 14:
+					return "img/workunit_warning.png";
+				case 15:
+					return "img/workunit_running.png";
+				case 999:
+					return "img/workunit_deleted.png";
+			}
+			return "img/workunit.png";
+		},
+		getProtectedImage: function () {
+			if (this.protected) {
+				return "img/locked.png"
+			}
+			return "img/unlocked.png"
 		},
 		fetchText: function (onFetchText) {
 			if (this.text) {
@@ -430,7 +546,9 @@ define([
 			var idx = this.getGraphIndex(graphName);
 			if (idx >= 0) {
 				this.graphs[idx].svg = svg;
-				this.update(null, graphName, svg);
+				var appData = [];
+				appData[graphName + "_SVG"] = svg;
+				this.update({ }, appData);
 			}
 		}
 	});

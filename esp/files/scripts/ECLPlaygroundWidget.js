@@ -209,7 +209,9 @@ define([
             var context = this;
             this.wu = new Workunit({
                 onCreate: function () {
-                    context.wu.update(context.editorControl.getText());
+                    context.wu.update({
+                        QueryText: context.editorControl.getText()
+                    });
                 },
                 onUpdate: function () {
                     context.wu.submit(context.targetSelectWidget.getValue());

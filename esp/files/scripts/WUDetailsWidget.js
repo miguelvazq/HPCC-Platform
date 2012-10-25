@@ -17,6 +17,8 @@ define([
 	"dojo/_base/declare",
 	"dojo/_base/xhr",
 	"dojo/dom",
+	"dojo/store/Memory",
+	"dojo/data/ObjectStore",
 
 	"dijit/layout/_LayoutWidget",
 	"dijit/_TemplatedMixin",
@@ -25,7 +27,9 @@ define([
 	"dijit/layout/TabContainer",
 	"dijit/layout/ContentPane",
 	"dijit/Toolbar",
+	"dijit/TooltipDialog",
 	"dijit/form/Textarea",
+	"dijit/form/Button",
 	"dijit/TitlePane",
 	"dijit/registry",
 
@@ -35,12 +39,13 @@ define([
 	"hpcc/GraphWidget",
 	"hpcc/ResultsWidget",
 	"hpcc/InfoGridWidget",
+	"hpcc/LogsWidget",
 	"hpcc/ESPWorkunit",
 
 	"dojo/text!../templates/WUDetailsWidget.html"
-], function (declare, xhr, dom,
-				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, TitlePane, registry,
-				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, Workunit,
+], function (declare, xhr, dom, Memory, ObjectStore,
+				_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
+				EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
 				template) {
     return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -57,13 +62,15 @@ define([
         graphsWidgetLoaded: false,
         sourceWidget: null,
         sourceWidgetLoaded: false,
+        logsWidget: null,
+        logsWidgetLoaded: false,
         playgroundWidget: null,
         playgroundWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
 
         wu: null,
-        loaded: false,
+        prevState: "",
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -78,6 +85,7 @@ define([
             this.timersWidget = registry.byId(this.id + "Timers");
             this.graphsWidget = registry.byId(this.id + "Graphs");
             this.sourceWidget = registry.byId(this.id + "Source");
+            this.logsWidget = registry.byId(this.id + "Logs");
             this.playgroundWidget = registry.byId(this.id + "Playground");
             this.xmlWidget = registry.byId(this.id + "XML");
             this.infoGridWidget = registry.byId(this.id + "InfoContainer");
@@ -109,6 +117,11 @@ define([
                     context.sourceWidget.init({
                         Wuid: context.wu.wuid
                     });
+                } else if (nval.id == context.id + "Logs" && !context.logsWidgetLoaded) {
+                    context.logsWidgetLoaded = true;
+                    context.logsWidget.init({
+                        Wuid: context.wu.wuid
+                    });
                 } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
                     context.playgroundWidgetLoaded = true;
                     context.playgroundWidget.init({
@@ -138,36 +151,82 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
+            var protectedCheckbox = registry.byId("showProtected");
+            var context = this;
+            this.wu.update({
+                Description: dom.byId("showDescription").value,
+                Jobname: dom.byId("showJobName").value,
+                Protected: protectedCheckbox.get("value")
+            }, null, {
+                load: function (response) {
+                    context.monitor();
+                }
+            });
         },
-        _onReset: function (event) {
+        _onReload: function (event) {
+            this.monitor();
         },
         _onClone: function (event) {
+            this.wu.clone({
+                load: function (response) {
+                    //TODO
+                }
+            });
         },
         _onDelete: function (event) {
-        },
-        _onAbort: function (event) {
+            this.wu.delete({
+                load: function (response) {
+                    //TODO
+                }
+            });
         },
         _onResubmit: function (event) {
+            var context = this;
+            this.wu.resubmit({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
+        },
+        _onAbort: function (event) {
+            var context = this;
+            this.wu.abort({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
         },
         _onRestart: function (event) {
+            var context = this;
+            this.wu.restart({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
         },
         _onPublish: function (event) {
+            this.wu.publish(dom.byId("showJobName2").value);
         },
 
         //  Implementation  ---
         init: function (params) {
-            dom.byId("showWuid").innerHTML = params.Wuid;
             if (params.Wuid) {
                 dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
+                dom.byId(this.id + "Wuid2").innerHTML = params.Wuid;
                 this.wu = new Workunit({
                     wuid: params.Wuid
                 });
-                var context = this;
-                this.wu.monitor(function (workunit) {
-                    context.monitorEclPlayground(workunit);
-                });
+                this.monitor();
             }
             this.infoGridWidget.init(params);
+        },
+
+        monitor: function () {
+            var prevState = "";
+            var context = this;
+            this.wu.monitor(function (workunit) {
+                context.monitorEclPlayground(workunit);
+            });
         },
 
         resetPage: function () {
@@ -189,26 +248,54 @@ define([
                 }
             }
             return text;
-
         },
 
         monitorEclPlayground: function (response) {
-            if (!this.loaded) {
-                //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);				
-                dom.byId("showStateIdImage").src = this.wu.getStateImage();
-                dom.byId("showStateIdImage").title = response.State;
-                dom.byId("showStateReadOnly").innerHTML = response.State;
-                dom.byId("showAction").innerHTML = response.ActionId;
-                dom.byId("showOwner").innerHTML = response.Owner;
-                dom.byId("showScope").value = response.Scope;
-                dom.byId("showJobName").value = response.Jobname;
-                dom.byId("showCluster").innerHTML = response.Cluster;
-                this.loaded = true;
-            }
+            registry.byId(this.id + "Save").set("disabled", !this.wu.isComplete());
+            //registry.byId(this.id + "Reload").set("disabled", this.wu.isComplete());
+            registry.byId(this.id + "Clone").set("disabled", !this.wu.isComplete());
+            registry.byId(this.id + "Delete").set("disabled", !this.wu.isComplete());
+            registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete());
+            registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
+            registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
+            registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
+
+            registry.byId("showJobName").set("readOnly", !this.wu.isComplete());
+            registry.byId("showDescription").set("readOnly", !this.wu.isComplete());
+            registry.byId("showProtected").set("readOnly", !this.wu.isComplete());
+
+            dom.byId("showStateIdImage").src = this.wu.getStateImage();
+            dom.byId("showStateIdImage").title = response.State;
+            dom.byId("showStateIdImage2").src = this.wu.getStateImage();
+            dom.byId("showStateIdImage2").title = response.State;
+            dom.byId("showProtectedImage").src = this.wu.getProtectedImage();
+            dom.byId("showProtectedImage2").src = this.wu.getProtectedImage();
+            dom.byId("showState").innerHTML = response.State;
+            dom.byId("showOwner").innerHTML = response.Owner;
+            dom.byId("showJobName").value = response.Jobname;
+            dom.byId("showJobName2").value = response.Jobname;
+            dom.byId("showCluster").innerHTML = response.Cluster;
 
             var context = this;
-            if (this.wu.isComplete()) {
+            if (this.wu.isComplete() || this.prevState != response.State) {
+                this.prevState = response.State;
                 this.wu.getInfo({
+                    onGetVariables: function (response) {
+                        registry.byId(context.id + "Variables").set("title", "Variables " + "(" + response.length + ")");
+                        context.variablesGrid = registry.byId(context.id + "VariablesGrid");
+                        context.variablesGrid.setStructure([
+                            { name: "Name", field: "Name", width: 16 },
+                            { name: "Type", field: "ColumnType", width: 10 },
+                            { name: "Default Value", field: "Value", width: 32 }
+                        ]);
+                        var memory = new Memory({ data: response });
+                        var store = new ObjectStore({ objectStore: memory });
+                        context.variablesGrid.setStore(store);
+                        context.variablesGrid.setQuery({
+                            Name: "*"
+                        });
+                    },
+
                     onGetResults: function (response) {
                         context.resultsWidget.set("title", "Results " + "(" + response.length + ")");
                         var tooltip = "";
@@ -264,30 +351,20 @@ define([
                     },
 
                     onGetAll: function (response) {
+                        var helpersCount = 0;
+                        if (response.Helpers && response.Helpers.ECLHelpFile) {
+                            helpersCount += response.Helpers.ECLHelpFile.length;
+                        }
+                        if (response.ThorLogList && response.ThorLogList.ThorLogInfo) {
+                            helpersCount += response.ThorLogList.ThorLogInfo.length;
+                        }
+                        context.logsWidget.set("title", "Helpers " + "(" + helpersCount + ")");
                         //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
                         dom.byId("showDescription").value = response.Description;                        
-                            
-                        var pro = new dijit.form.CheckBox({
-                                id: "true",
-                                title: "Protected",
-                                checked: response.Protected
-                            });
-                         
-                        pro.placeAt("showProtected", "first");
-
-                        if (response.State == "failed") {
-                            dom.byId("showState").innerHTML = "Failed";
-                        } else {
-                            var completed = new dijit.form.Select({
-                                name: "showCompleted",
-                                options: [
-                					{ label: "Failed", value: "Failed" },
-                					{ label: "Completed", value: "Completed", selected: true }
-                                ]
-                            });
-                            completed.placeAt("showState", "first");
-                        }
-                        //demonstrate server state
+                        dom.byId("showAction").innerHTML = response.ActionEx;
+                        dom.byId("showScope").innerHTML = response.Scope;
+                        var protectedCheckbox = registry.byId("showProtected");
+                        protectedCheckbox.set("value", response.Protected);
                     }
                 });
             }

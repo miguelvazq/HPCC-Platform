@@ -116,17 +116,19 @@ define([
             loadTimers: function (timers, query) {
                 this.largestValue = 0;
                 var timerData = [];
-                for (var i = 0; i < timers.length; ++i) {
-                    if (timers[i].GraphName && timers[i].SubGraphId && (query == "*" || query == timers[i].GraphName)) {
-                        var value = timers[i].Seconds;
-                        timerData.push({
-                            graphName: timers[i].GraphName,
-                            subGraphId: timers[i].SubGraphId,
-                            label: timers[i].Name,
-                            value: value
-                        });
-                        if (this.largestValue < value * 1000) {
-                            this.largestValue = value * 1000;
+                if (timers) {
+                    for (var i = 0; i < timers.length; ++i) {
+                        if (timers[i].GraphName && timers[i].SubGraphId && (query == "*" || query == timers[i].GraphName)) {
+                            var value = timers[i].Seconds;
+                            timerData.push({
+                                graphName: timers[i].GraphName,
+                                subGraphId: timers[i].SubGraphId,
+                                label: timers[i].Name,
+                                value: value
+                            });
+                            if (this.largestValue < value * 1000) {
+                                this.largestValue = value * 1000;
+                            }
                         }
                     }
                 }
