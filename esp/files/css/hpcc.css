@@ -122,37 +122,55 @@ h1 {
         padding-left:10px;
     }
 
-    table{
-        margin-left:5px;
-    }
+   
 
-
-   table tr td:first-child{
-    padding : 10px 20px 10px 0px;
-    font-size:13px;
-    font-weight:normal;
-}
 
 
 
 
 form {
-    margin-left:10px;
+margin:0;
+padding:0;
+width:350px;
+}
+
+form label{
+float: left;
+width: 31%;
+margin: 0 15px 0 0;
+text-align: left;
+padding-top: 9px;
 }
 
 form textarea{
-    font-size: 13px;
-    font-family: Arial;
-    width:170px;}
+font-size: 13px;
+font-family: Arial;
+width:170px;
+float:left;
+}
+
+
+form ul{
+list-style:none;
+margin:0;
+padding:0;
+}
+
+form li{
+margin: 0;
+padding: 6px 1% 9px 1%;
+clear: both;
+position: relative;
+}
 
 
 
 form div{
-    padding:5px 0px 10px 0px;  
+margin:4px 0px 0px 0px; 
 }
 
 form h2{
-    padding:5px 0px;
+padding:5px 0px;
 }
 
 
@@ -175,11 +193,6 @@ color: white;
 
 .WarningCell{
 background: yellow;
-}
-
-.showDescription{
-    padding:10px;
-    height:100px;   
 }
 
 

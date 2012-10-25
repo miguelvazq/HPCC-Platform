@@ -156,7 +156,7 @@ define([
             this.wu.update({
                 Description: dom.byId("showDescription").value,
                 Jobname: dom.byId("showJobName").value,
-                Protected: protectedCheckbox.get("value")
+                Protected: protectedCheckbox.get("value"),                
             }, null, {
                 load: function (response) {
                     context.monitor();
