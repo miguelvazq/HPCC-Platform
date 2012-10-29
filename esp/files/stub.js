@@ -30,7 +30,7 @@ define([
     "hpcc/ECLSourceWidget",
     "hpcc/InfoGridWidget",
     "hpcc/WUDetailsWidget",
-    "hpcc/DFUWUDetailsWidget",
+    "hpcc/DFUWUDetailsWidget"
 ], function (fx, baseWindow, dom, domStyle, domGeometry, ioQuery, ready,
         ECLPlaygroundWidget, GraphPageWidget, ResultsWidget, TimingPageWidget, TimingTreeMapWidget, ECLSourceWidget, InfoGridWidget, WUDetailsWidget, DFUWUDetailsWidget) {
 

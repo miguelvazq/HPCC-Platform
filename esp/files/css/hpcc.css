@@ -123,11 +123,6 @@ h1 {
     }
 
    
-
-
-
-
-
 form {
 margin:0;
 padding:0;
@@ -139,7 +134,7 @@ float: left;
 width: 31%;
 margin: 0 15px 0 0;
 text-align: left;
-padding-top: 9px;
+padding-top: 4px;
 }
 
 form textarea{
