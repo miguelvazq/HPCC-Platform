@@ -85,7 +85,7 @@ define([
                 var context = this;
                 if (params.Wuid) {
                     this.wu = new ESPWorkunit({
-                        wuid: params.Wuid
+                        Wuid: params.Wuid
                     });
                     if (this.WUXml) {
                         this.wu.fetchXML(function (xml) {

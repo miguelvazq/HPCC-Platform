@@ -117,7 +117,7 @@ define([
 
             init: function (params) {
                 this.wu = new ESPWorkunit({
-                    wuid: params.Wuid
+                    Wuid: params.Wuid
                 });
 
                 var context = this;

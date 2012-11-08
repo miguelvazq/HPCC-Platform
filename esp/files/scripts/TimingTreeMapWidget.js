@@ -90,7 +90,7 @@ define([
                 var context = this;
                 if (params.Wuid) {
                     this.wu = new ESPWorkunit({
-                        wuid: params.Wuid
+                        Wuid: params.Wuid
                     });
                     this.wu.fetchTimers(function (timers) {
                         context.timers = timers;

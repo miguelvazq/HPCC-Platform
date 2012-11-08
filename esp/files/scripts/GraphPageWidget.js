@@ -269,7 +269,7 @@ define([
         init: function (params) {
             this.graphName = params.GraphName;
             this.wu = new ESPWorkunit({
-                wuid: params.Wuid
+                Wuid: params.Wuid
             });
 
             var firstLoad = true;
