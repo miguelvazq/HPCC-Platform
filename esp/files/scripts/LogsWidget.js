@@ -118,6 +118,9 @@ define([
                         case "ThorSlaveLog":
                             params = "/WUFile?Wuid=" + this.wu.Wuid + "&Process=" + selection[i].Orig.ProcessName + "&ClusterGroup=" + selection[i].Orig.ProcessName + "&LogDate=" + selection[i].Orig.LogDate + "&SlaveNumber=" + selection[i].Orig.SlaveNumber + "&Type=" + selection[i].Type;
                             break;
+                        case "Archive Query":
+                            params = "/WUFile/ArchiveQuery?Wuid=" + this.wu.Wuid + "&Name=ArchiveQuery&Type=ArchiveQuery";
+                            break;
                     }
 
                     var url = this.wu.getBaseURL() + params + (option ? "&Option=" + option : "&Option=1");
@@ -145,6 +148,11 @@ define([
                     context.wu.getInfo({
                         onGetAll: function (response) {
                             context.logData = [];
+                            if (response.HasArchiveQuery) {
+                                context.logData.push({
+                                    Type: "Archive Query"
+                                });
+                            }
                             if (response.Helpers && response.Helpers.ECLHelpFile) {
                                 context.loadHelpers(response.Helpers.ECLHelpFile);
                             }

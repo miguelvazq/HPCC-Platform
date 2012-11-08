@@ -358,6 +358,10 @@ define([
                         if (response.ThorLogList && response.ThorLogList.ThorLogInfo) {
                             helpersCount += response.ThorLogList.ThorLogInfo.length;
                         }
+                        if (response.HasArchiveQuery) {
+                            helpersCount += 1;
+                        }
+
                         context.logsWidget.set("title", "Helpers " + "(" + helpersCount + ")");
                         //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
                         dom.byId("showDescription").value = response.Description;
