@@ -403,6 +403,10 @@
                         <xsl:otherwise><xsl:value-of select="ID"/></xsl:otherwise>
                     </xsl:choose>
                 </a>
+                -
+                <a href="javascript:go('/esp/files/stub.htm?Widget=DFUWUDetailsWidget&amp;Wuid={ID}')">
+                  Show
+                </a>
             </td>
             <td>
                 <xsl:value-of select="substring(concat(substring(JobName,1,40),'...'),1,string-length(JobName))"/>

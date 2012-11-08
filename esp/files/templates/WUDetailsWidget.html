@@ -30,44 +30,47 @@
                     <h2>
                         <img id="showProtectedImage2" class="iconAlign" src="img/locked.png"/>&nbsp<img id="showStateIdImage2" class="iconAlign" src="img/workunit.png"/>&nbsp<span id="${id}Wuid2" class="bold">WUID</span>
                     </h2>
-                    <table>
-                        <tr>
-                            <td><span class="Prompt">Action: </span></td>
-                            <td id="showAction"></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">State:</span></td>
-                            <td id="showState"></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Owner:</span></td>
-                            <td id="showOwner"></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Scope: </span></td>
-                            <td id="showScope"></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Job Name:</span></td>
-                            <td><input id="showJobName" style="width: 220px" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Description:</span></td>
-                            <td><input id="showDescription" style="width: 220px" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Protected:</span></td>
-                            <td><input id="showProtected" data-dojo-type="dijit.form.CheckBox"/></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Cluster:</span></td>
-                            <td id="showCluster"></td>
-                        </tr>
-                        <tr>
-                            <td><span class="Prompt">Duration:</span></td>
-                            <td id="showTime"></td>
-                        </tr>
-                    </table>
+                    <form>
+                        <ul>
+                           <li> 
+                                <label class="Prompt" for="Action">Action:</label>
+                                <div id="showAction"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="State">State:</label>
+                                <div id="showState"></div>                         
+                            </li>
+                            <li>
+                                <label class="Prompt" for="Owner">Owner:</label>
+                                <div id="showOwner"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="Scope">Scope:</label>  
+                                <div id="showScope"></div>
+                            </li>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="JobName">Job Name:</label>
+                                <div><input id="showJobName" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="Description">Description:</label>
+                                <div><input id="showDescription" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
+                            </li>
+                            <li>                 
+                                <label class="Prompt" for="Protected">Protected:</label>
+                                <div><input id="showProtected" data-dojo-type="dijit.form.CheckBox"/></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="Cluster">Cluster:</label>
+                                <div id="showCluster"></div>
+                            </li>
+                            <li>    
+                                <label class="Prompt" for="Duration">Duration:</label>
+                                <div id="showTime"></div>
+                            </li>                        
+                        </ul>
+                    </form>                
                 </div>
                 <div id="${id}InfoContainer" style="height: 33%" data-dojo-props="region: 'bottom', splitter: true, minSize: 120" data-dojo-type="InfoGridWidget">
                 </div>
