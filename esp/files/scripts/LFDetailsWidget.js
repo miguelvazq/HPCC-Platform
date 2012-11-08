@@ -41,33 +41,38 @@ define([
     "hpcc/InfoGridWidget",
     "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
+    "hpcc/ESPLogicalFile",
 
-    "dojo/text!../templates/WUDetailsWidget.html"
+    "dojo/text!../templates/LFDetailsWidget.html"
 ], function (declare, xhr, dom, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit, ESPLogicalFile,
                 template) {
-    return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
-        baseClass: "WUDetailsWidget",
+        baseClass: "LFDetailsWidget",
         borderContainer: null,
         tabContainer: null,
         resultsWidget: null,
         resultsWidgetLoaded: false,
+        sourceWidget: null,
+        sourceWidgetLoaded: false,
+        defWidget: null,
+        defWidgetLoaded: false,
+        xmlWidget: null,
+        xmlWidgetLoaded: false,
+
+
         filesWidget: null,
         filesWidgetLoaded: false,
         timersWidget: null,
         timersWidgetLoaded: false,
         graphsWidget: null,
         graphsWidgetLoaded: false,
-        sourceWidget: null,
-        sourceWidgetLoaded: false,
         logsWidget: null,
         logsWidgetLoaded: false,
         playgroundWidget: null,
         playgroundWidgetLoaded: false,
-        xmlWidget: null,
-        xmlWidgetLoaded: false,
 
         wu: null,
         prevState: "",
@@ -81,56 +86,35 @@ define([
             this.borderContainer = registry.byId(this.id + "BorderContainer");
             this.tabContainer = registry.byId(this.id + "TabContainer");
             this.resultsWidget = registry.byId(this.id + "Results");
-            this.filesWidget = registry.byId(this.id + "Files");
-            this.timersWidget = registry.byId(this.id + "Timers");
-            this.graphsWidget = registry.byId(this.id + "Graphs");
             this.sourceWidget = registry.byId(this.id + "Source");
-            this.logsWidget = registry.byId(this.id + "Logs");
-            this.playgroundWidget = registry.byId(this.id + "Playground");
+            this.defWidget = registry.byId(this.id + "DEF");
             this.xmlWidget = registry.byId(this.id + "XML");
-            this.infoGridWidget = registry.byId(this.id + "InfoContainer");
+
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
                 if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
                     context.resultsWidgetLoaded = true;
                     context.resultsWidget.init({
-                        Wuid: context.wu.Wuid
-                    });
-                } else if (nval.id == context.id + "Files" && !context.filesWidgetLoaded) {
-                    context.filesWidgetLoaded = true;
-                    context.filesWidget.init({
-                        Wuid: context.wu.Wuid,
-                        SourceFiles: true
-                    });
-                } else if (nval.id == context.id + "Timers" && !context.timersWidgetLoaded) {
-                    context.timersWidgetLoaded = true;
-                    context.timersWidget.init({
-                        Wuid: context.wu.Wuid
-                    });
-                } else if (nval.id == context.id + "Graphs" && !context.graphsWidgetLoaded) {
-                    context.graphsWidgetLoaded = true;
-                    context.graphsWidget.init({
-                        Wuid: context.wu.Wuid
+                        dfuWu: context.wu
                     });
                 } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
                     context.sourceWidgetLoaded = true;
                     context.sourceWidget.init({
-                        Wuid: context.wu.Wuid
+                        ECL: context.wu.DFUInfoResponse.Ecl
                     });
-                } else if (nval.id == context.id + "Logs" && !context.logsWidgetLoaded) {
-                    context.logsWidgetLoaded = true;
-                    context.logsWidget.init({
-                        Wuid: context.wu.Wuid
-                    });
-                } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
-                    context.playgroundWidgetLoaded = true;
-                    context.playgroundWidget.init({
-                        Wuid: context.wu.Wuid
+                } else if (nval.id == context.id + "DEF" && !context.defWidgetLoaded) {
+                    context.wu.fetchDEF(function (response) {
+                        context.defWidgetLoaded = true;
+                        context.defWidget.init({
+                            ECL: response
+                        });
                     });
                 } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
-                    context.xmlWidgetLoaded = true;
-                    context.xmlWidget.init({
-                        Wuid: context.wu.Wuid
+                    context.wu.fetchXML(function (response) {
+                        context.xmlWidgetLoaded = true;
+                        context.xmlWidget.init({
+                            ECL: response
+                        });
                     });
                 }
             });
@@ -210,22 +194,22 @@ define([
 
         //  Implementation  ---
         init: function (params) {
-            if (params.Wuid) {
-                dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
-                dom.byId(this.id + "Wuid2").innerHTML = params.Wuid;
-                this.wu = new Workunit({
-                    Wuid: params.Wuid
+            if (params.Name) {
+                dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
+                dom.byId(this.id + "LogicalFileName2").innerHTML = params.Name;
+                this.wu = new ESPLogicalFile({
+                    cluster: params.Cluster,
+                    logicalName: params.Name
                 });
-                this.monitor();
+                this.refreshPage();
             }
-            this.infoGridWidget.init(params);
         },
 
-        monitor: function () {
-            var prevState = "";
-            var context = this;
-            this.wu.monitor(function (workunit) {
-                context.monitorEclPlayground(workunit);
+        refreshPage: function () {
+            this.wu.getInfo({
+                onGetAll: function (response) {
+                    dom.byId("showOwner").innerHTML = response.Owner;
+                }
             });
         },
 

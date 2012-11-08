@@ -90,6 +90,7 @@ define([
                 if (this.sequence != null) {
                     request['Sequence'] = this.sequence;
                 } else {
+                    request['Cluster'] = this.cluster;
                     request['LogicalName'] = this.name;
                 }
                 request['Start'] = options.start;

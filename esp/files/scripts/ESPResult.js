@@ -36,13 +36,14 @@ define([
             declare.safeMixin(this, args);
             if (this.Sequence != null) {
                 this.store = new WsWorkunits.WUResult({
-                    wuid: this.wuid,
+                    wuid: this.Wuid,
                     sequence: this.Sequence,
                     isComplete: this.isComplete()
                 });
             } else {
                 this.store = new WsWorkunits.WUResult({
-                    wuid: this.wuid,
+                    wuid: this.Wuid,
+                    cluster: this.Cluster,
                     name: this.Name,
                     isComplete: true
                 });

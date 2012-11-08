@@ -97,6 +97,8 @@ define([
                             context.editor.setValue(text);
                         });
                     }
+                } else if (params.ECL) {
+                    context.editor.setValue(params.ECL);
                 }
             },
 

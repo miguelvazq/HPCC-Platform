@@ -92,7 +92,7 @@ define([
                 this.hideTitle();
             }
 
-            this.wuid = params.Wuid;
+            this.Wuid = params.Wuid;
             this.targetSelectWidget.setValue(params.Target);
 
             this.initEditor();
@@ -102,7 +102,7 @@ define([
             this.initGraph();
             if (params.Wuid) {
                 this.wu = new Workunit({
-                    wuid: params.Wuid
+                    Wuid: params.Wuid
                 });
                 this.wu.monitor(function () {
                     context.monitorEclPlayground();

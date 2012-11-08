@@ -21,7 +21,7 @@ define([
     "hpcc/ESPBase"
 ], function (declare, lang, xhr, ESPResult, ESPBase) {
     return declare(ESPBase, {
-        wuid: "",
+        Wuid: "",
 
         stateID: 0,
         state: "",
@@ -45,7 +45,7 @@ define([
         constructor: function (args) {
             declare.safeMixin(this, args);
 
-            if (!this.wuid) {
+            if (!this.Wuid) {
                 this.create();
             }
         },
@@ -68,7 +68,7 @@ define([
             if (!monitorDuration)
                 monitorDuration = 0;
             var request = {};
-            request['Wuid'] = this.wuid;
+            request['Wuid'] = this.Wuid;
             request['rawxml_'] = "1";
 
             var context = this;
@@ -119,7 +119,7 @@ define([
                 handleAs: "json",
                 content: request,
                 load: function (response) {
-                    context.wuid = response.WUCreateResponse.Workunit.Wuid;
+                    context.Wuid = response.WUCreateResponse.Workunit.Wuid;
                     context.onCreate();
                 },
                 error: function () {
@@ -128,7 +128,7 @@ define([
         },
         update: function (request, appData, callback) {
             lang.mixin(request, {
-                Wuid: this.wuid,
+                Wuid: this.Wuid,
                 rawxml_: true
             });
             if (this.WUInfoResponse) {
@@ -173,7 +173,7 @@ define([
         },
         submit: function (target) {
             var request = {
-                Wuid: this.wuid,
+                Wuid: this.Wuid,
                 Cluster: target
             };
             request['rawxml_'] = "1";
@@ -192,7 +192,7 @@ define([
         },
         _resubmit: function (clone, resetWorkflow, callback) {
             var request = {
-                Wuids: this.wuid,
+                Wuids: this.Wuid,
                 CloneWorkunit: clone,
                 ResetWorkflow: resetWorkflow,
                 rawxml_: true
@@ -226,7 +226,7 @@ define([
         },
         _action: function (action, callback) {
             var request = {
-                Wuids: this.wuid,
+                Wuids: this.Wuid,
                 ActionType: action,
                 rawxml_: true
             };
@@ -256,7 +256,7 @@ define([
         },
         publish: function (jobName) {
             var request = {
-                Wuid: this.wuid,
+                Wuid: this.Wuid,
                 JobName: jobName,
                 Activate: 1,
                 UpdateWorkUnitName: 1,
@@ -277,7 +277,7 @@ define([
         },
         getInfo: function (args) {
             var request = {
-                Wuid: this.wuid,
+                Wuid: this.Wuid,
                 TruncateEclTo64k: args.onGetText ? false : true,
                 IncludeExceptions: args.onGetExceptions ? true : false,
                 IncludeGraphs: args.onGetGraphs ? true : false,
@@ -333,7 +333,7 @@ define([
                         context.results = [];
                         var results = workunit.Results.ECLResult;
                         for (var i = 0; i < results.length; ++i) {
-                            context.results.push(new ESPResult(lang.mixin({ wuid: context.wuid }, results[i])));
+                            context.results.push(new ESPResult(lang.mixin({ Wuid: context.Wuid }, results[i])));
                         }
                         args.onGetResults(context.results);
                     }
@@ -341,7 +341,7 @@ define([
                         context.sourceFiles = [];
                         var sourceFiles = workunit.SourceFiles.ECLSourceFile;
                         for (var i = 0; i < sourceFiles.length; ++i) {
-                            context.sourceFiles.push(new ESPResult(lang.mixin({ wuid: context.wuid }, sourceFiles[i])));
+                            context.sourceFiles.push(new ESPResult(lang.mixin({ Wuid: context.Wuid }, sourceFiles[i])));
                         }
                         args.onGetSourceFiles(context.sourceFiles);
                     }
@@ -471,7 +471,7 @@ define([
             }
 
             var request = {
-                Wuid: this.wuid,
+                Wuid: this.Wuid,
                 Type: "XML"
             };
 
@@ -526,7 +526,7 @@ define([
         },
         fetchGraphXgmml: function (idx, onFetchGraphXgmml) {
             var request = {};
-            request['Wuid'] = this.wuid;
+            request['Wuid'] = this.Wuid;
             request['GraphName'] = this.graphs[idx].Name;
             request['rawxml_'] = "1";
 

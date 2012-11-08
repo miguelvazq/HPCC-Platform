@@ -69,13 +69,13 @@ define([
                 var sequence = this.resultsControl.selectedResult.Sequence;
                 var downloadPdfIframeName = "downloadIframe_" + sequence;
                 var frame = iframe.create(downloadPdfIframeName);
-                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.wuid + "&Sequence=" + sequence;
+                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.Wuid + "&Sequence=" + sequence;
                 iframe.setSrc(frame, url, true);
             } else if (lang.exists("resultsControl.selectedResult.Name", this)) {
                 var logicalName = this.resultsControl.selectedResult.Name;
                 var downloadPdfIframeName = "downloadIframe_" + logicalName;
                 var frame = iframe.create(downloadPdfIframeName);
-                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.wuid + "&LogicalName=" + logicalName;
+                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.Wuid + "&LogicalName=" + logicalName;
                 iframe.setSrc(frame, url, true);
             }
         },
@@ -118,7 +118,7 @@ define([
         init: function (params) {
             if (params.Wuid) {
                 this.wu = new ESPWorkunit({
-                    wuid: params.Wuid
+                    Wuid: params.Wuid
                 });
                 var monitorCount = 4;
                 var context = this;
@@ -139,6 +139,8 @@ define([
                         }
                     }
                 });
+            } else if (params.dfuWu) {
+                this.refreshSourceFiles(params.dfuWu);
             }
         },
 

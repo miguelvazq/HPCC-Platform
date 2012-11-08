@@ -675,6 +675,8 @@
               </xsl:if>
             </td>
             <td align="left">
+              <a href="javascript:go('/esp/files/stub.htm?Widget=LFDetailsWidget&amp;Cluster={ClusterName}&amp;Name={Name}')">Show</a>
+              - 
               <xsl:choose>
               <xsl:when test="isSuperfile=1">
                 <I>
