@@ -184,6 +184,17 @@ form h2{
 	height: 16px;
 }
 
+.iconLogicalFile {
+	background-image: url("../img/folder_table.png"); 
+	width: 16px;
+	height: 16px;
+}
+
+.iconWorkunit {
+	background-image: url("../img/workunit.png"); 
+	width: 16px;
+	height: 16px;
+}
 /*dijit specific styles*/
 
 .ErrorCell{

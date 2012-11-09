@@ -37,7 +37,7 @@ define([
     "hpcc/TargetSelectWidget",
     "hpcc/SampleSelectWidget",
     "hpcc/GraphWidget",
-    "hpcc/ResultsWidget",
+    "hpcc/ResultWidget",
     "hpcc/InfoGridWidget",
     "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
@@ -46,25 +46,25 @@ define([
     "dojo/text!../templates/LFDetailsWidget.html"
 ], function (declare, xhr, dom, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit, ESPLogicalFile,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, LogsWidget, Workunit, ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
         baseClass: "LFDetailsWidget",
         borderContainer: null,
         tabContainer: null,
-        resultsWidget: null,
-        resultsWidgetLoaded: false,
+        resultWidget: null,
+        resultWidgetLoaded: false,
         sourceWidget: null,
         sourceWidgetLoaded: false,
         defWidget: null,
         defWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
+        workunitWidget: null,
+        workunitWidgetLoaded: false,
 
 
-        filesWidget: null,
-        filesWidgetLoaded: false,
         timersWidget: null,
         timersWidgetLoaded: false,
         graphsWidget: null,
@@ -85,17 +85,18 @@ define([
             this.inherited(arguments);
             this.borderContainer = registry.byId(this.id + "BorderContainer");
             this.tabContainer = registry.byId(this.id + "TabContainer");
-            this.resultsWidget = registry.byId(this.id + "Results");
+            this.resultWidget = registry.byId(this.id + "Content");
             this.sourceWidget = registry.byId(this.id + "Source");
             this.defWidget = registry.byId(this.id + "DEF");
             this.xmlWidget = registry.byId(this.id + "XML");
+            this.workunitWidget = registry.byId(this.id + "Workunit");
 
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
-                if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
-                    context.resultsWidgetLoaded = true;
-                    context.resultsWidget.init({
-                        dfuWu: context.wu
+                if (nval.id == context.id + "Content" && !context.resultWidgetLoaded) {
+                    context.resultWidgetLoaded = true;
+                    context.resultWidget.init({
+                        result: context.wu.result
                     });
                 } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
                     context.sourceWidgetLoaded = true;
@@ -116,6 +117,11 @@ define([
                             ECL: response
                         });
                     });
+                } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
+                    context.workunitWidgetLoaded = true;
+                    context.workunitWidget.init({
+                        Wuid: context.wu.DFUInfoResponse.Wuid
+                    });
                 }
             });
         },
@@ -135,23 +141,7 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            var protectedCheckbox = registry.byId("showProtected");
-            var context = this;
-            this.wu.update({
-                Description: dom.byId("showDescription").value,
-                Jobname: dom.byId("showJobName").value,
-                Protected: protectedCheckbox.get("value")
-            }, null, {
-                load: function (response) {
-                    context.monitor();
-                }
-            });
-        },
-        _onReload: function (event) {
-            this.monitor();
-        },
-        _onClone: function (event) {
-            this.wu.clone({
+            this.wu.save({
                 load: function (response) {
                     //TODO
                 }
@@ -164,39 +154,25 @@ define([
                 }
             });
         },
-        _onResubmit: function (event) {
-            var context = this;
-            this.wu.resubmit({
+        _onCopy: function (event) {
+            this.wu.copy({
                 load: function (response) {
-                    context.monitor();
+                    //TODO
                 }
             });
         },
-        _onAbort: function (event) {
+        _onDespray: function (event) {
             var context = this;
-            this.wu.abort({
+            this.wu.despray({
                 load: function (response) {
-                    context.monitor();
                 }
             });
-        },
-        _onRestart: function (event) {
-            var context = this;
-            this.wu.restart({
-                load: function (response) {
-                    context.monitor();
-                }
-            });
-        },
-        _onPublish: function (event) {
-            this.wu.publish(dom.byId("showJobName2").value);
         },
 
         //  Implementation  ---
         init: function (params) {
             if (params.Name) {
                 dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
-                dom.byId(this.id + "LogicalFileName2").innerHTML = params.Name;
                 this.wu = new ESPLogicalFile({
                     cluster: params.Cluster,
                     logicalName: params.Name
@@ -205,153 +181,21 @@ define([
             }
         },
 
+        showMessage: function (msg) {
+        },
+
+        /*isComplete: function () {
+            return true;
+        },*/
+
         refreshPage: function () {
+            var context = this;
             this.wu.getInfo({
                 onGetAll: function (response) {
-                    dom.byId("showOwner").innerHTML = response.Owner;
+                    registry.byId(context.id + "Summary").set("title", response.Filename);
+                    dom.byId(context.id + "Owner").innerHTML = response.Owner;
                 }
             });
-        },
-
-        resetPage: function () {
-        },
-
-        objectToText: function (obj) {
-            var text = ""
-            for (var key in obj) {
-                text += "<tr><td>" + key + ":</td>";
-                if (typeof obj[key] == "object") {
-                    text += "[<br>";
-                    for (var i = 0; i < obj[key].length; ++i) {
-                        text += this.objectToText(obj[key][i]);
-                    }
-                    text += "<br>]<br>";
-                } else {
-                    text += "<td>" + obj[key] + "</td></tr>";
-
-                }
-            }
-            return text;
-        },
-
-        monitorEclPlayground: function (response) {
-            registry.byId(this.id + "Save").set("disabled", !this.wu.isComplete());
-            //registry.byId(this.id + "Reload").set("disabled", this.wu.isComplete());
-            registry.byId(this.id + "Clone").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Delete").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete());
-            registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
-
-            registry.byId("showJobName").set("readOnly", !this.wu.isComplete());
-            registry.byId("showDescription").set("readOnly", !this.wu.isComplete());
-            registry.byId("showProtected").set("readOnly", !this.wu.isComplete());
-
-            dom.byId("showStateIdImage").src = this.wu.getStateImage();
-            dom.byId("showStateIdImage").title = response.State;
-            dom.byId("showStateIdImage2").src = this.wu.getStateImage();
-            dom.byId("showStateIdImage2").title = response.State;
-            dom.byId("showProtectedImage").src = this.wu.getProtectedImage();
-            dom.byId("showProtectedImage2").src = this.wu.getProtectedImage();
-            dom.byId("showState").innerHTML = response.State;
-            dom.byId("showOwner").innerHTML = response.Owner;
-            dom.byId("showJobName").value = response.Jobname;
-            dom.byId("showJobName2").value = response.Jobname;
-            dom.byId("showCluster").innerHTML = response.Cluster;
-
-            var context = this;
-            if (this.wu.isComplete() || this.prevState != response.State) {
-                this.prevState = response.State;
-                this.wu.getInfo({
-                    onGetVariables: function (response) {
-                        registry.byId(context.id + "Variables").set("title", "Variables " + "(" + response.length + ")");
-                        context.variablesGrid = registry.byId(context.id + "VariablesGrid");
-                        context.variablesGrid.setStructure([
-                            { name: "Name", field: "Name", width: 16 },
-                            { name: "Type", field: "ColumnType", width: 10 },
-                            { name: "Default Value", field: "Value", width: 32 }
-                        ]);
-                        var memory = new Memory({ data: response });
-                        var store = new ObjectStore({ objectStore: memory });
-                        context.variablesGrid.setStore(store);
-                        context.variablesGrid.setQuery({
-                            Name: "*"
-                        });
-                    },
-
-                    onGetResults: function (response) {
-                        context.resultsWidget.set("title", "Outputs " + "(" + response.length + ")");
-                        var tooltip = "";
-                        for (var i = 0; i < response.length; ++i) {
-                            if (tooltip != "")
-                                tooltip += "\n";
-                            tooltip += response[i].Name;
-                            if (response[i].Value)
-                                tooltip += " " + response[i].Value;
-                        }
-                        context.resultsWidget.set("tooltip", tooltip);
-                    },
-
-                    onGetSourceFiles: function (response) {
-                        context.filesWidget.set("title", "Inputs " + "(" + response.length + ")");
-                        var tooltip = "";
-                        for (var i = 0; i < response.length; ++i) {
-                            if (tooltip != "")
-                                tooltip += "\n";
-                            tooltip += response[i].Name;
-                        }
-                        context.filesWidget.set("tooltip", tooltip);
-                    },
-
-                    onGetTimers: function (response) {
-                        context.timersWidget.set("title", "Timers " + "(" + response.length + ")");
-                        var tooltip = "";
-                        for (var i = 0; i < response.length; ++i) {
-                            if (response[i].GraphName)
-                                continue;
-                            if (response[i].Name == "Process")
-                                dom.byId("showTime").innerHTML = response[i].Value;
-                            if (tooltip != "")
-                                tooltip += "\n";
-                            tooltip += response[i].Name;
-                            if (response[i].Value)
-                                tooltip += " " + response[i].Value;
-                        }
-                        context.timersWidget.set("tooltip", tooltip);
-                    },
-
-                    onGetGraphs: function (response) {
-                        context.graphsWidget.set("title", "Graphs " + "(" + response.length + ")");
-                        var tooltip = "";
-                        for (var i = 0; i < response.length; ++i) {
-                            if (tooltip != "")
-                                tooltip += "\n";
-                            tooltip += response[i].Name;
-                            if (response[i].Time)
-                                tooltip += " " + response[i].Time;
-                        }
-                        context.graphsWidget.set("tooltip", tooltip);
-                    },
-
-                    onGetAll: function (response) {
-                        var helpersCount = 0;
-                        if (response.Helpers && response.Helpers.ECLHelpFile) {
-                            helpersCount += response.Helpers.ECLHelpFile.length;
-                        }
-                        if (response.ThorLogList && response.ThorLogList.ThorLogInfo) {
-                            helpersCount += response.ThorLogList.ThorLogInfo.length;
-                        }
-                        context.logsWidget.set("title", "Helpers " + "(" + helpersCount + ")");
-                        //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-                        dom.byId("showDescription").value = response.Description;
-                        dom.byId("showAction").innerHTML = response.ActionEx;
-                        dom.byId("showScope").innerHTML = response.Scope;
-                        var protectedCheckbox = registry.byId("showProtected");
-                        protectedCheckbox.set("value", response.Protected);
-                    }
-                });
-            }
         }
     });
 });

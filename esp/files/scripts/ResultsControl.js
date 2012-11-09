@@ -25,11 +25,14 @@ define([
     "dojox/grid/EnhancedGrid",
     "dojox/grid/enhanced/plugins/Pagination",
     "dojox/grid/enhanced/plugins/Filter",
-    "dojox/grid/enhanced/plugins/NestedSorting"
+    "dojox/grid/enhanced/plugins/NestedSorting",
+
+    "hpcc/LFDetailsWidget"
 
 ], function (declare, Memory, ObjectStore,
     registry, ContentPane,
-    DataGrid, EnhancedGrid, Pagination, Filter, NestedSorting) {
+    DataGrid, EnhancedGrid, Pagination, Filter, NestedSorting, 
+    LFDetailsWidget) {
     return declare(null, {
         workunit: null,
         paneNum: 0,
@@ -53,11 +56,20 @@ define([
             this.dataGridSheet.watch("selectedChildWidget", function (name, oval, nval) {
                 if (nval.id in context.delayLoad) {
                     context.selectedResult = context.delayLoad[nval.id].result;
-                    if (!context.selectedResult.isComplete()) {
-                        context.delayLoad[nval.id].loadingMessage = context.getLoadingMessage();
+                    if (context.selectedResult.FileCluster && context.selectedResult.Name) {
+                        context.delayLoad[nval.id].placeAt(nval.containerNode, "last");
+                        context.delayLoad[nval.id].startup();
+                        context.delayLoad[nval.id].init({
+                            Cluster: context.selectedResult.FileCluster,
+                            Name: context.selectedResult.Name
+                        });
+                    } else {
+                        if (!context.selectedResult.isComplete()) {
+                            context.delayLoad[nval.id].loadingMessage = context.getLoadingMessage();
+                        }
+                        context.delayLoad[nval.id].placeAt(nval.containerNode, "last");
+                        context.delayLoad[nval.id].startup();
                     }
-                    context.delayLoad[nval.id].placeAt(nval.containerNode, "last");
-                    context.delayLoad[nval.id].startup();
                     nval.resize();
                     delete context.delayLoad[nval.id];
                 }
@@ -97,27 +109,35 @@ define([
         addResultTab: function (result) {
             var paneID = this.getNextPaneID();
 
-            var grid = EnhancedGrid({
-                result: result,
-                store: result.getObjectStore(),
-                query: { id: "*" },
-                structure: result.getStructure(),
-                canSort: function (col) {
-                    return false;
-                },
-                plugins: {
-                    pagination: {
-                        pageSizes: [25, 50, 100, "All"],
-                        defaultPageSize: 50,
-                        description: true,
-                        sizeSwitch: true,
-                        pageStepper: true,
-                        gotoButton: true,
-                        maxPageStep: 4,
-                        position: "bottom"
+            var grid = null;
+            if (result.FileCluster && result.Name) {
+                var grid = LFDetailsWidget({
+                    id: "LFDetailsWidget_" + paneID,
+                    result: result
+                });
+            } else {
+                grid = EnhancedGrid({
+                    result: result,
+                    store: result.getObjectStore(),
+                    query: { id: "*" },
+                    structure: result.getStructure(),
+                    canSort: function (col) {
+                        return false;
+                    },
+                    plugins: {
+                        pagination: {
+                            pageSizes: [25, 50, 100, "All"],
+                            defaultPageSize: 50,
+                            description: true,
+                            sizeSwitch: true,
+                            pageStepper: true,
+                            gotoButton: true,
+                            maxPageStep: 4,
+                            position: "bottom"
+                        }
                     }
-                }
-            });
+                });
+            }
             this.delayLoad[paneID] = grid;
             this.resultIdStoreMap[result.getID()] = result.store;
             this.resultIdGridMap[result.getID()] = grid;
@@ -147,7 +167,7 @@ define([
                 if (result.getID() in this.resultIdStoreMap) {
                     this.resultIdStoreMap[result.getID()].isComplete = result.isComplete();
                 } else {
-                    pane = this.addResultTab(result);
+                    var pane = this.addResultTab(result);
                     if (this.sequence != null && this.sequence == result.getID()) {
                         this.dataGridSheet.selectChild(pane);
                     } else if (this.name != null && this.name == result.getID()) {

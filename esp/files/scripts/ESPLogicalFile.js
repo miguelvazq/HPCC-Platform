@@ -25,7 +25,7 @@ define([
     return declare(ESPBase, {
         cluster: "",
         logicalName: "",
-        sourceFiles: [],
+        result: [],
 
         constructor: function (args) {
             declare.safeMixin(this, args);
@@ -96,8 +96,7 @@ define([
                     //var workunit = context.getValue(xmlDom, "Workunit", ["ECLException", "ECLResult", "ECLGraph", "ECLTimer", "ECLSchemaItem", "ApplicationValue"]);
                     var fileDetail = response.DFUInfoResponse.FileDetail;
                     context.DFUInfoResponse = fileDetail;
-
-                    context.sourceFiles.push(new ESPResult(fileDetail));
+                    context.result = new ESPResult(fileDetail);
 
                     if (args.onGetAll) {
                         args.onGetAll(fileDetail);

@@ -190,7 +190,7 @@ define([
                     cells: [
                         [
                             {
-                                name: "##", field: this.store.idProperty, width: "40px", classes: "resultGridCell"
+                                name: "##", field: this.store.idProperty, width: "6", classes: "resultGridCell"
                             }
                         ]
                     ]

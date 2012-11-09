@@ -443,6 +443,8 @@ define([
                     return "img/workunit_warning.png";
                 case 15:
                     return "img/workunit_running.png";
+                case 16:
+                    return "img/workunit_warning.png";
                 case 999:
                     return "img/workunit_deleted.png";
             }

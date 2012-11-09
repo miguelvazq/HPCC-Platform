@@ -29,18 +29,19 @@ define([
     "hpcc/ESPBase",
     "hpcc/ESPWorkunit",
     "hpcc/ResultsControl",
-    "dojo/text!../templates/ResultsWidget.html"
+    "dojo/text!../templates/ResultWidget.html"
 ], function (declare, lang, xhr, dom, iframe,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, TabContainer, registry,
                 ESPBase, ESPWorkunit, ResultsControl,
                 template) {
-    return declare("ResultsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("ResultWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
-        baseClass: "ResultsWidget",
+        baseClass: "ResultWidget",
 
         borderContainer: null,
-        tabContainer: null,
-        resultsControl: null,
+        grid: null,
+
+        initalized: false,
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -103,82 +104,21 @@ define([
         _initControls: function () {
             var context = this;
             this.borderContainer = registry.byId(this.id + "BorderContainer");
-            this.tabContainer = registry.byId(this.id + "TabContainer");
-
-            var context = this;
-            this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
-                if (!nval.initalized) {
-                    nval.init(nval.params);
-                }
-            });
-
-            /*
-            this.resultsControl = new ResultsControl({
-                id: this.id + "ResultsControl",
-                sequence: 0,
-                onErrorClick: function (line, col) {
-                    context.onErrorClick(line, col);
-                }
-            });
-            */
+            this.grid = registry.byId(this.id + "Grid");
         },
 
         init: function (params) {
-            if (params.Wuid) {
-                this.wu = new ESPWorkunit({
-                    Wuid: params.Wuid
-                });
-                var monitorCount = 4;
-                var context = this;
-                this.wu.monitor(function () {
-                    if (context.wu.isComplete() || ++monitorCount % 5 == 0) {
-                        if (params.SourceFiles) {
-                            context.wu.getInfo({
-                                onGetSourceFiles: function (sourceFiles) {
-                                    for (var i = 0; i < sourceFiles.length; ++i) {
-                                        var pane = new LFDetailsWidget({
-                                            title: sourceFiles[i].Name,
-                                            params: {
-                                                Name: sourceFiles[i].Name,
-                                                Cluster: sourceFiles[i].FileCluster
-                                            }
-                                        });
-                                        context.tabContainer.addChild(pane);
-                                    }
-                                }
-                            });
-                        } else {
-                            context.wu.getInfo({
-                                onGetResults: function (results) {
-                                    for (var i = 0; i < results.length; ++i) {
-                                        var pane = new ResultWidget({
-                                            title: results[i].Name,
-                                            params: {
-                                                result: results[i]
-                                            }
-                                        });
-                                        context.tabContainer.addChild(pane);
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-            } else if (params.dfuWu) {
-                this.refreshSourceFiles(params.dfuWu);
+            if (this.initalized) {
+                return;
             }
-        },
-
-        clear: function () {
-            this.resultsControl.clear();
-        },
-
-        refresh: function (wu) {
-            this.resultsControl.refresh(wu);
-        },
-
-        refreshSourceFiles: function (wu) {
-            this.resultsControl.refreshSourceFiles(wu);
+            this.initalized = true;
+            if (params.result) {
+                this.grid.setStructure(params.result.getStructure());
+                this.grid.setStore(params.result.getObjectStore());
+                this.grid.setQuery({
+                    id: "*"
+                });
+            }
         }
     });
 });

@@ -151,11 +151,11 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            var protectedCheckbox = registry.byId("showProtected");
+            var protectedCheckbox = registry.byId(this.id + "Protected");
             var context = this;
             this.wu.update({
-                Description: dom.byId("showDescription").value,
-                Jobname: dom.byId("showJobName").value,
+                Description: dom.byId(context.id + "Description").value,
+                Jobname: dom.byId(context.id + "JobName").value,
                 Protected: protectedCheckbox.get("value")
             }, null, {
                 load: function (response) {
@@ -205,14 +205,15 @@ define([
             });
         },
         _onPublish: function (event) {
-            this.wu.publish(dom.byId("showJobName2").value);
+            this.wu.publish(dom.byId(this.id + "JobName2").value);
         },
 
         //  Implementation  ---
         init: function (params) {
             if (params.Wuid) {
+                registry.byId(this.id + "Summary").set("title", params.Wuid);
+
                 dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
-                dom.byId(this.id + "Wuid2").innerHTML = params.Wuid;
                 this.wu = new Workunit({
                     Wuid: params.Wuid
                 });
@@ -260,21 +261,18 @@ define([
             registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
 
-            registry.byId("showJobName").set("readOnly", !this.wu.isComplete());
-            registry.byId("showDescription").set("readOnly", !this.wu.isComplete());
-            registry.byId("showProtected").set("readOnly", !this.wu.isComplete());
+            registry.byId(this.id + "JobName").set("readOnly", !this.wu.isComplete());
+            registry.byId(this.id + "Description").set("readOnly", !this.wu.isComplete());
+            registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
 
-            dom.byId("showStateIdImage").src = this.wu.getStateImage();
-            dom.byId("showStateIdImage").title = response.State;
-            dom.byId("showStateIdImage2").src = this.wu.getStateImage();
-            dom.byId("showStateIdImage2").title = response.State;
-            dom.byId("showProtectedImage").src = this.wu.getProtectedImage();
-            dom.byId("showProtectedImage2").src = this.wu.getProtectedImage();
-            dom.byId("showState").innerHTML = response.State;
-            dom.byId("showOwner").innerHTML = response.Owner;
-            dom.byId("showJobName").value = response.Jobname;
-            dom.byId("showJobName2").value = response.Jobname;
-            dom.byId("showCluster").innerHTML = response.Cluster;
+            dom.byId(this.id + "StateIdImage").src = this.wu.getStateImage();
+            dom.byId(this.id + "StateIdImage").title = response.State;
+            dom.byId(this.id + "ProtectedImage").src = this.wu.getProtectedImage();
+            dom.byId(this.id + "State").innerHTML = response.State;
+            dom.byId(this.id + "Owner").innerHTML = response.Owner;
+            dom.byId(this.id + "JobName").value = response.Jobname;
+            dom.byId(this.id + "JobName2").value = response.Jobname;
+            dom.byId(this.id + "Cluster").innerHTML = response.Cluster;
 
             var context = this;
             if (this.wu.isComplete() || this.prevState != response.State) {
@@ -327,7 +325,7 @@ define([
                             if (response[i].GraphName)
                                 continue;
                             if (response[i].Name == "Process")
-                                dom.byId("showTime").innerHTML = response[i].Value;
+                                dom.byId(context.id + "Time").innerHTML = response[i].Value;
                             if (tooltip != "")
                                 tooltip += "\n";
                             tooltip += response[i].Name;
@@ -364,10 +362,10 @@ define([
 
                         context.logsWidget.set("title", "Helpers " + "(" + helpersCount + ")");
                         //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
-                        dom.byId("showDescription").value = response.Description;
-                        dom.byId("showAction").innerHTML = response.ActionEx;
-                        dom.byId("showScope").innerHTML = response.Scope;
-                        var protectedCheckbox = registry.byId("showProtected");
+                        dom.byId(context.id + "Description").value = response.Description;
+                        dom.byId(context.id + "Action").innerHTML = response.ActionEx;
+                        dom.byId(context.id + "Scope").innerHTML = response.Scope;
+                        var protectedCheckbox = registry.byId(context.id + "Protected");
                         protectedCheckbox.set("value", response.Protected);
                     }
                 });
