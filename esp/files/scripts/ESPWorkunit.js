@@ -333,7 +333,7 @@ define([
                         context.results = [];
                         var results = workunit.Results.ECLResult;
                         for (var i = 0; i < results.length; ++i) {
-                            context.results.push(new ESPResult(lang.mixin({ Wuid: context.Wuid }, results[i])));
+                            context.results.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, results[i])));
                         }
                         args.onGetResults(context.results);
                     }
@@ -341,7 +341,7 @@ define([
                         context.sourceFiles = [];
                         var sourceFiles = workunit.SourceFiles.ECLSourceFile;
                         for (var i = 0; i < sourceFiles.length; ++i) {
-                            context.sourceFiles.push(new ESPResult(lang.mixin({ Wuid: context.Wuid }, sourceFiles[i])));
+                            context.sourceFiles.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, sourceFiles[i])));
                         }
                         args.onGetSourceFiles(context.sourceFiles);
                     }

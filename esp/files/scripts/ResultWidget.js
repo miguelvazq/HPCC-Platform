@@ -42,6 +42,7 @@ define([
         grid: null,
 
         initalized: false,
+        loaded: false,
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -66,6 +67,7 @@ define([
         },
 
         _doDownload: function (type) {
+            //TODO Fix
             if (lang.exists("resultsControl.selectedResult.Sequence", this)) {
                 var sequence = this.resultsControl.selectedResult.Sequence;
                 var downloadPdfIframeName = "downloadIframe_" + sequence;
@@ -112,9 +114,27 @@ define([
                 return;
             }
             this.initalized = true;
-            if (params.result) {
+            this.result = params.result;
+            //TODO:  Encapsulate this IF into ESPResult.js
+            if (params.result && params.result.canShowResults()) {
                 this.grid.setStructure(params.result.getStructure());
                 this.grid.setStore(params.result.getObjectStore());
+                this.refresh();
+            } else {
+                this.grid.setStructure([
+                            {
+                                name: "##", width: "6"
+                            }
+                ]);
+                this.grid.showMessage("[undefined]");
+            }
+        },
+
+        refresh: function () {
+            if (this.result && !this.result.isComplete()) {
+                this.grid.showMessage(this.result.getLoadingMessage());
+            } else if (!this.loaded) {
+                this.loaded = true;
                 this.grid.setQuery({
                     id: "*"
                 });
