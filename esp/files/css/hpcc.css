@@ -121,49 +121,50 @@ h1 {
 
    
 form {
-margin:0;
-padding:0;
-width:350px;
+    margin:0;
+    padding:0;
+    width:350px;
 }
-
-
 
 
 form label{
-float: left;
-width: 31%;
-margin: 0 15px 0 0;
-text-align: left;
-padding-top: 4px;
+    float: left;
+    width: 31%;
+    margin: 0 15px 0 0;
+    text-align: left;
+    padding-top: 4px;
+    font-weight:bold;
+    height:20px;
 }
 
 form textarea{
-font-size: 13px;
-font-family: Arial;
-width:170px;
-float:left;
+    font-size: 13px;
+    font-family: Arial;
+    width:170px;
+    float:left;
 }
 
 
 form ul{
-list-style:none;
-margin:0;
-padding:0;
+    list-style:none;
+    margin:0;
+    padding:0;
 }
 
 form li{
-margin: 0;
-padding: 6px 1% 9px 1%;
-clear: both;
-position: relative;
+    margin: 0;
+    padding: 6px 1% 9px 1%;
+    clear: both;
+    position: relative;
+    height:20px;
 }
 
 form div{
-margin:4px 0px 0px 0px; 
+    margin:4px 0 0 0; 
 }
 
 form h2{
-    padding:5px 0px;
+    padding:5px 0;
 }
 
 
@@ -190,12 +191,61 @@ form h2{
 	height: 16px;
 }
 
+
+
+/*STATES*/
 .iconWorkunit {
-	background-image: url("../img/workunit.png"); 
-	width: 16px;
-	height: 16px;
+    background-image: url("../img/workunit.png"); 
+    width: 16px;
+    height: 16px;
 }
-/*dijit specific styles*/
+
+
+.iconCompiled, .iconCompleted{
+    background-image: url("../img/workunit_completed.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+.iconRunning, .iconCompiling, .iconDebugRunning {
+    background-image: url("../img/workunit_running.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+.iconFailed, .iconStateAborted{
+    background-image: url("../img/workunit_failed.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+
+.iconArchived, .iconBlocked, .iconScheduled, .iconWait, .iconUploadingFiles, .iconDebugPaused{
+    background-image: url("../img/workunit_warning.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+.iconAborting{
+    background-image: url("../img/workunit_aborting.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+.iconSubmitted{
+    background-image: url("../img/workunit_submitted.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+.iconDeleted{
+    background-image: url("../img/workunit_deleted.png"); 
+    width: 16px;
+    height: 16px;    
+}
+
+
+
 
 .ErrorCell{
 background: red;
