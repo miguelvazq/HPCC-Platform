@@ -14,12 +14,57 @@
                     <h2>
                         <img class="iconAlign" src="img/folder_table.png" />&nbsp<span id="${id}LogicalFileName" class="bold">LogicalFileName</span>
                     </h2>
-                    <table>
-                        <tr>
-                            <td><span class="Prompt">Owner: </span></td>
-                            <td id="${id}Owner"></td>
-                        </tr>
-                    </table>
+                    <form>
+                        <ul>
+                            <li> 
+                                <label for="WUID">Workunit: </label>
+                                <div id="${id}Workunit"></div>
+                            </li>
+                            <li> 
+                                <label for="Owner">Owner: </label>
+                                <div id="${id}Owner"></div>
+                            </li>
+                            <li> 
+                                <label for="Description">Description: </label>
+                                <div>
+                                    <input id="${id}Description" data-dojo-props="trim:true" data-dojo-type="dijit.form.SimpleTextarea" cols="55"
+                                    rows="4"/>
+                                </div>
+                            </li>                           
+                            <li>
+                                <label for="Job Name">Job Name:</label>
+                                <div id="${id}JobName"></div>                         
+                            </li>
+                            <li>
+                                <label for="Filesize">Filesize:</label>
+                                <div id="${id}Filesize"></div>                         
+                            </li>
+                            <li>
+                                <label for="Modification">Modification:</label>
+                                <div id="${id}Modification"></div>                         
+                            </li>
+                            <li>
+                                <label for="Directory">Directory:</label>
+                                <div id="${id}Directory"></div>                         
+                            </li>
+                            <li>
+                                <label for="Pathmask">Pathmask:</label>
+                                <div id="${id}Pathmask"></div>                         
+                            </li>
+                            <li>
+                                <label for="Record Size">Record Size:</label>
+                                <div id="${id}RecordSize"></div>                         
+                            </li>
+                            <li>
+                                <label for="Record Count">Record Count:</label>
+                                <div id="${id}Count"></div>                         
+                            </li> 
+                                              
+                            
+                        </ul>
+                    </form>                                   
+                </div>
+                <div id="${id}InfoContainer" style="height: 24%" data-dojo-props="region: 'bottom', splitter: true, minSize: 120" data-dojo-type="FilePartsGridWidget">
                 </div>
             </div>
             <div id="${id}Content" title="Contents" data-dojo-type="ResultWidget">
@@ -33,5 +78,6 @@
             <div id="${id}Workunit" title="Workunit" data-dojo-type="WUDetailsWidget">
             </div>
         </div>
+
     </div>
 </div>

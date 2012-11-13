@@ -28,7 +28,7 @@ define([
     "dijit/layout/ContentPane",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
-    "dijit/form/Textarea",
+    "dijit/form/SimpleTextarea",
     "dijit/form/Button",
     "dijit/TitlePane",
     "dijit/registry",
@@ -38,15 +38,15 @@ define([
     "hpcc/SampleSelectWidget",
     "hpcc/GraphWidget",
     "hpcc/ResultWidget",
-    "hpcc/InfoGridWidget",
+    "hpcc/FilePartsGridWidget",
     "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
     "hpcc/ESPLogicalFile",
 
     "dojo/text!../templates/LFDetailsWidget.html"
 ], function (declare, xhr, dom, Memory, ObjectStore,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, LogsWidget, Workunit, ESPLogicalFile,
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, SimpleTextarea, Button, TitlePane, registry,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, FilePartsGridWidget, LogsWidget, Workunit, ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -192,8 +192,18 @@ define([
             var context = this;
             this.wu.getInfo({
                 onGetAll: function (response) {
-                    registry.byId(context.id + "Summary").set("title", response.Filename);
+                    registry.byId(context.id + "Summary").set("title", response.Filename);                    
                     dom.byId(context.id + "Owner").innerHTML = response.Owner;
+                    dom.byId(context.id + "Description").value = response.Description;
+                    dom.byId(context.id + "JobName").innerHTML = response.JobName;
+                    dom.byId(context.id + "Workunit").innerHTML = response.Wuid;
+                    dom.byId(context.id + "Modification").innerHTML = response.Modified  + " (UTC/GMT)";
+                    dom.byId(context.id + "Directory").innerHTML = response.Dir;
+                    dom.byId(context.id + "RecordSize").innerHTML = response.RecordSize;
+                    dom.byId(context.id + "Count").innerHTML = response.RecordCount;
+                    dom.byId(context.id + "Filesize").innerHTML = response.Filesize;
+                    dom.byId(context.id + "Pathmask").innerHTML = response.PathMask;
+
                 }
             });
         }

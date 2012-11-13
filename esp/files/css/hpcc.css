@@ -29,11 +29,6 @@ html, body {
 }
 
 
-#borderContainer { width:100%; height:100% }
-
-#helpAction, #helpScope{
-width:12px; height:12px; }
-
 button {
     background-position: top;
     padding: 2px 8px 4px;
@@ -57,24 +52,65 @@ h1 {
     font-size: 1.5em;
 }
 
-.CodeMirror {
-}
-.CodeMirror-scroll {
-    position: absolute;
-    height: 100%;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
+form {
+    margin:0;
+    padding:0;
+    width:550px;
 }
 
-.claro .hpccApp .topPanel {
-    background-color: rgb(208, 233, 252);
+
+form label{
+    float: left;
+    width: 21%;
+    margin: 0 15px 0 0;
+    text-align: left;
+    padding-top: 4px;
+    font-weight:bold;
+    height:20px;
 }
 
-.claro .hpccApp .edgePanel {
-    background-color: rgb(208, 233, 252);
+form textarea{
+    font-size: 13px;
+    font-family: Arial;
+    width:auto;
+    height:auto;
+    float:left;
 }
+
+
+form ul{
+    list-style:none;
+    margin:0;
+    padding:0;
+}
+
+form li{
+    margin: 0;
+    padding: 6px 1% 9px 1%;
+    clear: both;
+    position: relative;
+    height:20px;
+}
+
+form div{
+    margin:4px 0 0 0;
+
+}
+
+form h2{
+    padding:5px 0;
+}
+
+#borderContainer {
+    width:100%;
+    height:100%;
+}
+
+#helpAction, #helpScope{
+    width:12px; 
+    height:12px;
+}
+
 
 #appLayout {
     height: 100%;
@@ -120,51 +156,23 @@ h1 {
     }
 
    
-form {
-    margin:0;
-    padding:0;
-    width:350px;
+.CodeMirror {
+}
+.CodeMirror-scroll {
+    position: absolute;
+    height: 100%;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
 }
 
-
-form label{
-    float: left;
-    width: 31%;
-    margin: 0 15px 0 0;
-    text-align: left;
-    padding-top: 4px;
-    font-weight:bold;
-    height:20px;
+.claro .hpccApp .topPanel {
+    background-color: rgb(208, 233, 252);
 }
 
-form textarea{
-    font-size: 13px;
-    font-family: Arial;
-    width:170px;
-    float:left;
-}
-
-
-form ul{
-    list-style:none;
-    margin:0;
-    padding:0;
-}
-
-form li{
-    margin: 0;
-    padding: 6px 1% 9px 1%;
-    clear: both;
-    position: relative;
-    height:20px;
-}
-
-form div{
-    margin:4px 0 0 0; 
-}
-
-form h2{
-    padding:5px 0;
+.claro .hpccApp .edgePanel {
+    background-color: rgb(208, 233, 252);
 }
 
 
