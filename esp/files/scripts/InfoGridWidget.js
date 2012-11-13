@@ -69,16 +69,21 @@ define([
                 var context = this;
                 this.infoGrid.setStructure([
                     { name: "Severity", field: "Severity", width: 8, formatter: context.test },
-                    { name: "Source", field: "Source", width: 10 },
+                    { name: "Source", field: "Source", width: 8 },
                     { name: "Code", field: "Code", width: 4 },
-                    { name: "Message", field: "Message", width: "100%" }
+                    { name: "Message", field: "Message", width: "40" },
+                    { name: "Col", field: "Column", width: 3 },
+                    { name: "Line", field: "LineNo", width: 3 },
+                    { name: "FileName", field: "FileName", width: "40" }
                 ]);
-
+                
                 this.infoGrid.on("RowClick", function (evt) {
-                });
-
-                this.infoGrid.on("RowDblClick", function (evt) {
-                });
+                    var idx = evt.rowIndex;
+                    var item = this.getItem(idx);
+                    var line = parseInt(this.store.getValue(item, "LineNo"), 10);
+                    var col = parseInt(this.store.getValue(item, "Column"), 10);
+                    context.onErrorClick(line, col);
+                }, true);
             },
 
             startup: function (args) {
@@ -92,6 +97,9 @@ define([
 
             layout: function (args) {
                 this.inherited(arguments);
+            },
+
+            onErrorClick: function(line, col) {
             },
 
             //  Plugin wrapper  ---
@@ -109,13 +117,11 @@ define([
                 this.infoGrid.edit.styleRow(row);
             },
 
-            onClick: function (items) {
-            },
-
-            onDblClick: function (item) {
-            },
-
             init: function (params) {
+                if (params.onErrorClick) {
+                    this.onErrorClick = params.onErrorClick;
+                }
+                
                 this.wu = new ESPWorkunit({
                     Wuid: params.Wuid
                 });

@@ -40,7 +40,8 @@ define([
 
         borderContainer: null,
         tabContainer: null,
-        resultsControl: null,
+        tabMap: [],
+        selectedTab: null,
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -110,17 +111,32 @@ define([
                 if (!nval.initalized) {
                     nval.init(nval.params);
                 }
+                context.selectedTab = nval;
             });
+        },
 
-            /*
-            this.resultsControl = new ResultsControl({
-                id: this.id + "ResultsControl",
-                sequence: 0,
-                onErrorClick: function (line, col) {
-                    context.onErrorClick(line, col);
+        ensurePane: function (id, params) {
+            var retVal = this.tabMap[id];
+            if (!retVal) {
+                if (lang.exists("Name", params) && lang.exists("Cluster", params)) {
+                    retVal = new LFDetailsWidget({
+                        title: params.Name,
+                        params: params
+                    });
+                } else if (lang.exists("Wuid", params) && lang.exists("exceptions", params)) {
+                    retVal = new InfoGridWidget({
+                        title: "Errors/Warnings",
+                        params: params
+                    });
+                } else if (lang.exists("result", params)) {
+                    retVal = new ResultWidget({
+                        title: params.result.Name,
+                        params: params
+                    });
                 }
-            });
-            */
+                this.tabMap[id] = retVal;
+                this.tabContainer.addChild(retVal);
+            }
         },
 
         init: function (params) {
@@ -132,53 +148,62 @@ define([
                 var context = this;
                 this.wu.monitor(function () {
                     if (context.wu.isComplete() || ++monitorCount % 5 == 0) {
-                        if (params.SourceFiles) {
-                            context.wu.getInfo({
-                                onGetSourceFiles: function (sourceFiles) {
+                        context.wu.getInfo({
+                            onGetExceptions: function (exceptions) {
+                                if (params.ShowErrors && exceptions.length) {
+                                    context.ensurePane("exceptions", {
+                                        Wuid: params.Wuid,
+                                        onErrorClick: context.onErrorClick,
+                                        exceptions: exceptions
+                                    });
+                                }
+                            },
+                            onGetSourceFiles: function (sourceFiles) {
+                                if (params.SourceFiles) {
                                     for (var i = 0; i < sourceFiles.length; ++i) {
-                                        var pane = new LFDetailsWidget({
-                                            title: sourceFiles[i].Name,
-                                            params: {
-                                                Name: sourceFiles[i].Name,
-                                                Cluster: sourceFiles[i].FileCluster
-                                            }
+                                        context.ensurePane("logicalFile_" + i, {
+                                            Name: sourceFiles[i].Name,
+                                            Cluster: sourceFiles[i].FileCluster
                                         });
-                                        context.tabContainer.addChild(pane);
                                     }
                                 }
-                            });
-                        } else {
-                            context.wu.getInfo({
-                                onGetResults: function (results) {
+                            },
+                            onGetResults: function (results) {
+                                if (!params.SourceFiles) {
                                     for (var i = 0; i < results.length; ++i) {
-                                        var pane = new ResultWidget({
-                                            title: results[i].Name,
-                                            params: {
-                                                result: results[i]
-                                            }
+                                        context.ensurePane("result_" + i, {
+                                            result: results[i]
                                         });
-                                        context.tabContainer.addChild(pane);
                                     }
                                 }
-                            });
+                            }
+                        });
+                        if (context.selectedTab) {
+                            context.selectedTab.refresh();
                         }
                     }
                 });
-            } else if (params.dfuWu) {
-                this.refreshSourceFiles(params.dfuWu);
             }
         },
 
         clear: function () {
-            this.resultsControl.clear();
+            var tabs = this.tabContainer.getChildren();
+            for (var i = 0; i < tabs.length; ++i) {
+                this.tabContainer.removeChild(tabs[i]);
+            }
+            this.tabMap = [];
+            this.selectedTab = null;
         },
 
         refresh: function (wu) {
-            this.resultsControl.refresh(wu);
-        },
-
-        refreshSourceFiles: function (wu) {
-            this.resultsControl.refreshSourceFiles(wu);
+            if (this.workunit != wu) {
+                this.clear();
+                this.workunit = wu;
+                this.init({
+                    Wuid: wu.Wuid,
+                    ShowErrors: true
+                });
+            }
         }
     });
 });
