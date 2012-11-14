@@ -15,8 +15,10 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
+    "dojo/_base/lang",
     "dojo/_base/xhr",
     "dojo/dom",
+    "dojo/dom-class",
     "dojo/store/Memory",
     "dojo/data/ObjectStore",
 
@@ -39,13 +41,14 @@ define([
     "hpcc/GraphWidget",
     "hpcc/ResultWidget",
     "hpcc/InfoGridWidget",
+    "hpcc/FilePartsWidget",
     "hpcc/ESPWorkunit",
     "hpcc/ESPLogicalFile",
 
     "dojo/text!../templates/LFDetailsWidget.html"
-], function (declare, xhr, dom, Memory, ObjectStore,
+], function (declare, lang, xhr, dom, domClass, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, SimpleTextarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, Workunit, ESPLogicalFile,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, FilePartsWidget, Workunit, ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -60,6 +63,8 @@ define([
         defWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
+        filePartsWidget: null,
+        filePartsWidgetLoaded: false,
         workunitWidget: null,
         workunitWidgetLoaded: false,
         legacyPane: null,
@@ -80,6 +85,7 @@ define([
             this.sourceWidget = registry.byId(this.id + "Source");
             this.defWidget = registry.byId(this.id + "DEF");
             this.xmlWidget = registry.byId(this.id + "XML");
+            this.filePartsWidget = registry.byId(this.id + "FileParts");
             this.workunitWidget = registry.byId(this.id + "Workunit");
             this.legacyPane = registry.byId(this.id + "Legacy");
 
@@ -109,11 +115,16 @@ define([
                             ECL: response
                         });
                     });
+                } else if (nval.id == context.id + "FileParts" && !context.filePartsWidgetLoaded) {
+                    context.filePartsWidgetLoaded = true;
+                    context.filePartsWidget.init({
+                        fileParts: lang.exists("logicalFile.DFUInfoResponse.DFUFileParts.DFUPart", context) ? context.logicalFile.DFUInfoResponse.DFUFileParts.DFUPart : []
+                    });
                 } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
-                        context.workunitWidgetLoaded = true;
-                        context.workunitWidget.init({
-                            Wuid: context.logicalFile.DFUInfoResponse.Wuid
-                        });
+                    context.workunitWidgetLoaded = true;
+                    context.workunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
                 } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
                     context.legacyPaneLoaded = true;
                     context.legacyPane.set("content", dojo.create("iframe", {
@@ -191,6 +202,9 @@ define([
             this.logicalFile.getInfo({
                 onGetAll: function (response) {
                     registry.byId(context.id + "Summary").set("title", response.Filename);
+                    //registry.byId(context.id + "Summary").set("iconClass", "iconRefresh");
+                    //domClass.remove(context.id + "Test");
+                    //domClass.add(context.id + "Test", "iconRefresh");
                     dom.byId(context.id + "Owner").innerHTML = response.Owner;
                     dom.byId(context.id + "Description").value = response.Description;
                     dom.byId(context.id + "JobName").innerHTML = response.JobName;
@@ -201,7 +215,6 @@ define([
                     dom.byId(context.id + "Count").innerHTML = response.RecordCount;
                     dom.byId(context.id + "Filesize").innerHTML = response.Filesize;
                     dom.byId(context.id + "Pathmask").innerHTML = response.PathMask;
-
                 }
             });
         }

@@ -17,6 +17,7 @@ define([
     "dojo/_base/declare",
     "dojo/_base/xhr",
     "dojo/dom",
+    "dojo/dom-class",
     "dojo/store/Memory",
     "dojo/data/ObjectStore",
 
@@ -43,7 +44,7 @@ define([
     "hpcc/ESPWorkunit",
 
     "dojo/text!../templates/WUDetailsWidget.html"
-], function (declare, xhr, dom, Memory, ObjectStore,
+], function (declare, xhr, dom, domClass, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
                 EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
                 template) {
@@ -270,15 +271,16 @@ define([
             registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Summary").set("iconClass",this.wu.getStateImage());
             
             registry.byId(this.id + "JobName").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Description").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
 
-            dojo.removeClass(this.id + "StateIdImage", "iconWorkunit");
-            dojo.addClass(this.id + "StateIdImage", this.wu.getStateImage());            
-            dom.byId(this.id + "StateIdImage").title = response.State;
+            registry.byId(this.id + "Summary").set("iconClass",this.wu.getStateIconClass());
+            domClass.remove(this.id + "StateIdImage");
+            domClass.add(this.id + "StateIdImage", this.wu.getStateIconClass());
+
+            //dom.byId(this.id + "StateIdImage").title = response.State;
             dom.byId(this.id + "ProtectedImage").src = this.wu.getProtectedImage();
             dom.byId(this.id + "State").innerHTML = response.State;
             dom.byId(this.id + "Owner").innerHTML = response.Owner;
