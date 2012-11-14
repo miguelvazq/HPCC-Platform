@@ -39,14 +39,13 @@ define([
     "hpcc/GraphWidget",
     "hpcc/ResultWidget",
     "hpcc/InfoGridWidget",
-    "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
     "hpcc/ESPLogicalFile",
 
     "dojo/text!../templates/LFDetailsWidget.html"
 ], function (declare, xhr, dom, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, LogsWidget, Workunit, ESPLogicalFile,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, Workunit, ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -64,17 +63,7 @@ define([
         workunitWidget: null,
         workunitWidgetLoaded: false,
 
-
-        timersWidget: null,
-        timersWidgetLoaded: false,
-        graphsWidget: null,
-        graphsWidgetLoaded: false,
-        logsWidget: null,
-        logsWidgetLoaded: false,
-        playgroundWidget: null,
-        playgroundWidgetLoaded: false,
-
-        wu: null,
+        logicalFile: null,
         prevState: "",
 
         buildRendering: function (args) {
@@ -96,22 +85,22 @@ define([
                 if (nval.id == context.id + "Content" && !context.resultWidgetLoaded) {
                     context.resultWidgetLoaded = true;
                     context.resultWidget.init({
-                        result: context.wu.result
+                        result: context.logicalFile.result
                     });
                 } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
                     context.sourceWidgetLoaded = true;
                     context.sourceWidget.init({
-                        ECL: context.wu.DFUInfoResponse.Ecl
+                        ECL: context.logicalFile.DFUInfoResponse.Ecl
                     });
                 } else if (nval.id == context.id + "DEF" && !context.defWidgetLoaded) {
-                    context.wu.fetchDEF(function (response) {
+                    context.logicalFile.fetchDEF(function (response) {
                         context.defWidgetLoaded = true;
                         context.defWidget.init({
                             ECL: response
                         });
                     });
                 } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
-                    context.wu.fetchXML(function (response) {
+                    context.logicalFile.fetchXML(function (response) {
                         context.xmlWidgetLoaded = true;
                         context.xmlWidget.init({
                             ECL: response
@@ -120,7 +109,7 @@ define([
                 } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
                     context.workunitWidgetLoaded = true;
                     context.workunitWidget.init({
-                        Wuid: context.wu.DFUInfoResponse.Wuid
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
                     });
                 }
             });
@@ -141,21 +130,21 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            this.wu.save({
+            this.logicalFile.save({
                 load: function (response) {
                     //TODO
                 }
             });
         },
         _onDelete: function (event) {
-            this.wu.doDelete({
+            this.logicalFile.doDelete({
                 load: function (response) {
                     //TODO
                 }
             });
         },
         _onCopy: function (event) {
-            this.wu.copy({
+            this.logicalFile.copy({
                 load: function (response) {
                     //TODO
                 }
@@ -163,7 +152,7 @@ define([
         },
         _onDespray: function (event) {
             var context = this;
-            this.wu.despray({
+            this.logicalFile.despray({
                 load: function (response) {
                 }
             });
@@ -173,7 +162,7 @@ define([
         init: function (params) {
             if (params.Name) {
                 dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
-                this.wu = new ESPLogicalFile({
+                this.logicalFile = new ESPLogicalFile({
                     cluster: params.Cluster,
                     logicalName: params.Name
                 });
@@ -190,7 +179,7 @@ define([
 
         refreshPage: function () {
             var context = this;
-            this.wu.getInfo({
+            this.logicalFile.getInfo({
                 onGetAll: function (response) {
                     registry.byId(context.id + "Summary").set("title", response.Filename);
                     dom.byId(context.id + "Owner").innerHTML = response.Owner;

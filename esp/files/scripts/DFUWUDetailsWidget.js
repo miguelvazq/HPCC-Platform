@@ -35,12 +35,12 @@ define([
     "hpcc/GraphWidget",
     "hpcc/ResultsWidget",
     "hpcc/InfoGridWidget",
-    "hpcc/ESPWorkunit",
+    "hpcc/ESPDFUWorkunit",
 
     "dojo/text!../templates/DFUWUDetailsWidget.html"
 ], function (declare, xhr, dom,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, Workunit,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, DFUWorkunit,
                 template) {
     return declare("DFUWUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -72,57 +72,6 @@ define([
         postCreate: function (args) {
             this.inherited(arguments);
             this.borderContainer = registry.byId(this.id + "BorderContainer");
-            //this.tabContainer = registry.byId(this.id + "TabContainer");
-            //this.resultsWidget = registry.byId(this.id + "Results");
-            //this.filesWidget = registry.byId(this.id + "Files");
-            //this.timersWidget = registry.byId(this.id + "Timers");
-           // this.graphsWidget = registry.byId(this.id + "Graphs");
-            //this.sourceWidget = registry.byId(this.id + "Source");
-            //this.playgroundWidget = registry.byId(this.id + "Playground");
-            //this.xmlWidget = registry.byId(this.id + "XML");
-            //this.infoGridWidget = registry.byId(this.id + "InfoContainer");
-            var context = this;
-           /* this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
-                if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
-                    context.resultsWidgetLoaded = true;
-                    context.resultsWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                } else if (nval.id == context.id + "Files" && !context.filesWidgetLoaded) {
-                    context.filesWidgetLoaded = true;
-                    context.filesWidget.init({
-                        Wuid: context.wu.wuid,
-                        SourceFiles: true
-                    });
-                } else if (nval.id == context.id + "Timers" && !context.timersWidgetLoaded) {
-                    context.timersWidgetLoaded = true;
-                    context.timersWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                } else if (nval.id == context.id + "Graphs" && !context.graphsWidgetLoaded) {
-                    context.graphsWidgetLoaded = true;
-                    context.graphsWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
-                    context.sourceWidgetLoaded = true;
-                    context.sourceWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
-                    context.playgroundWidgetLoaded = true;
-                    context.playgroundWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
-                    context.xmlWidgetLoaded = true;
-                    context.xmlWidget.init({
-                        Wuid: context.wu.wuid
-                    });
-                }
-            });*/
-
-            
         },
 
         startup: function (args) {
@@ -141,32 +90,23 @@ define([
         //  Hitched actions  ---
         _onSave: function (event) {
         },
-        _onReset: function (event) {
-        },
-        _onClone: function (event) {
-        },
+
         _onDelete: function (event) {
-        },
-        _onAbort: function (event) {
-        },
-        _onResubmit: function (event) {
-        },
-        _onRestart: function (event) {
-        },
-        _onPublish: function (event) {
         },
 
         //  Implementation  ---
         init: function (params) {
             //dom.byId("showWuid").innerHTML = params.Wuid;
             if (params.Wuid) {
-                //dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
-                this.wu = new Workunit({
-                    wuid: params.Wuid
+                registry.byId(this.id + "Summary").set("title", params.Wuid);
+                dom.byId(this.id + "Wuid").innerHTML = params.Wuid;
+
+                this.wu = new DFUWorkunit({
+                    Wuid: params.Wuid
                 });
                 var context = this;
                 this.wu.monitor(function (workunit) {
-                    context.monitorEclPlayground(workunit);
+                    context.monitorDFUWorkunit(workunit);
                 });
             }
            // this.infoGridWidget.init(params);
@@ -194,7 +134,7 @@ define([
 
         },
 
-        monitorEclPlayground: function (response) {
+        monitorDFUWorkunit: function (response) {
             if (!this.loaded) {
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);             
                 //dom.byId("showStateIdImage").src = this.wu.getStateImage();

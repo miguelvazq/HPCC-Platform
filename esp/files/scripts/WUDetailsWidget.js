@@ -226,7 +226,7 @@ define([
             var prevState = "";
             var context = this;
             this.wu.monitor(function (workunit) {
-                context.monitorEclPlayground(workunit);
+                context.monitorWorkunit(workunit);
             });
         },
 
@@ -251,7 +251,7 @@ define([
             return text;
         },
 
-        monitorEclPlayground: function (response) {
+        monitorWorkunit: function (response) {
             registry.byId(this.id + "Save").set("disabled", !this.wu.isComplete());
             //registry.byId(this.id + "Reload").set("disabled", this.wu.isComplete());
             registry.byId(this.id + "Clone").set("disabled", !this.wu.isComplete());

@@ -30,6 +30,7 @@ set ( SCRIPTS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/ESPLogicalFile.js
     ${CMAKE_CURRENT_SOURCE_DIR}/ESPResult.js
     ${CMAKE_CURRENT_SOURCE_DIR}/ESPWorkunit.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/ESPDFUWorkunit.js
     ${CMAKE_CURRENT_SOURCE_DIR}/fixedTables.js
     ${CMAKE_CURRENT_SOURCE_DIR}/graphgvc.js
     ${CMAKE_CURRENT_SOURCE_DIR}/GraphPageWidget.js
