@@ -28,7 +28,7 @@ define([
     "dijit/layout/ContentPane",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
-    "dijit/form/Textarea",
+    "dijit/form/SimpleTextarea",
     "dijit/form/Button",
     "dijit/TitlePane",
     "dijit/registry",
@@ -44,7 +44,7 @@ define([
 
     "dojo/text!../templates/LFDetailsWidget.html"
 ], function (declare, xhr, dom, Memory, ObjectStore,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, SimpleTextarea, Button, TitlePane, registry,
                 EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, Workunit, ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
@@ -62,6 +62,8 @@ define([
         xmlWidgetLoaded: false,
         workunitWidget: null,
         workunitWidgetLoaded: false,
+        legacyPane: null,
+        legacyPaneLoaded: false,
 
         logicalFile: null,
         prevState: "",
@@ -79,6 +81,7 @@ define([
             this.defWidget = registry.byId(this.id + "DEF");
             this.xmlWidget = registry.byId(this.id + "XML");
             this.workunitWidget = registry.byId(this.id + "Workunit");
+            this.legacyPane = registry.byId(this.id + "Legacy");
 
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
@@ -107,10 +110,16 @@ define([
                         });
                     });
                 } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
-                    context.workunitWidgetLoaded = true;
-                    context.workunitWidget.init({
-                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
-                    });
+                        context.workunitWidgetLoaded = true;
+                        context.workunitWidget.init({
+                            Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                        });
+                } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
+                    context.legacyPaneLoaded = true;
+                    context.legacyPane.set("content", dojo.create("iframe", {
+                        src: "/WsDfu/DFUInfo?Name=" + context.logicalFile.logicalName + "&Cluster=" + context.logicalFile.cluster,
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
                 }
             });
         },
@@ -183,6 +192,16 @@ define([
                 onGetAll: function (response) {
                     registry.byId(context.id + "Summary").set("title", response.Filename);
                     dom.byId(context.id + "Owner").innerHTML = response.Owner;
+                    dom.byId(context.id + "Description").value = response.Description;
+                    dom.byId(context.id + "JobName").innerHTML = response.JobName;
+                    dom.byId(context.id + "Wuid").innerHTML = response.Wuid;
+                    dom.byId(context.id + "Modification").innerHTML = response.Modified  + " (UTC/GMT)";
+                    dom.byId(context.id + "Directory").innerHTML = response.Dir;
+                    dom.byId(context.id + "RecordSize").innerHTML = response.RecordSize;
+                    dom.byId(context.id + "Count").innerHTML = response.RecordCount;
+                    dom.byId(context.id + "Filesize").innerHTML = response.Filesize;
+                    dom.byId(context.id + "Pathmask").innerHTML = response.PathMask;
+
                 }
             });
         }

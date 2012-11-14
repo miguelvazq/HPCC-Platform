@@ -68,6 +68,8 @@ define([
         playgroundWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
+        legacyPane: null,
+        legacyPaneLoaded: false,
 
         wu: null,
         prevState: "",
@@ -89,6 +91,8 @@ define([
             this.playgroundWidget = registry.byId(this.id + "Playground");
             this.xmlWidget = registry.byId(this.id + "XML");
             this.infoGridWidget = registry.byId(this.id + "InfoContainer");
+            this.legacyPane = registry.byId(this.id + "Legacy");
+
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
                 if (nval.id == context.id + "Results" && !context.resultsWidgetLoaded) {
@@ -132,6 +136,12 @@ define([
                     context.xmlWidget.init({
                         Wuid: context.wu.Wuid
                     });
+                } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
+                    context.legacyPaneLoaded = true;
+                    context.legacyPane.set("content", dojo.create("iframe", {
+                        src: "/WsWorkunits/WUInfo?Wuid=" + context.wu.Wuid + "&IncludeExceptions=0&IncludeGraphs=0&IncludeSourceFiles=0&IncludeResults=0&IncludeVariables=0&IncludeTimers=0&IncludeDebugValues=0&IncludeApplicationValues=0&IncludeWorkflows&SuppressResultSchemas=1",
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
                 }
             });
         },

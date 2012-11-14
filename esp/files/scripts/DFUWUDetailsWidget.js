@@ -61,6 +61,8 @@ define([
         playgroundWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
+        legacyPane: null,
+        legacyPaneLoaded: false,
 
         wu: null,
         loaded: false,
@@ -72,6 +74,19 @@ define([
         postCreate: function (args) {
             this.inherited(arguments);
             this.borderContainer = registry.byId(this.id + "BorderContainer");
+            this.tabContainer = registry.byId(this.id + "TabContainer");
+            this.legacyPane = registry.byId(this.id + "Legacy");
+
+            var context = this;
+            this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
+                if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
+                    context.legacyPaneLoaded = true;
+                    context.legacyPane.set("content", dojo.create("iframe", {
+                        src: "/FileSpray/GetDFUWorkunit?wuid=" + context.wu.Wuid,
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
+                }
+            });
         },
 
         startup: function (args) {
