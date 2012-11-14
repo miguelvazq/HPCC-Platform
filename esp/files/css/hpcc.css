@@ -55,13 +55,13 @@ h1 {
 form {
     margin:0;
     padding:0;
-    width:550px;
+    width:960px;
 }
 
 
 form label{
     float: left;
-    width: 21%;
+    width: 14%;
     margin: 0 15px 0 0;
     text-align: left;
     padding-top: 4px;
@@ -182,7 +182,6 @@ form h2{
 
 }
 
-
 .iconAlign{
     vertical-align: middle;
 }
@@ -206,50 +205,59 @@ form h2{
     background-image: url("../img/workunit.png"); 
     width: 16px;
     height: 16px;
+    display: inline-block;
 }
 
 
 .iconCompiled, .iconCompleted{
     background-image: url("../img/workunit_completed.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;
+
 }
 
 .iconRunning, .iconCompiling, .iconDebugRunning {
     background-image: url("../img/workunit_running.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px; 
+    display: inline-block;  
 }
 
 .iconFailed, .iconStateAborted{
     background-image: url("../img/workunit_failed.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;
 }
 
 
 .iconArchived, .iconBlocked, .iconScheduled, .iconWait, .iconUploadingFiles, .iconDebugPaused{
     background-image: url("../img/workunit_warning.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;    
 }
 
 .iconAborting{
     background-image: url("../img/workunit_aborting.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;
 }
 
 .iconSubmitted{
     background-image: url("../img/workunit_submitted.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;
 }
 
 .iconDeleted{
     background-image: url("../img/workunit_deleted.png"); 
     width: 16px;
-    height: 16px;    
+    height: 16px;
+    display: inline-block;
 }
 
 
