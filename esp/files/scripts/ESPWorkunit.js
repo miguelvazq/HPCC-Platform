@@ -414,11 +414,11 @@ define([
         getStateImage: function () {
             switch (this.stateID) {
                 case 1:
-                    return "img/workunit_completed.png";
+                    return "iconCompleted";
                 case 2:
                     return "img/workunit_running.png";
                 case 3:
-                    return "img/workunit_completed.png";
+                    return "iconCompleted";
                 case 4:
                     return "img/workunit_failed.png";
                 case 5:

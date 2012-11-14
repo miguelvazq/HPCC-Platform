@@ -270,12 +270,14 @@ define([
             registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
-
+            registry.byId(this.id + "Summary").set("iconClass",this.wu.getStateImage());
+            
             registry.byId(this.id + "JobName").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Description").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
 
-            dom.byId(this.id + "StateIdImage").src = this.wu.getStateImage();
+            dojo.removeClass(this.id + "StateIdImage", "iconWorkunit");
+            dojo.addClass(this.id + "StateIdImage", this.wu.getStateImage());            
             dom.byId(this.id + "StateIdImage").title = response.State;
             dom.byId(this.id + "ProtectedImage").src = this.wu.getProtectedImage();
             dom.byId(this.id + "State").innerHTML = response.State;
