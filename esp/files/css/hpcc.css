@@ -187,15 +187,15 @@ form h2{
 }
 
 .iconRefresh {
-	background-image: url("../img/refresh2.png"); 
-	width: 16px;
-	height: 16px;
+    background-image: url("../img/refresh2.png"); 
+    width: 16px;
+    height: 16px;
 }
 
 .iconLogicalFile {
-	background-image: url("../img/folder_table.png"); 
-	width: 16px;
-	height: 16px;
+    background-image: url("../img/folder_table.png"); 
+    width: 16px;
+    height: 16px;
 }
 
 

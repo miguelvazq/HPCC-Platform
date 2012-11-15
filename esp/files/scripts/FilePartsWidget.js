@@ -25,16 +25,13 @@ define([
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
 
-    "dojox/grid/DataGrid",
+    "dojo/text!../templates/FilePartsWidget.html",
 
-    "hpcc/ESPWorkunit",
+    "dojox/grid/DataGrid"
 
-    "dojo/text!../templates/FilePartsWidget.html"
 ],
     function (declare, array, Memory, ObjectStore,
             registry, _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin,
-            DataGrid,
-            ESPWorkunit,
             template) {
         return declare("FilePartsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
             templateString: template,

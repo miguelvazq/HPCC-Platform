@@ -16,11 +16,8 @@
 define([
     "dojo/_base/declare",
     "dojo/_base/lang",
-    "dojo/_base/xhr",
     "dojo/dom",
     "dojo/dom-class",
-    "dojo/store/Memory",
-    "dojo/data/ObjectStore",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
@@ -35,20 +32,19 @@ define([
     "dijit/TitlePane",
     "dijit/registry",
 
-    "hpcc/ECLSourceWidget",
-    "hpcc/TargetSelectWidget",
-    "hpcc/SampleSelectWidget",
-    "hpcc/GraphWidget",
     "hpcc/ResultWidget",
-    "hpcc/InfoGridWidget",
+    "hpcc/ECLSourceWidget",
     "hpcc/FilePartsWidget",
-    "hpcc/ESPWorkunit",
+    "hpcc/WUDetailsWidget",
+    "hpcc/DFUWUDetailsWidget",
+
     "hpcc/ESPLogicalFile",
 
     "dojo/text!../templates/LFDetailsWidget.html"
-], function (declare, lang, xhr, dom, domClass, Memory, ObjectStore,
+], function (declare, lang, dom, domClass, 
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, SimpleTextarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, FilePartsWidget, Workunit, ESPLogicalFile,
+                ResultWidget, EclSourceWidget, FilePartsWidget, WUDetailsWidget, DFUWUDetailsWidget,
+                ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -67,11 +63,14 @@ define([
         filePartsWidgetLoaded: false,
         workunitWidget: null,
         workunitWidgetLoaded: false,
+        dfuWorkunitWidget: null,
+        dfuWorkunitWidgetLoaded: false,
         legacyPane: null,
         legacyPaneLoaded: false,
 
         logicalFile: null,
         prevState: "",
+        initiated: false,
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -87,6 +86,7 @@ define([
             this.xmlWidget = registry.byId(this.id + "XML");
             this.filePartsWidget = registry.byId(this.id + "FileParts");
             this.workunitWidget = registry.byId(this.id + "Workunit");
+            this.dfuWorkunitWidget = registry.byId(this.id + "DFUWorkunit");
             this.legacyPane = registry.byId(this.id + "Legacy");
 
             var context = this;
@@ -123,6 +123,11 @@ define([
                 } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
                     context.workunitWidgetLoaded = true;
                     context.workunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
+                } else if (nval.id == context.id + "DFUWorkunit" && !context.workunitWidgetLoaded) {
+                    context.dfuWorkunitWidgetLoaded = true;
+                    context.dfuWorkunitWidget.init({
                         Wuid: context.logicalFile.DFUInfoResponse.Wuid
                     });
                 } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
@@ -180,13 +185,16 @@ define([
 
         //  Implementation  ---
         init: function (params) {
-            if (params.Name) {
-                dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
-                this.logicalFile = new ESPLogicalFile({
-                    cluster: params.Cluster,
-                    logicalName: params.Name
-                });
-                this.refreshPage();
+            if (!this.initiated) {
+                this.initiated = true;
+                if (params.Name) {
+                    dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
+                    this.logicalFile = new ESPLogicalFile({
+                        cluster: params.Cluster,
+                        logicalName: params.Name
+                    });
+                    this.refreshPage();
+                }
             }
         },
 
@@ -201,6 +209,13 @@ define([
             var context = this;
             this.logicalFile.getInfo({
                 onGetAll: function (response) {
+                    if (response.Wuid && response.Wuid[0] == "D" && context.workunitWidget) {
+                        context.tabContainer.removeChild(context.workunitWidget);
+                        context.workunitWidget = null;
+                    } else if (context.dfuWorkunitWidget) {
+                        context.tabContainer.removeChild(context.dfuWorkunitWidget);
+                        context.dfuWorkunitWidget = null;
+                    }
                     registry.byId(context.id + "Summary").set("title", response.Filename);
                     //registry.byId(context.id + "Summary").set("iconClass", "iconRefresh");
                     //domClass.remove(context.id + "Test");

@@ -15,7 +15,6 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/xhr",
     "dojo/dom",
     "dojo/dom-class",
     "dojo/store/Memory",
@@ -24,14 +23,6 @@ define([
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
-    "dijit/layout/BorderContainer",
-    "dijit/layout/TabContainer",
-    "dijit/layout/ContentPane",
-    "dijit/Toolbar",
-    "dijit/TooltipDialog",
-    "dijit/form/Textarea",
-    "dijit/form/Button",
-    "dijit/TitlePane",
     "dijit/registry",
 
     "hpcc/ECLSourceWidget",
@@ -43,9 +34,18 @@ define([
     "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
 
-    "dojo/text!../templates/WUDetailsWidget.html"
-], function (declare, xhr, dom, domClass, Memory, ObjectStore,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
+    "dojo/text!../templates/WUDetailsWidget.html",
+
+    "dijit/layout/BorderContainer",
+    "dijit/layout/TabContainer",
+    "dijit/layout/ContentPane",
+    "dijit/form/Textarea",
+    "dijit/form/Button",
+    "dijit/Toolbar",
+    "dijit/TooltipDialog",
+    "dijit/TitlePane"
+], function (declare, dom, domClass, Memory, ObjectStore,
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
                 template) {
     return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
@@ -287,7 +287,6 @@ define([
             dom.byId(this.id + "JobName").value = response.Jobname;
             dom.byId(this.id + "JobName2").value = response.Jobname;
             dom.byId(this.id + "Cluster").innerHTML = response.Cluster;
-           
 
             var context = this;
             if (this.wu.isComplete() || this.prevState != response.State) {

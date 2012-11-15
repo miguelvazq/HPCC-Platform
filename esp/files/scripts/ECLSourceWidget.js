@@ -15,11 +15,6 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/aspect",
-    "dojo/has",
-    "dojo/dom",
-    "dojo/dom-construct",
-    "dojo/dom-class",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
@@ -34,7 +29,7 @@ define([
 
     "dijit/Toolbar", "dijit/ToolbarSeparator", "dijit/form/Button"
 ],
-    function (declare, aspect, has, dom, domConstruct, domClass,
+    function (declare,
             _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, ContentPane, registry,
             ESPWorkunit,
             template) {

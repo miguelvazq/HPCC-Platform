@@ -25,15 +25,14 @@ define([
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
 
-    "dojox/grid/DataGrid",
-
     "hpcc/ESPWorkunit",
 
-    "dojo/text!../templates/TimingGridWidget.html"
+    "dojo/text!../templates/TimingGridWidget.html",
+
+    "dojox/grid/DataGrid"
 ],
     function (declare, array, Memory, ObjectStore,
             registry, _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin,
-            DataGrid,
             ESPWorkunit,
             template) {
         return declare("TimingGridWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
@@ -52,6 +51,10 @@ define([
             postCreate: function (args) {
                 this.inherited(arguments);
                 this.timingGrid = registry.byId(this.id + "TimingGrid");
+                this.timingGrid.setStructure([
+                    { name: "Component", field: "Name", width: "auto" },
+                    { name: "Time (Seconds)", field: "Seconds", width: "auto" }
+                ]);
 
                 var context = this;
                 this.timingGrid.on("RowClick", function (evt) {
