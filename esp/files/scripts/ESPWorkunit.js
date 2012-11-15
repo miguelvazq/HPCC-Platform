@@ -414,41 +414,31 @@ define([
         getStateIconClass: function () {
             switch (this.stateID) {
                 case 1:
-                    return "iconCompleted";
-                case 2:
-                    return "img/workunit_running.png";
                 case 3:
                     return "iconCompleted";
-                case 4:
-                    return "img/workunit_failed.png";
-                case 5:
-                    return "img/workunit_warning.png";
-                case 6:
-                    return "img/workunit_aborting.png";
-                case 7:
-                    return "img/workunit_failed.png";
-                case 8:
-                    return "img/workunit_warning.png";
-                case 9:
-                    return "img/workunit_submitted.png";
-                case 10:
-                    return "img/workunit_warning.png";
+                case 2:
                 case 11:
-                    return "img/workunit_running.png";
-                case 12:
-                    return "img/workunit_warning.png";
-                case 13:
-                    return "img/workunit_warning.png";
-                case 14:
-                    return "img/workunit_warning.png";
                 case 15:
-                    return "img/workunit_running.png";
+                    return "iconRunning";                
+                case 4:
+                case 7:
+                    return "iconFailed";
+                case 5:
+                case 8:
+                case 10:
+                case 12:
+                case 13:
+                case 14:
                 case 16:
-                    return "img/workunit_warning.png";
+                    return "iconArchived";
+                case 6:
+                    return "iconAborting";                                
+                case 9:
+                    return "iconSubmitted";                
                 case 999:
-                    return "img/workunit_deleted.png";
+                    return "iconDeleted";
             }
-            return "img/workunit.png";
+            return "iconWorkunit";
         },
         getStateImage: function () {
             switch (this.stateID) {

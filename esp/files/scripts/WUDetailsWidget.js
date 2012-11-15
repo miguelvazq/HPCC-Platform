@@ -287,6 +287,7 @@ define([
             dom.byId(this.id + "JobName").value = response.Jobname;
             dom.byId(this.id + "JobName2").value = response.Jobname;
             dom.byId(this.id + "Cluster").innerHTML = response.Cluster;
+           
 
             var context = this;
             if (this.wu.isComplete() || this.prevState != response.State) {
