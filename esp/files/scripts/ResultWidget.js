@@ -16,23 +16,29 @@
 define([
     "dojo/_base/declare",
     "dojo/_base/lang",
-    "dojo/_base/xhr",
     "dojo/dom",
     "dojo/request/iframe",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
-    "dijit/layout/TabContainer",
     "dijit/registry",
 
+    "dojox/grid/enhanced/plugins/Pagination",
+
     "hpcc/ESPBase",
-    "hpcc/ESPWorkunit",
-    "hpcc/ResultsControl",
-    "dojo/text!../templates/ResultWidget.html"
-], function (declare, lang, xhr, dom, iframe,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, TabContainer, registry,
-                ESPBase, ESPWorkunit, ResultsControl,
+
+    "dojo/text!../templates/ResultWidget.html",
+
+    "dijit/layout/BorderContainer",
+    "dijit/Toolbar",
+    "dijit/form/Button",
+    "dijit/ToolbarSeparator",
+    "dojox/grid/EnhancedGrid"
+], function (declare, lang, dom, iframe,
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
+                Pagination,
+                ESPBase,
                 template) {
     return declare("ResultWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -68,17 +74,18 @@ define([
 
         _doDownload: function (type) {
             //TODO Fix
-            if (lang.exists("resultsControl.selectedResult.Sequence", this)) {
-                var sequence = this.resultsControl.selectedResult.Sequence;
+            var base = new ESPBase();
+            if (lang.exists("result.Sequence", this)) {
+                var sequence = this.result.Sequence;
                 var downloadPdfIframeName = "downloadIframe_" + sequence;
                 var frame = iframe.create(downloadPdfIframeName);
-                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.Wuid + "&Sequence=" + sequence;
+                var url = base.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.result.Wuid + "&Sequence=" + sequence;
                 iframe.setSrc(frame, url, true);
-            } else if (lang.exists("resultsControl.selectedResult.Name", this)) {
-                var logicalName = this.resultsControl.selectedResult.Name;
+            } else if (lang.exists("result.Name", this)) {
+                var logicalName = this.result.Name;
                 var downloadPdfIframeName = "downloadIframe_" + logicalName;
                 var frame = iframe.create(downloadPdfIframeName);
-                var url = this.wu.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.wu.Wuid + "&LogicalName=" + logicalName;
+                var url = base.getBaseURL() + "/WUResultBin?Format=" + type + "&Wuid=" + this.result.Wuid + "&LogicalName=" + logicalName;
                 iframe.setSrc(frame, url, true);
             }
         },

@@ -15,22 +15,14 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/xhr",
     "dojo/dom",
+    "dojo/dom-class",
     "dojo/store/Memory",
     "dojo/data/ObjectStore",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
-    "dijit/layout/BorderContainer",
-    "dijit/layout/TabContainer",
-    "dijit/layout/ContentPane",
-    "dijit/Toolbar",
-    "dijit/TooltipDialog",
-    "dijit/form/Textarea",
-    "dijit/form/Button",
-    "dijit/TitlePane",
     "dijit/registry",
 
     "hpcc/ECLSourceWidget",
@@ -42,9 +34,18 @@ define([
     "hpcc/LogsWidget",
     "hpcc/ESPWorkunit",
 
-    "dojo/text!../templates/WUDetailsWidget.html"
-], function (declare, xhr, dom, Memory, ObjectStore,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Textarea, Button, TitlePane, registry,
+    "dojo/text!../templates/WUDetailsWidget.html",
+
+    "dijit/layout/BorderContainer",
+    "dijit/layout/TabContainer",
+    "dijit/layout/ContentPane",
+    "dijit/form/Textarea",
+    "dijit/form/Button",
+    "dijit/Toolbar",
+    "dijit/TooltipDialog",
+    "dijit/TitlePane"
+], function (declare, dom, domClass, Memory, ObjectStore,
+                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
                 template) {
     return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
@@ -270,22 +271,22 @@ define([
             registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Restart").set("disabled", !this.wu.isComplete());
             registry.byId(this.id + "Publish").set("disabled", !this.wu.isComplete());
-            registry.byId(this.id + "Summary").set("iconClass",this.wu.getStateImage());
             
             registry.byId(this.id + "JobName").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Description").set("readOnly", !this.wu.isComplete());
             registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
 
-            dojo.removeClass(this.id + "StateIdImage", "iconWorkunit");
-            dojo.addClass(this.id + "StateIdImage", this.wu.getStateImage());            
-            dom.byId(this.id + "StateIdImage").title = response.State;
+            registry.byId(this.id + "Summary").set("iconClass",this.wu.getStateIconClass());
+            domClass.remove(this.id + "StateIdImage");
+            domClass.add(this.id + "StateIdImage", this.wu.getStateIconClass());
+
+            //dom.byId(this.id + "StateIdImage").title = response.State;
             dom.byId(this.id + "ProtectedImage").src = this.wu.getProtectedImage();
             dom.byId(this.id + "State").innerHTML = response.State;
             dom.byId(this.id + "Owner").innerHTML = response.Owner;
             dom.byId(this.id + "JobName").value = response.Jobname;
             dom.byId(this.id + "JobName2").value = response.Jobname;
             dom.byId(this.id + "Cluster").innerHTML = response.Cluster;
-           
 
             var context = this;
             if (this.wu.isComplete() || this.prevState != response.State) {

@@ -15,10 +15,9 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/xhr",
+    "dojo/_base/lang",
     "dojo/dom",
-    "dojo/store/Memory",
-    "dojo/data/ObjectStore",
+    "dojo/dom-class",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
@@ -33,19 +32,19 @@ define([
     "dijit/TitlePane",
     "dijit/registry",
 
-    "hpcc/ECLSourceWidget",
-    "hpcc/TargetSelectWidget",
-    "hpcc/SampleSelectWidget",
-    "hpcc/GraphWidget",
     "hpcc/ResultWidget",
-    "hpcc/InfoGridWidget",
-    "hpcc/ESPWorkunit",
+    "hpcc/ECLSourceWidget",
+    "hpcc/FilePartsWidget",
+    "hpcc/WUDetailsWidget",
+    "hpcc/DFUWUDetailsWidget",
+
     "hpcc/ESPLogicalFile",
 
     "dojo/text!../templates/LFDetailsWidget.html"
-], function (declare, xhr, dom, Memory, ObjectStore,
+], function (declare, lang, dom, domClass, 
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, SimpleTextarea, Button, TitlePane, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultWidget, InfoGridWidget, Workunit, ESPLogicalFile,
+                ResultWidget, EclSourceWidget, FilePartsWidget, WUDetailsWidget, DFUWUDetailsWidget,
+                ESPLogicalFile,
                 template) {
     return declare("LFDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -60,13 +59,18 @@ define([
         defWidgetLoaded: false,
         xmlWidget: null,
         xmlWidgetLoaded: false,
+        filePartsWidget: null,
+        filePartsWidgetLoaded: false,
         workunitWidget: null,
         workunitWidgetLoaded: false,
+        dfuWorkunitWidget: null,
+        dfuWorkunitWidgetLoaded: false,
         legacyPane: null,
         legacyPaneLoaded: false,
 
         logicalFile: null,
         prevState: "",
+        initiated: false,
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -80,7 +84,9 @@ define([
             this.sourceWidget = registry.byId(this.id + "Source");
             this.defWidget = registry.byId(this.id + "DEF");
             this.xmlWidget = registry.byId(this.id + "XML");
+            this.filePartsWidget = registry.byId(this.id + "FileParts");
             this.workunitWidget = registry.byId(this.id + "Workunit");
+            this.dfuWorkunitWidget = registry.byId(this.id + "DFUWorkunit");
             this.legacyPane = registry.byId(this.id + "Legacy");
 
             var context = this;
@@ -109,11 +115,21 @@ define([
                             ECL: response
                         });
                     });
+                } else if (nval.id == context.id + "FileParts" && !context.filePartsWidgetLoaded) {
+                    context.filePartsWidgetLoaded = true;
+                    context.filePartsWidget.init({
+                        fileParts: lang.exists("logicalFile.DFUInfoResponse.DFUFileParts.DFUPart", context) ? context.logicalFile.DFUInfoResponse.DFUFileParts.DFUPart : []
+                    });
                 } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
-                        context.workunitWidgetLoaded = true;
-                        context.workunitWidget.init({
-                            Wuid: context.logicalFile.DFUInfoResponse.Wuid
-                        });
+                    context.workunitWidgetLoaded = true;
+                    context.workunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
+                } else if (nval.id == context.id + "DFUWorkunit" && !context.workunitWidgetLoaded) {
+                    context.dfuWorkunitWidgetLoaded = true;
+                    context.dfuWorkunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
                 } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
                     context.legacyPaneLoaded = true;
                     context.legacyPane.set("content", dojo.create("iframe", {
@@ -169,13 +185,16 @@ define([
 
         //  Implementation  ---
         init: function (params) {
-            if (params.Name) {
-                dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
-                this.logicalFile = new ESPLogicalFile({
-                    cluster: params.Cluster,
-                    logicalName: params.Name
-                });
-                this.refreshPage();
+            if (!this.initiated) {
+                this.initiated = true;
+                if (params.Name) {
+                    dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
+                    this.logicalFile = new ESPLogicalFile({
+                        cluster: params.Cluster,
+                        logicalName: params.Name
+                    });
+                    this.refreshPage();
+                }
             }
         },
 
@@ -190,7 +209,17 @@ define([
             var context = this;
             this.logicalFile.getInfo({
                 onGetAll: function (response) {
+                    if (response.Wuid && response.Wuid[0] == "D" && context.workunitWidget) {
+                        context.tabContainer.removeChild(context.workunitWidget);
+                        context.workunitWidget = null;
+                    } else if (context.dfuWorkunitWidget) {
+                        context.tabContainer.removeChild(context.dfuWorkunitWidget);
+                        context.dfuWorkunitWidget = null;
+                    }
                     registry.byId(context.id + "Summary").set("title", response.Filename);
+                    //registry.byId(context.id + "Summary").set("iconClass", "iconRefresh");
+                    //domClass.remove(context.id + "Test");
+                    //domClass.add(context.id + "Test", "iconRefresh");
                     dom.byId(context.id + "Owner").innerHTML = response.Owner;
                     dom.byId(context.id + "Description").value = response.Description;
                     dom.byId(context.id + "JobName").innerHTML = response.JobName;
@@ -201,7 +230,6 @@ define([
                     dom.byId(context.id + "Count").innerHTML = response.RecordCount;
                     dom.byId(context.id + "Filesize").innerHTML = response.Filesize;
                     dom.byId(context.id + "Pathmask").innerHTML = response.PathMask;
-
                 }
             });
         }

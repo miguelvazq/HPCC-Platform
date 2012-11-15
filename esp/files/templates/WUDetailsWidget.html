@@ -26,11 +26,11 @@
                 </div>
                 <div data-dojo-props="region: 'center'" data-dojo-type="dijit.layout.ContentPane">
                     <h2>
-                        <img id="${id}ProtectedImage" src="img/locked.png"/>&nbsp<div id="${id}StateIdImage" class="iconWorkunit"/></div>&nbsp<span id="${id}Wuid" class="bold">WUID</span>
+                        <img id="${id}ProtectedImage" src="img/locked.png"/>&nbsp<div id="${id}StateIdImage" class="iconWorkunit" ></div>&nbsp<span id="${id}Wuid" class="bold">WUID</span>
                     </h2>
                     <form>
                         <ul>
-                           <li> 
+                            <li> 
                                 <label class="Prompt" for="Action">Action:</label>
                                 <div id="${id}Action"></div>
                             </li>
@@ -46,7 +46,6 @@
                                 <label class="Prompt" for="Scope">Scope:</label>  
                                 <div id="${id}Scope"></div>
                             </li>
-                            </li>
                             <li>
                                 <label class="Prompt" for="JobName">Job Name:</label>
                                 <div><input id="${id}JobName" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
@@ -55,7 +54,7 @@
                                 <label class="Prompt" for="Description">Description:</label>
                                 <div><input id="${id}Description" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
                             </li>
-                            <li>                 
+                            <li>
                                 <label class="Prompt" for="Protected">Protected:</label>
                                 <div><input id="${id}Protected" data-dojo-type="dijit.form.CheckBox"/></div>
                             </li>
@@ -66,9 +65,9 @@
                             <li>    
                                 <label class="Prompt" for="Duration">Duration:</label>
                                 <div id="${id}Time"></div>
-                            </li>                        
+                            </li>
                         </ul>
-                    </form>                
+                    </form>
                 </div>
                 <div id="${id}InfoContainer" style="height: 33%" data-dojo-props="region: 'bottom', splitter: true, minSize: 120" data-dojo-type="InfoGridWidget">
                 </div>
