@@ -147,6 +147,12 @@ define([
         getState: function () {
             return this.state;
         },
+        getProtectedImage: function () {
+            if (this.protected) {
+                return "img/locked.png"
+            }
+            return "img/unlocked.png"
+        },
         getStateImage: function () {
             switch (this.stateID) {
                 case 6:
