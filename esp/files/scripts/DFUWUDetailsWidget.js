@@ -76,6 +76,8 @@ define([
             this.borderContainer = registry.byId(this.id + "BorderContainer");
             this.tabContainer = registry.byId(this.id + "TabContainer");
             this.legacyPane = registry.byId(this.id + "Legacy");
+            this.xmlWidget = registry.byId(this.id + "XML");
+
 
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
@@ -149,20 +151,77 @@ define([
 
         },
 
+        _onSave: function (event) { 
+            var protectedCheckbox = registry.byId(this.id + "Protected");
+            var context = this;
+            this.wu.update({
+                Description: dom.byId(context.id + "Description").value,
+                Jobname: dom.byId(context.id + "JobName").value,
+                Protected: protectedCheckbox.get("value")
+            }, null, {
+                load: function (response) {
+                    context.monitor();
+                }
+            });
+        },
+        _onAbort: function (event) {
+            var context = this;
+            this.wu.abort({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
+        },
+         _onResubmit: function (event) {
+            var context = this;
+            this.wu.resubmit({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
+        },
+         _onModify: function (event) {
+            var context = this;
+            this.wu.resubmit({
+                load: function (response) {
+                    context.monitor();
+                }
+            });
+        },
+
         monitorDFUWorkunit: function (response) {
-            if (!this.loaded) {
+            if (!this.loaded) {                
+                registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete());
+
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);             
-                //dom.byId("showStateIdImage").src = this.wu.getStateImage();
-                //dom.byId("showStateIdImage").title = response.State;
-                //dom.byId("showStateReadOnly").innerHTML = response.State;
-                //dom.byId("showAction").innerHTML = response.ActionId;
-               // dom.byId("showOwner").innerHTML = response.Owner;
-                //dom.byId("showScope").value = response.Scope;
-                //dom.byId("showJobName").value = response.Jobname;
-                //dom.byId("showCluster").innerHTML = response.Cluster;
+                 dom.byId(this.id + "ID").innerHTML = response.ID;
+                 dom.byId(this.id + "JobName").value = response.JobName;
+                 dom.byId(this.id + "Queue").innerHTML = response.Queue;
+                 dom.byId(this.id + "Command").innerHTML = response.Command;
+                 dom.byId(this.id + "TimeStarted").innerHTML = response.TimeStarted;
+                 dom.byId(this.id + "TimeStopped").innerHTML = response.TimeStopped;
+                 dom.byId(this.id + "PercentDone").innerHTML = response.PercentDone + "%";
+                 dom.byId(this.id + "ProgressMessage").innerHTML = response.ProgressMessage;
+                 dom.byId(this.id + "SummaryMessage").innerHTML = response.SummaryMessage;
+                 dom.byId(this.id + "SourceLogicalName").innerHTML = response.SourceLogicalName;
+                 dom.byId(this.id + "DestDirectory").innerHTML = response.DestDirectory;
+                 dom.byId(this.id + "DestIP").innerHTML = response.DestIP;
+                 dom.byId(this.id + "DestFilePath").innerHTML = response.DestFilePath;
+                 dom.byId(this.id + "DestFormat").innerHTML = response.DestFormat;
+                 dom.byId(this.id + "DestNumParts").innerHTML = response.DestNumParts;
+                 dom.byId(this.id + "MonitorSub").innerHTML = response.MonitorSub;
+                 dom.byId(this.id + "Overwrite").innerHTML = response.Overwrite;
+                 dom.byId(this.id + "Replicate").innerHTML = response.Replicate;
+                 dom.byId(this.id + "Compress").innerHTML = response.Compress;
+                 dom.byId(this.id + "AutoRefresh").innerHTML = response.AutoRefresh;
+
+                 //dom.byId(this.id + "ProtectedImage").src = this.wu.getProtectedImage();
+                
                 
                 this.loaded = true;
             }
+
+
 
             var context = this;
             if (this.wu.isComplete()) {
