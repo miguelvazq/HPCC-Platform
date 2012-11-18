@@ -77,6 +77,7 @@ require([
                 this.inherited(arguments);
                 this._isPluginInstalled = this.isPluginInstalled();
                 this.createPlugin();
+                this.watchStyleChange();
             },
 
             resize: function (args) {
@@ -96,6 +97,7 @@ require([
             },
 
             loadXGMML: function (xgmml, merge) {
+                this.registerEvents();
                 if (this.plugin && this.xgmml != xgmml) {
                     this.setMessage("Loading Data...");
                     if (merge)
@@ -109,6 +111,7 @@ require([
             },
 
             mergeXGMML: function (xgmml) {
+                this.registerEvents();
                 if (this.plugin && this.xgmml != xgmml) {
                     this.plugin.mergeXGMML(xgmml);
                     this.xgmml = xgmml;
@@ -116,10 +119,12 @@ require([
             },
 
             loadDOT: function (dot) {
+                this.registerEvents();
                 this.load(dot, "dot");
             },
 
             load: function (dot, layout) {
+                this.registerEvents();
                 if (this.plugin && this.xgmml != xgmml) {
                     this.setMessage("Loading Data...");
                     this.plugin.loadDOT(dot);
@@ -270,9 +275,9 @@ require([
                         }
                         this.plugin = dom.byId(pluginID);
                         var context = this;
-                        setTimeout(function () {
-                            context.registerEvents();
-                        }, 20);
+//                        setTimeout(function () {
+//                            context.registerEvents();
+//                        }, 20);
                     } else {
                         domConstruct.create("div", {
                             innerHTML: "<h4>Graph View</h4>" +
@@ -394,6 +399,40 @@ require([
             },
 
             watchStyleChange: function () {
+                if (has("chrome")) {
+                    var watchList = [];
+                    var context = this;
+                    var domNode = this.domNode;
+                    while (domNode) {
+                        if (domNode.id) {
+                            watchList[domNode.id] = false;
+                        }
+                        domNode = domNode.parentElement;
+                    }
+                    aspect.around(domClass, "replace", function (origFunc) {
+                        return function (node, addStyle, removeStyle) {
+                            if (node.id in watchList) {
+                                if (addStyle == "dijitHidden") {
+                                    watchList[node.id] = true;
+                                    dojo.style(node, "width", "1px");
+                                    dojo.style(node, "height", "1px");
+                                    return;
+                                } else if (addStyle == "dijitVisible" && watchList[node.id] == true) {
+                                    watchList[node.id] = false;
+                                    dojo.style(node, "width", "100%");
+                                    dojo.style(node, "height", "100%");
+                                    return;
+                                }
+                            }
+                            var deferred = origFunc(node, addStyle, removeStyle);
+                            //  alternative:  return origFunc.apply(this, arguments);
+                            return deferred;
+                        }
+                    });
+                }
+            },
+
+        watchStyleChange_old: function () {
                 if (has("chrome")) {
                     var context = this;
                     aspect.around(domClass, "replace", function (origFunc) {

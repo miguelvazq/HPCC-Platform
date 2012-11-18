@@ -24,17 +24,18 @@ define([
     "dijit/registry",
 
     "hpcc/ESPWorkunit",
+    "hpcc/GraphPageWidget",
 
-    "dojo/text!../templates/ResultsWidget.html",
+    "dojo/text!../templates/GraphsWidget.html",
 
     "dijit/layout/TabContainer"
 ], function (declare, lang, dom, 
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
-                ESPWorkunit, 
+                ESPWorkunit, GraphPageWidget,
                 template) {
-    return declare("ResultsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("GraphsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
-        baseClass: "ResultsWidget",
+        baseClass: "GraphsWidget",
 
         //borderContainer: null,
         tabContainer: null,
@@ -56,7 +57,6 @@ define([
 
         resize: function (args) {
             this.inherited(arguments);
-            //this.borderContainer.resize();
             this.tabContainer.resize();
         },
 
@@ -70,7 +70,6 @@ define([
 
         _initControls: function () {
             var context = this;
-            //this.borderContainer = registry.byId(this.id + "BorderContainer");
             this.tabContainer = registry.byId(this.id + "TabContainer");
 
             var context = this;
@@ -85,23 +84,12 @@ define([
         ensurePane: function (id, params) {
             var retVal = this.tabMap[id];
             if (!retVal) {
-                if (lang.exists("Name", params) && lang.exists("Cluster", params)) {
-                    retVal = new LFDetailsWidget({
+                if (lang.exists("graph", params)) {
+                    retVal = new GraphPageWidget({
                         id: id,
-                        title: params.Name,
-                        params: params
-                    });
-                } else if (lang.exists("Wuid", params) && lang.exists("exceptions", params)) {
-                    retVal = new InfoGridWidget({
-                        id: id,
-                        title: "Errors/Warnings",
-                        params: params
-                    });
-                } else if (lang.exists("result", params)) {
-                    retVal = new ResultWidget({
-                        id: id,
-                        title: params.result.Name,
-                        params: params
+                        Wuid: this.wu.Wuid,
+                        GraphName: params.graph.Name,
+                        title: params.graph.Name
                     });
                 }
                 this.tabMap[id] = retVal;
@@ -119,32 +107,11 @@ define([
                 this.wu.monitor(function () {
                     if (context.wu.isComplete() || ++monitorCount % 5 == 0) {
                         context.wu.getInfo({
-                            onGetExceptions: function (exceptions) {
-                                if (params.ShowErrors && exceptions.length) {
-                                    context.ensurePane(context.id + "exceptions", {
-                                        Wuid: params.Wuid,
-                                        onErrorClick: context.onErrorClick,
-                                        exceptions: exceptions
+                            onGetGraphs: function (graphs) {
+                                for (var i = 0; i < graphs.length; ++i) {
+                                    context.ensurePane(context.id + "graph_" + i, {
+                                        graph: graphs[i]
                                     });
-                                }
-                            },
-                            onGetSourceFiles: function (sourceFiles) {
-                                if (params.SourceFiles) {
-                                    for (var i = 0; i < sourceFiles.length; ++i) {
-                                        context.ensurePane(context.id + "logicalFile_" + i, {
-                                            Name: sourceFiles[i].Name,
-                                            Cluster: sourceFiles[i].FileCluster
-                                        });
-                                    }
-                                }
-                            },
-                            onGetResults: function (results) {
-                                if (!params.SourceFiles) {
-                                    for (var i = 0; i < results.length; ++i) {
-                                        context.ensurePane(context.id + "result_" + i, {
-                                            result: results[i]
-                                        });
-                                    }
                                 }
                             }
                         });
@@ -152,26 +119,6 @@ define([
                             context.selectedTab.refresh();
                         }
                     }
-                });
-            }
-        },
-
-        clear: function () {
-            var tabs = this.tabContainer.getChildren();
-            for (var i = 0; i < tabs.length; ++i) {
-                this.tabContainer.removeChild(tabs[i]);
-            }
-            this.tabMap = [];
-            this.selectedTab = null;
-        },
-
-        refresh: function (wu) {
-            if (this.workunit != wu) {
-                this.clear();
-                this.workunit = wu;
-                this.init({
-                    Wuid: wu.Wuid,
-                    ShowErrors: true
                 });
             }
         }

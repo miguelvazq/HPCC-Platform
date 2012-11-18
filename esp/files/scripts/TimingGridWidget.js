@@ -89,6 +89,10 @@ define([
             },
 
             init: function (params) {
+                this.defaultQuery = "*";
+                if (params.query) {
+                    this.defaultQuery = params.query;
+                }
                 this.wu = new ESPWorkunit({
                     Wuid: params.Wuid
                 });
@@ -131,7 +135,7 @@ define([
                 var store = new Memory({ data: timers });
                 var dataStore = new ObjectStore({ objectStore: store });
                 this.timingGrid.setStore(dataStore);
-                this.setQuery("*");
+                this.setQuery(this.defaultQuery);
             }
         });
     });

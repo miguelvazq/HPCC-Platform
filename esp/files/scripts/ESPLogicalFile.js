@@ -80,11 +80,11 @@ define([
         getInfo: function (args) {
             var request = {
                 Name: this.logicalName,
-                Cluster: this.cluster,
+                Cluster: this.cluster
                 //UpdateDescription: false,
                 //FileName: "",
                 //FileDesc: "",
-                rawxml_: true
+                //rawxml_: true
             };
 
             var context = this;
@@ -94,12 +94,14 @@ define([
                 content: request,
                 load: function (response) {
                     //var workunit = context.getValue(xmlDom, "Workunit", ["ECLException", "ECLResult", "ECLGraph", "ECLTimer", "ECLSchemaItem", "ApplicationValue"]);
-                    var fileDetail = response.DFUInfoResponse.FileDetail;
-                    context.DFUInfoResponse = fileDetail;
-                    context.result = new ESPResult(fileDetail);
+                    if (response.DFUInfoResponse) {
+                        var fileDetail = response.DFUInfoResponse.FileDetail;
+                        context.DFUInfoResponse = fileDetail;
+                        context.result = new ESPResult(fileDetail);
 
-                    if (args.onGetAll) {
-                        args.onGetAll(fileDetail);
+                        if (args.onGetAll) {
+                            args.onGetAll(fileDetail);
+                        }
                     }
                 },
                 error: function (e) {

@@ -93,7 +93,7 @@ define([
             }
 
             this.Wuid = params.Wuid;
-            this.targetSelectWidget.setValue(params.Target);
+            this.targetSelectWidget.init(params);
 
             this.initEditor();
             this.editorControl.init(params);
