@@ -83,14 +83,53 @@ define([
 
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
-                if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
+                if (nval.id == context.id + "Content" && !context.resultWidgetLoaded) {
+                    context.resultWidgetLoaded = true;
+                    context.resultWidget.init({
+                        result: context.logicalFile.result
+                    });
+                } else if (nval.id == context.id + "Source" && !context.sourceWidgetLoaded) {
+                    context.sourceWidgetLoaded = true;
+                    context.sourceWidget.init({
+                        ECL: context.logicalFile.DFUInfoResponse.Ecl
+                    });
+                } else if (nval.id == context.id + "DEF" && !context.defWidgetLoaded) {
+                    context.logicalFile.fetchDEF(function (response) {
+                        context.defWidgetLoaded = true;
+                        context.defWidget.init({
+                            ECL: response
+                        });
+                    });
+                } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
+                    context.wu.fetchXML(function (response) {
+                        context.xmlWidgetLoaded = true;
+                        context.xmlWidget.init({
+                            ECL: response
+                        });
+                    });
+                } else if (nval.id == context.id + "FileParts" && !context.filePartsWidgetLoaded) {
+                    context.filePartsWidgetLoaded = true;
+                    context.filePartsWidget.init({
+                        fileParts: lang.exists("logicalFile.DFUInfoResponse.DFUFileParts.DFUPart", context) ? context.logicalFile.DFUInfoResponse.DFUFileParts.DFUPart : []
+                    });
+                } else if (nval.id == context.id + "Workunit" && !context.workunitWidgetLoaded) {
+                    context.workunitWidgetLoaded = true;
+                    context.workunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
+                } else if (nval.id == context.id + "DFUWorkunit" && !context.workunitWidgetLoaded) {
+                    context.dfuWorkunitWidgetLoaded = true;
+                    context.dfuWorkunitWidget.init({
+                        Wuid: context.logicalFile.DFUInfoResponse.Wuid
+                    });
+                } else if (nval.id == context.id + "Legacy" && !context.legacyPaneLoaded) {
                     context.legacyPaneLoaded = true;
                     context.legacyPane.set("content", dojo.create("iframe", {
                         src: "/FileSpray/GetDFUWorkunit?wuid=" + context.wu.Wuid,
                         style: "border: 0; width: 100%; height: 100%"
                     }));
                 }
-            });        
+            });       
         },
 
         startup: function (args) {
@@ -239,12 +278,7 @@ define([
                  dom.byId(this.id + "Compress").innerHTML = response.Compress;
                  dom.byId(this.id + "AutoRefresh").innerHTML = response.AutoRefresh;
 
-                 if(response.PercentDone.value === "100"){
-                    alert(done);
-
-                 }
-                
-
+                 
                 this.loaded = true;
             }
 
