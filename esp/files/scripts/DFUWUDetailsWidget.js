@@ -29,6 +29,7 @@ define([
     "dijit/TitlePane",
     "dijit/registry",
     "dijit/ProgressBar",
+    
 
     "hpcc/ECLSourceWidget",
     "hpcc/TargetSelectWidget",
@@ -97,20 +98,20 @@ define([
 
             
         },
-        
-        //TODO
-        showProgress: function(){
+    //TODO
+
+        /*showProgress: function(event){
+            alert(response.PercentDone);
             numParts = Math.floor(100/10);
+            
             jsProgressBar.update({maximum:numParts, progress:response.PercentDone});
 
-            for (var i=response.PercentDone;i <= numParts; i++){
+            for (var i = response.PercentDone; i <= numParts; i++){                
                 timer = setTimeout(
-                    "jsProgressBar.update({progress: " + i + "})", (i+1)*1000 //1000ms of 1
+                "jsProgressBar.update({progress: " + i + "})", (i+1)*1000 //1000ms of 1
                 )
-
-            }
-
-        },
+            }        
+        },*/
 
         resize: function (args) {
             this.inherited(arguments);
@@ -181,6 +182,7 @@ define([
                 }
             });
         },
+
         _onAbort: function (event) {
             var context = this;
             this.wu.abort({
@@ -208,20 +210,21 @@ define([
 
         monitorDFUWorkunit: function (response) {
             if (!this.loaded) {                
-                registry.byId(this.id + "Save").set("disabled", !this.wu.isComplete());            
-                registry.byId(this.id + "Delete").set("disabled", !this.wu.isComplete());
-                registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete());            
-                registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
-                registry.byId(this.id + "Modify").set("disabled", !this.wu.isComplete());
-                registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
+                 registry.byId(this.id + "Save").set("disabled", !this.wu.isComplete());            
+                 registry.byId(this.id + "Delete").set("disabled", !this.wu.isComplete());
+                 registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete());            
+                 registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete());
+                 registry.byId(this.id + "Modify").set("disabled", !this.wu.isComplete());
+                 registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
                  
                  dom.byId(this.id + "ID").innerHTML = response.ID;
                  dom.byId(this.id + "JobName").value = response.JobName;
                  dom.byId(this.id + "Queue").innerHTML = response.Queue;
                  dom.byId(this.id + "Command").innerHTML = response.Command;
                  dom.byId(this.id + "TimeStarted").innerHTML = response.TimeStarted;
-                 dom.byId(this.id + "TimeStopped").innerHTML = response.TimeStopped;
-                 //dom.byId(this.id + "PercentDone").innerHTML = response.PercentDone + "%";
+                 dom.byId(this.id + "TimeStopped").innerHTML = response.TimeStopped;                             
+                 dom.byId(this.id + "ProgressBar").value = response.PercentDone;
+
                  dom.byId(this.id + "ProgressMessage").innerHTML = response.ProgressMessage;
                  dom.byId(this.id + "SummaryMessage").innerHTML = response.SummaryMessage;
                  dom.byId(this.id + "SourceLogicalName").innerHTML = response.SourceLogicalName;
@@ -236,7 +239,12 @@ define([
                  dom.byId(this.id + "Compress").innerHTML = response.Compress;
                  dom.byId(this.id + "AutoRefresh").innerHTML = response.AutoRefresh;
 
+                 if(response.PercentDone.value === "100"){
+                    alert(done);
+
+                 }
                 
+
                 this.loaded = true;
             }
 
@@ -262,7 +270,7 @@ define([
                     },
 
                     onGetAll: function (response) {
-                        //dom.byId(context.id + "WUInfoResponse").innerHTML = context.objectToText(response);
+                        
 
                     }
                 });
