@@ -72,7 +72,7 @@ border:solid 1px rgb(214,214,214); ;
 form {
     margin:0;
     padding:0;
-    width:960px;
+    width:100%;
 }
 
 #longList label{
@@ -94,7 +94,6 @@ form label{
     padding-top: 4px;
     font-weight:bold;
     height:20px;
-  
 }
 
 form textarea{

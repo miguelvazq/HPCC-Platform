@@ -93,7 +93,7 @@ define([
             }
 
             this.Wuid = params.Wuid;
-            this.targetSelectWidget.setValue(params.Target);
+            this.targetSelectWidget.init(params);
 
             this.initEditor();
             this.editorControl.init(params);
@@ -160,7 +160,7 @@ define([
             var context = this;
             if (this.wu.isComplete()) {
                 this.wu.getInfo({
-                    onGetExceptions: function (exceptions) {
+                    onGetWUExceptions: function (exceptions) {
                         context.displayExceptions(exceptions);
                     },
                     onGetResults: function (results) {
@@ -222,6 +222,7 @@ define([
                     });
                 }
             });
+            this.wu.create();
         }
     });
 });

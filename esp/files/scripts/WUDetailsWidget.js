@@ -28,7 +28,7 @@ define([
     "hpcc/ECLSourceWidget",
     "hpcc/TargetSelectWidget",
     "hpcc/SampleSelectWidget",
-    "hpcc/GraphWidget",
+    "hpcc/GraphsWidget",
     "hpcc/ResultsWidget",
     "hpcc/InfoGridWidget",
     "hpcc/LogsWidget",
@@ -46,7 +46,7 @@ define([
     "dijit/TitlePane"
 ], function (declare, dom, domClass, Memory, ObjectStore,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
+                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphsWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
                 template) {
     return declare("WUDetailsWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -130,7 +130,8 @@ define([
                 } else if (nval.id == context.id + "Playground" && !context.playgroundWidgetLoaded) {
                     context.playgroundWidgetLoaded = true;
                     context.playgroundWidget.init({
-                        Wuid: context.wu.Wuid
+                        Wuid: context.wu.Wuid,
+                        Target: context.wu.WUInfoResponse.Cluster
                     });
                 } else if (nval.id == context.id + "XML" && !context.xmlWidgetLoaded) {
                     context.xmlWidgetLoaded = true;
