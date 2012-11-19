@@ -36,6 +36,8 @@ define([
         exceptions: [],
         timers: [],
 
+        WUInfoResponse: {},
+
         onCreate: function () {
         },
         onUpdate: function () {
@@ -44,9 +46,10 @@ define([
         },
         constructor: function (args) {
             declare.safeMixin(this, args);
-
-            if (!this.Wuid) {
-                this.create();
+            if (this.Wuid) {
+                this.WUInfoResponse = {
+                    Wuid: this.Wuid
+                }
             }
         },
         isComplete: function () {
@@ -279,7 +282,7 @@ define([
             var request = {
                 Wuid: this.Wuid,
                 TruncateEclTo64k: args.onGetText ? false : true,
-                IncludeExceptions: args.onGetExceptions ? true : false,
+                IncludeExceptions: args.onGetWUExceptions ? true : false,
                 IncludeGraphs: args.onGetGraphs ? true : false,
                 IncludeSourceFiles: args.onGetSourceFiles ? true : false,
                 IncludeResults: args.onGetResults ? true : false,
@@ -300,92 +303,92 @@ define([
                 handleAs: "json",
                 content: request,
                 load: function (response) {
-                    //var workunit = context.getValue(xmlDom, "Workunit", ["ECLException", "ECLResult", "ECLGraph", "ECLTimer", "ECLSchemaItem", "ApplicationValue"]);
-                    var workunit = response.WUInfoResponse.Workunit;
-                    context.WUInfoResponse = workunit;
+                    if (lang.exists("WUInfoResponse.Workunit", response)) {
+                        context.WUInfoResponse = response.WUInfoResponse.Workunit;
 
-                    if (args.onGetText && workunit.Query.Text) {
-                        context.text = workunit.Query.Text;
-                        args.onGetText(context.text);
-                    }
-                    if (args.onGetExceptions && workunit.Exceptions && workunit.Exceptions.ECLException) {
-                        context.exceptions = [];
-                        for (var i = 0; i < workunit.Exceptions.ECLException.length; ++i) {
-                            context.exceptions.push(workunit.Exceptions.ECLException[i]);
+                        if (args.onGetText && lang.exists("Query.Text", context.WUInfoResponse)) {
+                            context.text = context.WUInfoResponse.Query.Text;
+                            args.onGetText(context.text);
                         }
-                        args.onGetExceptions(context.exceptions);
-                    }
-                    if (args.onGetApplicationValues && workunit.ApplicationValues && workunit.ApplicationValues.ApplicationValue) {
-                        context.applicationValues = workunit.ApplicationValues.ApplicationValue;
-                        args.onGetApplicationValues(context.applicationValues)
-                    }
-                    if (args.onGetVariables && workunit.Variables && workunit.Variables.ECLResult) {
-                        context.variables = [];
-                        var variables = workunit.Variables.ECLResult;
-                        for (var i = 0; i < variables.length; ++i) {
-                            context.variables.push(lang.mixin({
-                                ColumnType: variables[i].ECLSchemas && variables[i].ECLSchemas.ECLSchemaItem.length ? variables[i].ECLSchemas.ECLSchemaItem[0].ColumnType : "unknown"
-                            }, variables[i]));
-                        }
-                        args.onGetVariables(context.variables);
-                    }
-                    if (args.onGetResults && workunit.Results && workunit.Results.ECLResult) {
-                        context.results = [];
-                        var results = workunit.Results.ECLResult;
-                        for (var i = 0; i < results.length; ++i) {
-                            context.results.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, results[i])));
-                        }
-                        args.onGetResults(context.results);
-                    }
-                    if (args.onGetSourceFiles && workunit.SourceFiles && workunit.SourceFiles.ECLSourceFile) {
-                        context.sourceFiles = [];
-                        var sourceFiles = workunit.SourceFiles.ECLSourceFile;
-                        for (var i = 0; i < sourceFiles.length; ++i) {
-                            context.sourceFiles.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, sourceFiles[i])));
-                        }
-                        args.onGetSourceFiles(context.sourceFiles);
-                    }
-                    if (args.onGetTimers && workunit.Timers && workunit.Timers.ECLTimer) {
-                        context.timers = [];
-                        for (var i = 0; i < workunit.Timers.ECLTimer.length; ++i) {
-                            var timeParts = workunit.Timers.ECLTimer[i].Value.split(":");
-                            var secs = 0;
-                            for (var j = 0; j < timeParts.length; ++j) {
-                                secs = secs * 60 + timeParts[j] * 1;
+                        if (args.onGetWUExceptions && lang.exists("Exceptions.ECLException", context.WUInfoResponse)) {
+                            context.exceptions = [];
+                            for (var i = 0; i < context.WUInfoResponse.Exceptions.ECLException.length; ++i) {
+                                context.exceptions.push(context.WUInfoResponse.Exceptions.ECLException[i]);
                             }
-
-                            context.timers.push(lang.mixin(workunit.Timers.ECLTimer[i], {
-                                Seconds: Math.round(secs * 1000) / 1000,
-                                HasSubGraphId: workunit.Timers.ECLTimer[i].SubGraphId && workunit.Timers.ECLTimer[i].SubGraphId != "" ? true : false
-                            }));
+                            args.onGetWUExceptions(context.exceptions);
                         }
-                        args.onGetTimers(context.timers);
-                    }
-                    if (args.onGetGraphs && workunit.Graphs && workunit.Graphs.ECLGraph) {
-                        context.graphs = workunit.Graphs.ECLGraph;
-                        if (context.timers || context.applicationValues) {
-                            for (var i = 0; i < context.graphs.length; ++i) {
-                                if (context.timers) {
-                                    context.graphs[i].Time = 0;
-                                    for (var j = 0; j < context.timers.length; ++j) {
-                                        if (context.timers[j].GraphName == context.graphs[i].Name) {
-                                            context.graphs[i].Time += context.timers[j].Seconds;
+                        if (args.onGetApplicationValues && lang.exists("ApplicationValues.ApplicationValue", context.WUInfoResponse)) {
+                            context.applicationValues = context.WUInfoResponse.ApplicationValues.ApplicationValue;
+                            args.onGetApplicationValues(context.applicationValues)
+                        }
+                        if (args.onGetVariables && lang.exists("Variables.ECLResult", context.WUInfoResponse)) {
+                            context.variables = [];
+                            var variables = context.WUInfoResponse.Variables.ECLResult;
+                            for (var i = 0; i < variables.length; ++i) {
+                                context.variables.push(lang.mixin({
+                                    ColumnType: variables[i].ECLSchemas && variables[i].ECLSchemas.ECLSchemaItem.length ? variables[i].ECLSchemas.ECLSchemaItem[0].ColumnType : "unknown"
+                                }, variables[i]));
+                            }
+                            args.onGetVariables(context.variables);
+                        }
+                        if (args.onGetResults && lang.exists("Results.ECLResult", context.WUInfoResponse)) {
+                            context.results = [];
+                            var results = context.WUInfoResponse.Results.ECLResult;
+                            for (var i = 0; i < results.length; ++i) {
+                                context.results.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, results[i])));
+                            }
+                            args.onGetResults(context.results);
+                        }
+                        if (args.onGetSourceFiles && lang.exists("SourceFiles.ECLSourceFile", context.WUInfoResponse)) {
+                            context.sourceFiles = [];
+                            var sourceFiles = context.WUInfoResponse.SourceFiles.ECLSourceFile;
+                            for (var i = 0; i < sourceFiles.length; ++i) {
+                                context.sourceFiles.push(new ESPResult(lang.mixin({ wu: context, Wuid: context.Wuid }, sourceFiles[i])));
+                            }
+                            args.onGetSourceFiles(context.sourceFiles);
+                        }
+                        if (args.onGetTimers && lang.exists("Timers.ECLTimer", context.WUInfoResponse)) {
+                            context.timers = [];
+                            for (var i = 0; i < context.WUInfoResponse.Timers.ECLTimer.length; ++i) {
+                                var timeParts = context.WUInfoResponse.Timers.ECLTimer[i].Value.split(":");
+                                var secs = 0;
+                                for (var j = 0; j < timeParts.length; ++j) {
+                                    secs = secs * 60 + timeParts[j] * 1;
+                                }
+
+                                context.timers.push(lang.mixin(context.WUInfoResponse.Timers.ECLTimer[i], {
+                                    Seconds: Math.round(secs * 1000) / 1000,
+                                    HasSubGraphId: context.WUInfoResponse.Timers.ECLTimer[i].SubGraphId && context.WUInfoResponse.Timers.ECLTimer[i].SubGraphId != "" ? true : false
+                                }));
+                            }
+                            args.onGetTimers(context.timers);
+                        }
+                        if (args.onGetGraphs && lang.exists("Graphs.ECLGraph", context.WUInfoResponse)) {
+                            context.graphs = context.WUInfoResponse.Graphs.ECLGraph;
+                            if (context.timers || context.applicationValues) {
+                                for (var i = 0; i < context.graphs.length; ++i) {
+                                    if (context.timers) {
+                                        context.graphs[i].Time = 0;
+                                        for (var j = 0; j < context.timers.length; ++j) {
+                                            if (context.timers[j].GraphName == context.graphs[i].Name) {
+                                                context.graphs[i].Time += context.timers[j].Seconds;
+                                            }
+                                            context.graphs[i].Time = Math.round(context.graphs[i].Time * 1000) / 1000;
                                         }
-                                        context.graphs[i].Time = Math.round(context.graphs[i].Time * 1000) / 1000;
                                     }
-                                }
-                                if (context.applicationValues) {
-                                    var idx = context.getApplicationValueIndex("ESPWorkunit.js", context.graphs[i].Name + "_SVG");
-                                    if (idx >= 0) {
-                                        context.graphs[i].svg = context.applicationValues[idx].Value;
+                                    if (context.applicationValues) {
+                                        var idx = context.getApplicationValueIndex("ESPWorkunit.js", context.graphs[i].Name + "_SVG");
+                                        if (idx >= 0) {
+                                            context.graphs[i].svg = context.applicationValues[idx].Value;
+                                        }
                                     }
                                 }
                             }
+                            args.onGetGraphs(context.graphs)
                         }
-                        args.onGetGraphs(context.graphs)
-                    }
-                    if (args.onGetAll) {
-                        args.onGetAll(workunit);
+                        if (args.onGetAll) {
+                            args.onGetAll(context.WUInfoResponse);
+                        }
                     }
                 },
                 error: function (e) {

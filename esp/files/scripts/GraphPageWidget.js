@@ -15,6 +15,7 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
+    "dojo/_base/lang",
     "dojo/_base/sniff",
     "dojo/_base/array",
     "dojo/dom",
@@ -42,7 +43,7 @@ define([
     "dojo/text!../templates/GraphPageWidget.html",
 
     "dijit/form/TextBox"
-], function (declare, sniff, array, dom, domConstruct, on, Memory, ObjectStore,
+], function (declare, lang, sniff, array, dom, domConstruct, on, Memory, ObjectStore,
             _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, registry, Dialog,
             DataGrid, GraphWidget, ESPWorkunit, TimingGridWidget, TimingTreeMapWidget,
             template) {

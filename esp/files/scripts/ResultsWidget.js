@@ -119,7 +119,7 @@ define([
                 this.wu.monitor(function () {
                     if (context.wu.isComplete() || ++monitorCount % 5 == 0) {
                         context.wu.getInfo({
-                            onGetExceptions: function (exceptions) {
+                            onGetWUExceptions: function (exceptions) {
                                 if (params.ShowErrors && exceptions.length) {
                                     context.ensurePane(context.id + "exceptions", {
                                         Wuid: params.Wuid,

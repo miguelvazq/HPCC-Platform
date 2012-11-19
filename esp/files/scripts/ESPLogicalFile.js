@@ -29,6 +29,10 @@ define([
 
         constructor: function (args) {
             declare.safeMixin(this, args);
+            this.DFUInfoResponse = {
+                Name: this.logicalName,
+                Cluster: this.cluster
+            };
         },
         update: function (request, appData, callback) {
             /*
@@ -81,10 +85,6 @@ define([
             var request = {
                 Name: this.logicalName,
                 Cluster: this.cluster
-                //UpdateDescription: false,
-                //FileName: "",
-                //FileDesc: "",
-                //rawxml_: true
             };
 
             var context = this;
@@ -93,7 +93,6 @@ define([
                 handleAs: "json",
                 content: request,
                 load: function (response) {
-                    //var workunit = context.getValue(xmlDom, "Workunit", ["ECLException", "ECLResult", "ECLGraph", "ECLTimer", "ECLSchemaItem", "ApplicationValue"]);
                     if (response.DFUInfoResponse) {
                         var fileDetail = response.DFUInfoResponse.FileDetail;
                         context.DFUInfoResponse = fileDetail;

@@ -152,7 +152,7 @@ define([
                 var context = this;
                 this.wu.monitor(function () {
                     context.wu.getInfo({
-                        onGetExceptions: function (exceptions) {
+                        onGetWUExceptions: function (exceptions) {
                             context.loadExceptions(exceptions);
                         }
                     });
