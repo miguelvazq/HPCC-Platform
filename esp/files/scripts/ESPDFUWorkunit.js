@@ -122,10 +122,8 @@ define([
         },
         
         fetchXML: function (onFetchXML) {
-            var request = {
-                Name: this.wu,
-                Format: "xml",
-                rawxml_: true
+            var request = {                
+                Wuid: this.Wuid
             };
 
             var context = this;
