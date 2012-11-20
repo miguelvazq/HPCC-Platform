@@ -115,9 +115,6 @@ define([
                                 }
                             }
                         });
-                        if (context.selectedTab) {
-                            context.selectedTab.refresh();
-                        }
                     }
                 });
             }

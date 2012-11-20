@@ -70,41 +70,56 @@ define([
         monitor: function (callback, monitorDuration) {
             if (!monitorDuration)
                 monitorDuration = 0;
-            var request = {};
-            request['Wuid'] = this.Wuid;
-            request['rawxml_'] = "1";
+            var request = {
+                Wuid: this.Wuid,
+                TruncateEclTo64k: true,
+                IncludeExceptions: false,
+                IncludeGraphs: false,
+                IncludeSourceFiles: false,
+                IncludeResults: false,
+                IncludeResultsViewNames: false,
+                IncludeVariables: false,
+                IncludeTimers: false,
+                IncludeDebugValues: false,
+                IncludeApplicationValues: false,
+                IncludeWorkflows: false,
+                IncludeXmlSchemas: false,
+                SuppressResultSchemas: true
+            };
 
             var context = this;
             xhr.post({
-                url: this.getBaseURL() + "/WUQuery.json",
+                url: this.getBaseURL() + "/WUInfo.json",
                 handleAs: "json",
                 content: request,
                 load: function (response) {
-                    var workunit = response.WUQueryResponse.Workunits.ECLWorkunit[0];
-                    context.stateID = workunit.StateID;
-                    context.state = workunit.State;
-                    context.protected = workunit.Protected;
-                    if (callback) {
-                        callback(workunit);
-                    }
-
-                    if (!context.isComplete()) {
-                        var timeout = 30;	// Seconds
-
-                        if (monitorDuration < 5) {
-                            timeout = 1;
-                        } else if (monitorDuration < 10) {
-                            timeout = 2;
-                        } else if (monitorDuration < 30) {
-                            timeout = 5;
-                        } else if (monitorDuration < 60) {
-                            timeout = 10;
-                        } else if (monitorDuration < 120) {
-                            timeout = 20;
+                    if (lang.exists("WUInfoResponse.Workunit", response)) {
+                        context.WUInfoResponse = response.WUInfoResponse.Workunit;
+                        context.stateID = context.WUInfoResponse.StateID;
+                        context.state = context.WUInfoResponse.State;
+                        context.protected = context.WUInfoResponse.Protected;
+                        if (callback) {
+                            callback(context.WUInfoResponse);
                         }
-                        setTimeout(function () {
-                            context.monitor(callback, monitorDuration + timeout);
-                        }, timeout * 1000);
+
+                        if (!context.isComplete()) {
+                            var timeout = 30;	// Seconds
+
+                            if (monitorDuration < 5) {
+                                timeout = 1;
+                            } else if (monitorDuration < 10) {
+                                timeout = 2;
+                            } else if (monitorDuration < 30) {
+                                timeout = 5;
+                            } else if (monitorDuration < 60) {
+                                timeout = 10;
+                            } else if (monitorDuration < 120) {
+                                timeout = 20;
+                            }
+                            setTimeout(function () {
+                                context.monitor(callback, monitorDuration + timeout);
+                            }, timeout * 1000);
+                        }
                     }
                 },
                 error: function () {

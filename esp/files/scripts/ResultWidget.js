@@ -56,7 +56,8 @@ define([
 
         postCreate: function (args) {
             this.inherited(arguments);
-            this._initControls();
+            this.borderContainer = registry.byId(this.id + "BorderContainer");
+            this.grid = registry.byId(this.id + "Grid");
         },
 
         startup: function (args) {
@@ -69,6 +70,10 @@ define([
         },
 
         layout: function (args) {
+            this.inherited(arguments);
+        },
+
+        destroy: function (args) {
             this.inherited(arguments);
         },
 
@@ -108,12 +113,6 @@ define([
 
         //  Implementation  ---
         onErrorClick: function (line, col) {
-        },
-
-        _initControls: function () {
-            var context = this;
-            this.borderContainer = registry.byId(this.id + "BorderContainer");
-            this.grid = registry.byId(this.id + "Grid");
         },
 
         init: function (params) {

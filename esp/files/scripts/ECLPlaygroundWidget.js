@@ -105,7 +105,7 @@ define([
                     Wuid: params.Wuid
                 });
                 this.wu.monitor(function () {
-                    context.monitorEclPlayground();
+                    context.monitorWorkunit();
                 });
             } else {
                 this.initSamples();
@@ -155,7 +155,7 @@ define([
             this.resultsWidget.clear();
         },
 
-        monitorEclPlayground: function () {
+        monitorWorkunit: function () {
             dom.byId(this.id + "Status").innerHTML = this.wu.state;
             var context = this;
             if (this.wu.isComplete()) {
@@ -218,7 +218,7 @@ define([
                 },
                 onSubmit: function () {
                     context.wu.monitor(function () {
-                        context.monitorEclPlayground();
+                        context.monitorWorkunit();
                     });
                 }
             });

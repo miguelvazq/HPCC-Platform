@@ -211,9 +211,11 @@ define([
                 onGetAll: function (response) {
                     if (response.Wuid && response.Wuid[0] == "D" && context.workunitWidget) {
                         context.tabContainer.removeChild(context.workunitWidget);
+                        context.workunitWidget.destroyRecursive();
                         context.workunitWidget = null;
                     } else if (context.dfuWorkunitWidget) {
                         context.tabContainer.removeChild(context.dfuWorkunitWidget);
+                        context.dfuWorkunitWidget.destroyRecursive();
                         context.dfuWorkunitWidget = null;
                     }
                     registry.byId(context.id + "Summary").set("title", response.Filename);

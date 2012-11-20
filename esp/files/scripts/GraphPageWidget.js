@@ -21,6 +21,7 @@ define([
     "dojo/dom",
     "dojo/dom-construct",
     "dojo/on",
+    "dojo/has",
     "dojo/store/Memory",
     "dojo/data/ObjectStore",
 
@@ -43,7 +44,7 @@ define([
     "dojo/text!../templates/GraphPageWidget.html",
 
     "dijit/form/TextBox"
-], function (declare, lang, sniff, array, dom, domConstruct, on, Memory, ObjectStore,
+], function (declare, lang, sniff, array, dom, domConstruct, on, has, Memory, ObjectStore,
             _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, registry, Dialog,
             DataGrid, GraphWidget, ESPWorkunit, TimingGridWidget, TimingTreeMapWidget,
             template) {
@@ -247,6 +248,28 @@ define([
             this._doFind(true);
         },
 
+        _onAbout: function () {
+            myDialog = new Dialog({
+                title: "About HPCC Systems Graph Control",
+                content: "Version:  " + this.main.getVersion() + "<br>"
+                + this.main.getResourceLinks(),
+                style: "width: 320px"
+            });
+            if (has("chrome")) {
+                this.main.hide();
+                this.overview.hide();
+                this.local.hide();
+
+                var context = this;
+                myDialog.connect(myDialog, "hide", function (e) {
+                    context.main.show();
+                    context.overview.show();
+                    context.local.show();
+                });
+            }
+            myDialog.show();
+        },
+
         init: function (params) {
             if (this.initalized) {
                 return;
@@ -438,15 +461,6 @@ define([
             for (var i = 0; i < mainItems.length; ++i) {
                 this.main.displayProperties(mainItems[i], propertiesDom);
             }
-        },
-
-        showHelpAbout: function () {
-            myDialog = new Dialog({
-                title: "About Graph sourceControl",
-                content: "Version:  " + main.getVersion(),
-                style: "width: 300px"
-            });
-            myDialog.show();
         },
 
         resetPage: function () {

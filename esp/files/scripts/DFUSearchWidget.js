@@ -166,7 +166,7 @@ define([
                 });
                 var context = this;
                 this.wu.monitor(function (workunit) {
-                    context.monitorEclPlayground(workunit);
+                    context.monitorWorkunit(workunit);
                 });
             }
            // this.infoGridWidget.init(params);
@@ -194,7 +194,7 @@ define([
 
         },
 
-        monitorEclPlayground: function (response) {
+        monitorWorkunit: function (response) {
             if (!this.loaded) {
                 //dom.byId(this.id + "WUInfoResponse").innerHTML = this.objectToText(response);             
                 //dom.byId("showStateIdImage").src = this.wu.getStateImage();

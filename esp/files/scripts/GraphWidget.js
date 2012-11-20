@@ -275,19 +275,20 @@ require([
                         }
                         this.plugin = dom.byId(pluginID);
                         var context = this;
-//                        setTimeout(function () {
-//                            context.registerEvents();
-//                        }, 20);
                     } else {
                         domConstruct.create("div", {
                             innerHTML: "<h4>Graph View</h4>" +
                                         "<p>To enable graph views, please install the Graph View Control plugin:</p>" +
-                                        "<a href=\"http://graphcontrol.hpccsystems.com/stable/SetupGraphControl.msi\">Internet Explorer + Firefox (32bit)</a><br>" +
-                                        "<a href=\"http://graphcontrol.hpccsystems.com/stable/SetupGraphControl64.msi\">Internet Explorer + Firefox (64bit)</a><br>" +
-                                        "<a href=\"https://github.com/hpcc-systems/GraphControl\">Linux/Other (sources)</a>"
+                                        this.getResourceLinks()
                         }, this.graphContentPane.domNode);
                     }
                 }
+            },
+
+            getResourceLinks: function () {
+                return "<a href=\"http://hpccsystems.com/download/free-community-edition/graph-control\" target=\"_blank\">Binary Installs</a><br>" +
+                "<a href=\"https://github.com/hpcc-systems/GraphControl\" target=\"_blank\">Source Code</a><br><br>" + 
+                "<a href=\"http://hpccsystems.com\" target=\"_blank\">HPCC Systems</a>"
             },
 
             setMessage: function (message) {
@@ -360,6 +361,20 @@ require([
                 return null;
             },
 
+            hide: function () {
+                if (this.plugin) {
+                    dojo.style(this.plugin, "width", "1px");
+                    dojo.style(this.plugin, "height", "1px");
+                }
+            },
+
+            show: function () {
+                if (this.plugin) {
+                    dojo.style(this.plugin, "width", "100%");
+                    dojo.style(this.plugin, "height", "100%");
+                }
+            },
+
             watchSplitter: function (splitter) {
                 if (has("chrome")) {
                     //  Chrome can ignore splitter events
@@ -367,16 +382,10 @@ require([
                 }
                 var context = this;
                 dojo.connect(splitter, "_startDrag", function () {
-                    if (context.plugin) {
-                        dojo.style(context.plugin, "width", "1px");
-                        dojo.style(context.plugin, "height", "1px");
-                    }
+                    context.hide();
                 });
                 dojo.connect(splitter, "_stopDrag", function (evt) {
-                    if (context.plugin) {
-                        dojo.style(context.plugin, "width", "100%");
-                        dojo.style(context.plugin, "height", "100%");
-                    }
+                    context.show();
                 });
             },
 
@@ -385,30 +394,31 @@ require([
                     //  Only chrome needs to monitor select drop downs.
                     var context = this;
                     select.watch("_opened", function () {
-                        if (context.plugin) {
-                            if (select._opened) {
-                                dojo.style(context.plugin, "width", "1px");
-                                dojo.style(context.plugin, "height", "1px");
-                            } else {
-                                dojo.style(context.plugin, "width", "100%");
-                                dojo.style(context.plugin, "height", "100%");
-                            }
+                        if (select._opened) {
+                            context.hide();
+                        } else {
+                            context.show();
                         }
                     });
                 }
             },
 
             watchStyleChange: function () {
+                //  When chrome hides the plugin it destroys it.  To prevent this it is just made very small.  
                 if (has("chrome")) {
                     var watchList = [];
                     var context = this;
                     var domNode = this.domNode;
+
+                    //  There are many places that may cause the plugin to be hidden, the possible places are calculated by walking the hierarchy upwards. 
                     while (domNode) {
                         if (domNode.id) {
                             watchList[domNode.id] = false;
                         }
                         domNode = domNode.parentElement;
                     }
+
+                    //  Hijack the dojo style class replacement call and monitor for elements in our watchList. 
                     aspect.around(domClass, "replace", function (origFunc) {
                         return function (node, addStyle, removeStyle) {
                             if (node.id in watchList) {
@@ -424,38 +434,7 @@ require([
                                     return;
                                 }
                             }
-                            var deferred = origFunc(node, addStyle, removeStyle);
-                            //  alternative:  return origFunc.apply(this, arguments);
-                            return deferred;
-                        }
-                    });
-                }
-            },
-
-        watchStyleChange_old: function () {
-                if (has("chrome")) {
-                    var context = this;
-                    aspect.around(domClass, "replace", function (origFunc) {
-                        return function (node, addStyle, removeStyle) {
-                            if (node.id == context.id) {
-                                if (addStyle == "dijitHidden") {
-                                    context.hiddenBySelf = true;
-                                    dojo.style(node, "width", "1px");
-                                    dojo.style(node, "height", "1px");
-                                } else if (addStyle == "dijitVisible" && context.hiddenBySelf) {
-                                    context.hiddenBySelf = false;
-                                    dojo.style(node, "width", "100%");
-                                    dojo.style(node, "height", "100%");
-                                } else {
-                                    var deferred = origFunc(node, addStyle, removeStyle);
-                                    //  alternative:  return origFunc.apply(this, arguments);
-                                    return deferred;
-                                }
-                            } else {
-                                var deferred = origFunc(node, addStyle, removeStyle);
-                                //  alternative:  return origFunc.apply(this, arguments);
-                                return deferred;
-                            }
+                            return origFunc(node, addStyle, removeStyle);
                         }
                     });
                 }

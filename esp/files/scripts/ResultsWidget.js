@@ -160,6 +160,7 @@ define([
             var tabs = this.tabContainer.getChildren();
             for (var i = 0; i < tabs.length; ++i) {
                 this.tabContainer.removeChild(tabs[i]);
+                tabs[i].destroyRecursive();
             }
             this.tabMap = [];
             this.selectedTab = null;

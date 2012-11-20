@@ -107,16 +107,16 @@ define([
             },
 
             setSelected: function (selItems) {
-                var selectedItems = [];
-                for (var i = 0; i < selItems.length; ++i) {
-                    var item = this.store.get(selItems[i]);
-                    if (item) {
-                        selectedItems.push(item);
+                if (this.store) {
+                    var selectedItems = [];
+                    for (var i = 0; i < selItems.length; ++i) {
+                        var item = this.store.get(selItems[i]);
+                        if (item) {
+                            selectedItems.push(item);
+                        }
                     }
+                    this.treeMap.set("selectedItems", selectedItems);
                 }
-                this.treeMap.set("selectedItems", selectedItems);
-                //this._dataChanged = true;
-                //this.treeMap.invalidateRendering();
             },
 
             loadTimers: function (timers, query) {

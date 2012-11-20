@@ -29,7 +29,6 @@ define([
     "dijit/TitlePane",
     "dijit/registry",
     "dijit/ProgressBar",
-    
 
     "hpcc/ECLSourceWidget",
     "hpcc/TargetSelectWidget",
