@@ -155,9 +155,18 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            this.logicalFile.save({
-                load: function (response) {
-                    //TODO
+            var context = this;
+            this.logicalFile.save(dom.byId(context.id + "Description").value, {
+                onGetAll: function (response) {
+                    context.refreshFileDetails(response);
+                }
+            });
+        },
+        _onRename: function (event) {
+            var context = this;
+            this.logicalFile.rename(dom.byId(this.id + "LogicalFileName2").innerHTML, {
+                onGetAll: function (response) {
+                    context.refreshFileDetails(response);
                 }
             });
         },
@@ -189,6 +198,7 @@ define([
                 this.initiated = true;
                 if (params.Name) {
                     dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
+                    dom.byId(this.id + "LogicalFileName2").value = params.Name;
                     this.logicalFile = new ESPLogicalFile({
                         cluster: params.Cluster,
                         logicalName: params.Name
@@ -209,31 +219,35 @@ define([
             var context = this;
             this.logicalFile.getInfo({
                 onGetAll: function (response) {
-                    if (response.Wuid && response.Wuid[0] == "D" && context.workunitWidget) {
-                        context.tabContainer.removeChild(context.workunitWidget);
-                        context.workunitWidget.destroyRecursive();
-                        context.workunitWidget = null;
-                    } else if (context.dfuWorkunitWidget) {
-                        context.tabContainer.removeChild(context.dfuWorkunitWidget);
-                        context.dfuWorkunitWidget.destroyRecursive();
-                        context.dfuWorkunitWidget = null;
-                    }
-                    registry.byId(context.id + "Summary").set("title", response.Filename);
-                    //registry.byId(context.id + "Summary").set("iconClass", "iconRefresh");
-                    //domClass.remove(context.id + "Test");
-                    //domClass.add(context.id + "Test", "iconRefresh");
-                    dom.byId(context.id + "Owner").innerHTML = response.Owner;
-                    dom.byId(context.id + "Description").value = response.Description;
-                    dom.byId(context.id + "JobName").innerHTML = response.JobName;
-                    dom.byId(context.id + "Wuid").innerHTML = response.Wuid;
-                    dom.byId(context.id + "Modification").innerHTML = response.Modified  + " (UTC/GMT)";
-                    dom.byId(context.id + "Directory").innerHTML = response.Dir;
-                    dom.byId(context.id + "RecordSize").innerHTML = response.RecordSize;
-                    dom.byId(context.id + "Count").innerHTML = response.RecordCount;
-                    dom.byId(context.id + "Filesize").innerHTML = response.Filesize;
-                    dom.byId(context.id + "Pathmask").innerHTML = response.PathMask;
+                    context.refreshFileDetails(response);
                 }
             });
+        },
+        refreshFileDetails: function (fileDetails) {
+            if (fileDetails.Wuid && fileDetails.Wuid[0] == "D" && this.workunitWidget) {
+                this.tabContainer.removeChild(this.workunitWidget);
+                this.workunitWidget.destroyRecursive();
+                this.workunitWidget = null;
+            } else if (this.dfuWorkunitWidget) {
+                this.tabContainer.removeChild(this.dfuWorkunitWidget);
+                this.dfuWorkunitWidget.destroyRecursive();
+                this.dfuWorkunitWidget = null;
+            }
+            registry.byId(this.id + "Summary").set("title", fileDetails.Filename);
+            //registry.byId(this.id + "Summary").set("iconClass", "iconRefresh");
+            //domClass.remove(this.id + "Test");
+            //domClass.add(this.id + "Test", "iconRefresh");
+            dom.byId(this.id + "Owner").innerHTML = fileDetails.Owner;
+            dom.byId(this.id + "Description").value = fileDetails.Description;
+            dom.byId(this.id + "JobName").innerHTML = fileDetails.JobName;
+            dom.byId(this.id + "Wuid").innerHTML = fileDetails.Wuid;
+            dom.byId(this.id + "Modification").innerHTML = fileDetails.Modified + " (UTC/GMT)";
+            dom.byId(this.id + "Directory").innerHTML = fileDetails.Dir;
+            dom.byId(this.id + "RecordSize").innerHTML = fileDetails.RecordSize;
+            dom.byId(this.id + "Count").innerHTML = fileDetails.RecordCount;
+            dom.byId(this.id + "Filesize").innerHTML = fileDetails.Filesize;
+            dom.byId(this.id + "Pathmask").innerHTML = fileDetails.PathMask;
         }
+
     });
 });

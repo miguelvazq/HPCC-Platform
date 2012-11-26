@@ -34,54 +34,31 @@ define([
                 Cluster: this.cluster
             };
         },
-        update: function (request, appData, callback) {
-            /*
-            lang.mixin(request, {
-                Wuid: this.Wuid,
-                rawxml_: true
-            });
-            if (this.WUInfoResponse) {
-                lang.mixin(request, {
-                    StateOrig: this.WUInfoResponse.State,
-                    JobnameOrig: this.WUInfoResponse.Jobname,
-                    DescriptionOrig: this.WUInfoResponse.Description,
-                    ProtectedOrig: this.WUInfoResponse.Protected,
-                    ScopeOrig: this.WUInfoResponse.Scope,
-                    ClusterOrig: this.WUInfoResponse.Cluster
-                });
-            }
-            if (appData) {
-                request['ApplicationValues.ApplicationValue.itemcount'] = appData.length;
-                var i = 0;
-                for (key in appData) {
-                    request['ApplicationValues.ApplicationValue.' + i + '.Application'] = "ESPWorkunit.js";
-                    request['ApplicationValues.ApplicationValue.' + i + '.Name'] = key;
-                    request['ApplicationValues.ApplicationValue.' + i + '.Value'] = appData[key];
-                    ++i;
-                }
-            }
+        save: function (description, args) {
+            //WsDfu/DFUInfo?FileName=progguide%3A%3Aexampledata%3A%3Akeys%3A%3Apeople.lastname.firstname&UpdateDescription=true&FileDesc=%C2%A0123&Save+Description=Save+Description
+            var request = {
+                FileName: this.logicalName,
+                Cluster: this.cluster,
+                UpdateDescription: true,
+                FileDesc: description
+            };
 
             var context = this;
             xhr.post({
-                url: this.getBaseURL() + "/WUUpdate.json",
+                url: this.getBaseURL("WsDfu") + "/DFUInfo.json",
                 handleAs: "json",
                 content: request,
                 load: function (response) {
-                    context.WUInfoResponse = lang.mixin(context.WUInfoResponse, response.WUUpdateResponse.Workunit);
-                    context.onUpdate();
-                    if (callback && callback.load) {
-                        callback.load(response);
+                    if (response.DFUInfoResponse) {
+                        context.processDFUInfoResponse(response.DFUInfoResponse, args);
                     }
                 },
-                error: function (error) {
-                    if (callback && callback.error) {
-                        callback.error(e);
-                    }
+                error: function (e) {
                 }
             });
-            */
         },
         getInfo: function (args) {
+            //WsDfu/DFUInfo?Name=progguide::exampledata::keys::people.state.city.zip.lastname.firstname.payload&Cluster=hthor__myeclagent HTTP/1.1
             var request = {
                 Name: this.logicalName,
                 Cluster: this.cluster
@@ -94,19 +71,22 @@ define([
                 content: request,
                 load: function (response) {
                     if (response.DFUInfoResponse) {
-                        var fileDetail = response.DFUInfoResponse.FileDetail;
-                        context.DFUInfoResponse = fileDetail;
-                        context.result = new ESPResult(fileDetail);
-
-                        if (args.onGetAll) {
-                            args.onGetAll(fileDetail);
-                        }
+                        context.processDFUInfoResponse(response.DFUInfoResponse, args);
                     }
                 },
                 error: function (e) {
                     var d = 0;
                 }
             });
+        },
+        processDFUInfoResponse: function(dfuInfoResponse, args) {
+            var fileDetail = dfuInfoResponse.FileDetail;
+            this.DFUInfoResponse = fileDetail;
+            this.result = new ESPResult(fileDetail);
+
+            if (args.onGetAll) {
+                args.onGetAll(fileDetail);
+            }
         },
         fetchStructure: function (format, onFetchStructure) {
             var request = {
