@@ -67,6 +67,7 @@ background:rgb(244,244,244);
 padding:10px;
 margin:10px 0;
 border:solid 1px rgb(214,214,214);
+
 }
 
 
@@ -95,7 +96,7 @@ form {
     margin:0;
     padding:0;
     width:960px;
-    float:left;
+   
 }
 
 #longList label{
@@ -192,8 +193,6 @@ form h2{
 /*start styles for WUDetails*/
     #container{
         width:960px;
-        
-
     }
 
     #mainMenu{
@@ -323,11 +322,6 @@ background: yellow;
 }
 
 
-/* CAN WE MOVE AND REPLACE Prompt with this instead?.bold{
-
-    font-weight:bold;
-}
-*/
 
 .Prompt{
     font-weight:bold;
