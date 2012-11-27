@@ -256,8 +256,10 @@ define([
                  registry.byId(this.id + "Protected").set("readOnly", !this.wu.isComplete());
                  
                  dom.byId(this.id + "ID").innerHTML = response.ID;
+                 dom.byId(this.id + "ClusterName").value = response.ClusterName;
                  dom.byId(this.id + "JobName").value = response.JobName;
                  dom.byId(this.id + "Queue").innerHTML = response.Queue;
+                 dom.byId(this.id + "User").innerHTML = response.User;
                  dom.byId(this.id + "Command").innerHTML = response.Command;
                  dom.byId(this.id + "TimeStarted").innerHTML = response.TimeStarted;
                  dom.byId(this.id + "TimeStopped").innerHTML = response.TimeStopped;                             

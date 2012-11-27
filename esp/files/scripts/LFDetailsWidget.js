@@ -248,6 +248,7 @@ define([
             this.resultWidget.set("title", "Content " + "(" + fileDetails.RecordCount + ")");
             dom.byId(this.id + "Filesize").innerHTML = fileDetails.Filesize;
             dom.byId(this.id + "Pathmask").innerHTML = fileDetails.PathMask;
+            dom.byId(this.id + "ActualSize").innerHTML = fileDetails.ActualSize;
         }
 
     });
