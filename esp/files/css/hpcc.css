@@ -66,13 +66,36 @@ box-shadow: inset 0 2px 0 #fff;
 background:rgb(244,244,244);
 padding:10px;
 margin:10px 0;
-border:solid 1px rgb(214,214,214); ;
+border:solid 1px rgb(214,214,214);
 }
+
+
+.myDialog{
+border-radius: 7px  7px 0  0;
+-moz-border-radius: 7px 7px 0 0;
+-webkit-border-radius: 7px 7px 0 0;
+-khtml-border-radius: 7px 7px 0 0;
+background:rgb(237,247,254);
+padding:0px;
+margin:0 10px 0 0;
+border:solid 1px rgb(214,214,214);
+width:250px;
+position: absolute;
+right:0;
+bottom:0;
+color:#666;
+height:1px;
+}
+
+/*.myDialog .save{
+    background: url("/esp/files/img/accept.png") no-repeat;
+}*/
 
 form {
     margin:0;
     padding:0;
-    width:100%;
+    width:960px;
+    float:left;
 }
 
 #longList label{
@@ -184,6 +207,7 @@ form h2{
    
 .CodeMirror {
 }
+
 .CodeMirror-scroll {
     position: absolute;
     height: 100%;
