@@ -19,6 +19,9 @@ define([
     "dojo/dom-class",
     "dojo/store/Memory",
     "dojo/data/ObjectStore",
+    "dojo/_base/fx",
+    "dojo/fx",
+    "dojo/dom-style",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
@@ -44,7 +47,7 @@ define([
     "dijit/Toolbar",
     "dijit/TooltipDialog",
     "dijit/TitlePane"
-], function (declare, dom, domClass, Memory, ObjectStore,
+], function (declare, dom, domClass, Memory, ObjectStore, baseFx, fx, style,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphsWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit,
                 template) {
@@ -75,6 +78,9 @@ define([
         wu: null,
         prevState: "",
 
+
+
+
         buildRendering: function (args) {
             this.inherited(arguments);
         },
@@ -93,6 +99,8 @@ define([
             this.xmlWidget = registry.byId(this.id + "XML");
             this.infoGridWidget = registry.byId(this.id + "InfoContainer");
             this.legacyPane = registry.byId(this.id + "Legacy");
+
+
 
             var context = this;
             this.tabContainer.watch("selectedChildWidget", function (name, oval, nval) {
@@ -144,12 +152,13 @@ define([
                         src: "/WsWorkunits/WUInfo?Wuid=" + context.wu.Wuid + "&IncludeExceptions=0&IncludeGraphs=0&IncludeSourceFiles=0&IncludeResults=0&IncludeVariables=0&IncludeTimers=0&IncludeDebugValues=0&IncludeApplicationValues=0&IncludeWorkflows&SuppressResultSchemas=1",
                         style: "border: 0; width: 100%; height: 100%"
                     }));
-                }
+                }                
             });
         },
 
         startup: function (args) {
             this.inherited(arguments);
+
         },
 
         resize: function (args) {
@@ -163,8 +172,10 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            var protectedCheckbox = registry.byId(this.id + "Protected");
+            var protectedCheckbox = registry.byId(this.id + "Protected");            
             var context = this;
+            var fadeTarget = dom.byId("fadeTarget");
+
             this.wu.update({
                 Description: dom.byId(context.id + "Description").value,
                 Jobname: dom.byId(context.id + "JobName").value,
@@ -174,7 +185,21 @@ define([
                     context.monitor();
                 }
             });
-        },
+
+           
+
+           
+            fx.fadeOut({
+                node: fadeTarget
+               
+            }).play();
+
+
+
+
+
+
+        },//end of onSave
         _onReload: function (event) {
             this.monitor();
         },
