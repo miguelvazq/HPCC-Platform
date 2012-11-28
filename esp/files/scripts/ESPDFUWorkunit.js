@@ -202,7 +202,7 @@ define([
         },
         getProtectedImage: function () {
             if (this.protected) {
-                return "img/locked.png"
+            return "img/locked.png"
             }
             return "img/unlocked.png"
         },

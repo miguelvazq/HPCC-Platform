@@ -211,8 +211,8 @@ define([
             var protectedCheckbox = registry.byId(this.id + "Protected");
             var context = this;
             this.wu.update({
-                //Description: dom.byId(context.id + "Description").value,
-                //obname: dom.byId(context.id + "JobName").value,
+                Description: dom.byId(context.id + "Description").value,
+                Jobname: dom.byId(context.id + "JobName").value,
                 Protected: protectedCheckbox.get("value")
             }, null, {
                 load: function (response) {
