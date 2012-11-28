@@ -198,7 +198,7 @@ define([
                 this.initiated = true;
                 if (params.Name) {
                     dom.byId(this.id + "LogicalFileName").innerHTML = params.Name;
-                    dom.byId(this.id + "LogicalFileName2").value = params.Name;
+                    //dom.byId(this.id + "LogicalFileName2").value = params.Name;
                     this.logicalFile = new ESPLogicalFile({
                         cluster: params.Cluster,
                         logicalName: params.Name
@@ -245,6 +245,7 @@ define([
             dom.byId(this.id + "Directory").innerHTML = fileDetails.Dir;
             dom.byId(this.id + "RecordSize").innerHTML = fileDetails.RecordSize;
             dom.byId(this.id + "Count").innerHTML = fileDetails.RecordCount;
+            this.resultWidget.set("title", "Content " + "(" + fileDetails.RecordCount + ")");
             dom.byId(this.id + "Filesize").innerHTML = fileDetails.Filesize;
             dom.byId(this.id + "Pathmask").innerHTML = fileDetails.PathMask;
         }
