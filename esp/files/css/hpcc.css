@@ -14,6 +14,8 @@
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
+/*ELEMENT STYLES***************/
+
 html, body {
     background: white;
     width: 100%;
@@ -22,10 +24,7 @@ html, body {
     color: rgb(51, 51, 51);
     font-family: Lucida Sans,Lucida Grande,Arial !important;
     font-size: 13px !important;
-    padding-top: 0px;
-    padding-right: 0px;
-    padding-bottom: 0px;
-    padding-left: 0px;
+    padding: 0;    
 }
 
 
@@ -52,38 +51,10 @@ h1 {
     font-size: 1.5em;
 }
 
-#myProgressBar{
-    width:200px;
-}
-
-
-.rounded{
-border-radius: 5px;
--moz-border-radius:10px;
--webkit-border-radius:10px;
--khtml-border-radius:10px;
-box-shadow: inset 0 2px 0 #fff;
-background:rgb(244,244,244);
-padding:10px;
-margin:10px 0;
-border:solid 1px rgb(214,214,214); ;
-}
-
 form {
     margin:0;
     padding:0;
     width:100%;
-}
-
-#longList label{
-    float: left;
-    width: 14%;
-    margin: 0 15px 0 0;
-    text-align: right;
-    padding-top: 4px;
-    font-weight:bold;
-    height:20px;
-
 }
 
 form label{
@@ -103,7 +74,6 @@ form textarea{
     height:auto;
     float:left;
 }
-
 
 form ul{
     list-style:none;
@@ -127,6 +97,12 @@ form h2{
     padding:5px 0;
 }
 
+/*IDs************************/
+
+#myProgressBar{
+    width:200px;
+}
+
 #borderContainer {
     width:100%;
     height:100%;
@@ -142,9 +118,63 @@ form h2{
     height: 100%;
 }
 
-.pageOverlay {
-    left: 0px;
-    top: 0px;
+#longList label{
+    float: left;
+    width: 14%;
+    margin: 0 15px 0 0;
+    text-align: right;
+    padding-top: 4px;
+    font-weight:bold;
+    height:20px;
+}
+
+#loadingOverlay {
+    background: url("/esp/files/img/loadingAnimation.gif") no-repeat 10px 23px rgb(255, 255, 255);
+}
+
+#loadingOverlay .loadingMessage {
+        padding: 25px 40px;
+        color: rgb(153, 153, 153);
+    }
+
+#timings, #properties {
+    padding: 0;
+    overflow: hidden;
+}
+
+#container{
+    width:960px;
+}
+
+#mainMenu{
+    margin-bottom:10px;
+}
+
+#widgetWUInfoResponse{
+    padding-left:10px;
+}
+
+/*CLASSES******************/
+.hidden{
+    color:rgb(214, 214, 214);
+    display:none;
+}
+
+.rounded{
+    border-radius: 5px;
+    -moz-border-radius:10px;
+    -webkit-border-radius:10px;
+    -khtml-border-radius:10px;
+    box-shadow: inset 0 2px 0 #fff;
+    background:rgb(244,244,244);
+    padding:10px;
+    margin:10px 0;
+    border:solid 1px rgb(214,214,214); 
+}
+
+.pageOverlay{
+    left: 0;
+    top: 0;
     width: 100%;
     height: 100%;
     display: block;
@@ -152,38 +182,10 @@ form h2{
     z-index: 1001;
 }
 
-#loadingOverlay {
-    background: url("/esp/files/img/loadingAnimation.gif") no-repeat 10px 23px rgb(255, 255, 255);
-}
 
-    #loadingOverlay .loadingMessage {
-        padding: 25px 40px;
-        color: rgb(153, 153, 153);
-    }
-
-#timings, #properties {
-    padding: 0px;
-    overflow: hidden;
-}
-
-/*start styles for WUDetails*/
-    #container{
-        width:960px;
-        
-
-    }
-
-    #mainMenu{
-        margin-bottom:10px;
-    }
-
-    #widgetWUInfoResponse{
-        padding-left:10px;
-    }
-
-   
 .CodeMirror {
 }
+
 .CodeMirror-scroll {
     position: absolute;
     height: 100%;
@@ -225,8 +227,7 @@ form h2{
 }
 
 
-
-/*STATES*/
+/*WUSTATES*/
 .iconWorkunit {
     background-image: url("../img/workunit.png"); 
     width: 16px;
@@ -286,24 +287,14 @@ form h2{
     display: inline-block;
 }
 
-
-
-
 .ErrorCell{
-background: red;
-color: white;
+    background: red;
+    color: white;
 }
 
 .WarningCell{
-background: yellow;
+    background: yellow;
 }
-
-
-/* CAN WE MOVE AND REPLACE Prompt with this instead?.bold{
-
-    font-weight:bold;
-}
-*/
 
 .Prompt{
     font-weight:bold;
