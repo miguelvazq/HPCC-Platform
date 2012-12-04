@@ -17,25 +17,34 @@
                        <h2>
                         <img id="${id}ProtectedImage" src="img/locked.png"/>&nbsp<img id="${id}StateIdImage" src="img/workunit.png"/>&nbsp<span id="${id}Wuid" class="bold">WUID</span>
                     </h2>
-                    <form id="longList">                    
+                    <form>                    
                          <!--<div id="jsProgressBar" data-dojo-type="dijit.form.Button" data-dojo-attach-event="onClick:showProgress">go</div>-->
                         <ul>                           
                              <li>
                                 <label for="ID">ID:</label>
                                 <div id="${id}ID"></div>
                             </li>
+                            <li>
+                                <label for="Cluster Name">Cluster Name:</label>
+                                <div><input id="${id}ClusterName" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
+                            </li>
                              <li>
                                 <label for="Owner">Job name:</label>
                                 <div><input id="${id}JobName" data-dojo-props="trim:true" data-dojo-type="dijit.form.TextBox"/></div>
+                            </li>
+                             <li>
+                                <label for="Queue">Queue:</label>
+                                <div id="${id}Queue"></div>
+                            </li>
+                             <li>
+                                <label for="User">User:</label>
+                                <div id="${id}User"></div>
                             </li>
                              <li>                 
                                 <label for="Protected">Protected:</label>
                                 <div><input id="${id}Protected" data-dojo-type="dijit.form.CheckBox"/></div>
                             </li>
-                            <li>
-                                <label for="Queue">Queue:</label>
-                                <div id="${id}Queue"></div>
-                            </li>
+                           
                             <li>
                                 <label for="Command">Command:</label>
                                 <div id="${id}Command"></div>
@@ -77,6 +86,10 @@
                                         <option value="Failed">Failed</option>    
                                     </select>
                                 </div>
+                            </li>
+                            <li>
+                                <label for="Source Dali">SourceDali:</label>
+                                <div id="${id}SourceDali"></div>
                             </li>
                             <li>
                                 <label for="Source Logical Name">SourceLogicalName:</label>
