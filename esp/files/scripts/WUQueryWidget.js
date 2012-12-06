@@ -16,30 +16,20 @@
 define([
     "dojo/_base/declare",
     "dojo/dom",
-    "dojo/dom-class",
-    "dojo/store/Memory",
     "dojo/data/ObjectStore",
-    "dojo/data/ItemFileWriteStore",
+    "dojo/date",
 
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
 
-	"dojox/grid/EnhancedGrid",
+    "dojox/grid/EnhancedGrid",
     "dojox/grid/enhanced/plugins/Pagination",
     "dojox/grid/enhanced/plugins/IndirectSelection",
 
-    "hpcc/ECLSourceWidget",
-    "hpcc/TargetSelectWidget",
-    "hpcc/SampleSelectWidget",
-    "hpcc/GraphsWidget",
-    "hpcc/ResultsWidget",
-    "hpcc/InfoGridWidget",
-    "hpcc/LogsWidget",
-    "hpcc/ESPWorkunit",
-	"hpcc/WsWorkunits",
-	"hpcc/WUDetailsWidget",
+    "hpcc/WsWorkunits",
+    "hpcc/WUDetailsWidget",
 
     "dojo/text!../templates/WUQueryWidget.html",
 
@@ -52,12 +42,11 @@ define([
     "dijit/form/Button",
     "dijit/form/Select",
     "dijit/Toolbar",
-    "dijit/TooltipDialog",
-    "dijit/TitlePane"
-], function (declare, dom, domClass, Memory, ObjectStore, ItemFileWriteStore,
+    "dijit/TooltipDialog"
+], function (declare, dom, ObjectStore, date,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 EnhancedGrid, Pagination, IndirectSelection,
-                EclSourceWidget, TargetSelectWidget, SampleSelectWidget, GraphsWidget, ResultsWidget, InfoGridWidget, LogsWidget, Workunit, WsWorkunits, WUDetailsWidget,
+                WsWorkunits, WUDetailsWidget,
                 template) {
     return declare("WUQueryWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -181,24 +170,49 @@ define([
             dom.byId(this.id + "ECL").value = "";
             dom.byId(this.id + "LogicalFile").value = "";
             dom.byId(this.id + "LogicalFileSearchType").value = "";
+            dom.byId(this.id + "FromDate").value = "";
+            dom.byId(this.id + "FromTime").value = "";
+            dom.byId(this.id + "ToDate").value = "";
+            dom.byId(this.id + "LastNDays").value = "";
             this.refreshGrid();
         },
 
-        //LogicalFile=xxx&LogicalFileSearchType=Used
-        //LogicalFile=zzz&LogicalFileSearchType=Created
-        //DateRB=0&StartDate=2012-07-08T00%3A00%3A00Z&EndDate=2012-12-30T23%3A59%3A59Z&LastNDays=
-        //LastNDays=69
         getFilter: function () {
-            var debug = registry.byId(this.id + "LogicalFileSearchType").get("value");
-            return {
+            var retVal = {
                 Owner: dom.byId(this.id + "Owner").value,
                 Jobname: dom.byId(this.id + "Jobname").value,
                 Cluster: dom.byId(this.id + "Cluster").value,
                 State: dom.byId(this.id + "State").value,
                 ECL: dom.byId(this.id + "ECL").value,
                 LogicalFile: dom.byId(this.id + "LogicalFile").value,
-                LogicalFileSearchType: registry.byId(this.id + "LogicalFileSearchType").get("value")
+                LogicalFileSearchType: registry.byId(this.id + "LogicalFileSearchType").get("value"),
+                StartDate: this.getISOString("FromDate", "FromTime"),
+                EndDate: this.getISOString("ToDate", "ToTime"),
+                LastNDays: dom.byId(this.id + "LastNDays").value
             };
+            if (retVal.StartDate != "" && retVal.EndDate != "") {
+                retVal["DateRB"] = "0";
+            } else if (retVal.LastNDays != "") {
+                retVal["DateRB"] = "0";
+                var now = new Date();
+                retVal.StartDate = date.add(now, "day", dom.byId(this.id + "LastNDays").value * -1).toISOString();
+                retVal.EndDate = now.toISOString();
+            }
+            return retVal;
+        },
+
+        getISOString: function (dateField, timeField) {
+            var d = registry.byId(this.id + dateField).attr("value");
+            var t = registry.byId(this.id + timeField).attr("value");
+            if (d) {
+                if (t) {
+                    d.setHours(t.getHours());
+                    d.setMinutes(t.getMinutes());
+                    d.setSeconds(t.getSeconds());
+                }
+                return d.toISOString();
+            }
+            return "";
         },
 
         //  Implementation  ---
