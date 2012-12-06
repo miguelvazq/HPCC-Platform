@@ -19,7 +19,6 @@ define([
     "dojo/dom",
     "dojo/dom-style",
 
-
     "dijit/layout/_LayoutWidget",
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
@@ -31,7 +30,6 @@ define([
     "dijit/TitlePane",
     "dijit/registry",
     "dijit/ProgressBar",
-
 
     "hpcc/ECLSourceWidget",
     "hpcc/TargetSelectWidget",
