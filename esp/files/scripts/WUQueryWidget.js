@@ -165,28 +165,30 @@ define([
         },
         _onDeschedule: function (event) {
         },
-        _onFilterApply: function (event) {            
+        _onFilterApply: function (event) {
             this.workunitsGrid.rowSelectCell.toggleAllSelection(false);
             if(
-                   dom.byId(this.id + "Owner").value != "" ||
-                   dom.byId(this.id + "Jobname").value != "" ||
-                   dom.byId(this.id + "Cluster").value != "" ||
-                   dom.byId(this.id + "State").value != "" ||
-                   dom.byId(this.id + "ECL").value != "" ||
-                   dom.byId(this.id + "LogicalFile").value != "" ||
-                   dom.byId(this.id + "LogicalFileSearchType").value != "" ||
-                   dom.byId(this.id + "FromDate").value != "" ||
-                   dom.byId(this.id + "FromTime").value != "" ||
-                   dom.byId(this.id + "ToDate").value != "" ||
-                   dom.byId(this.id + "LastNDays").value != ""
-                   ){
-                        domClass.remove(this.id + "IconFilter", "hidden");
-                        domClass.add(this.id + "IconFilter", "iconFilter");
-                   }else{
-                        alert("Please fill a field");
-                   }                    
+               dom.byId(this.id + "Owner").value != "" ||
+               dom.byId(this.id + "Jobname").value != "" ||
+               dom.byId(this.id + "Cluster").value != "" ||
+               dom.byId(this.id + "State").value != "" ||
+               dom.byId(this.id + "ECL").value != "" ||
+               dom.byId(this.id + "LogicalFile").value != "" ||
+               dom.byId(this.id + "LogicalFileSearchType").value != "" ||
+               dom.byId(this.id + "FromDate").value != "" ||
+               dom.byId(this.id + "FromTime").value != "" ||
+               dom.byId(this.id + "ToDate").value != "" ||
+               dom.byId(this.id + "LastNDays").value != ""
+               ){
+                domClass.remove(this.id + "IconFilter", "hidden");
+                domClass.add(this.id + "IconFilter", "iconFilter");
+                }
+            else{
+                alert("Please fill a field");
+            }                    
             this.refreshGrid();
         },
+
         _onFilterClear: function(event) {
             this.workunitsGrid.rowSelectCell.toggleAllSelection(false);
             dom.byId(this.id + "Owner").value = "";
@@ -274,15 +276,17 @@ define([
                 onClick: function(){context._onSetToFailed();}
             }));
             pMenu.addChild(new MenuSeparator());
+            //this is testing branch
             pMenu.addChild(new MenuItem({
-                label: "Protect",                
+                label: "Protect",
                 id: "isProtected",
+            //this is 2nd commit
                 onClick: function(){context._onProtect(event);}
             }));
             pMenu.addChild(new MenuSeparator());
             pMenu.addChild(new MenuItem({
                 label: "Un-Protect",
-                id: "isNotProtected",                
+                id: "isNotProtected",
                 onClick: function(){context._onUnprotect();}
             }));
             pMenu.addChild(new MenuSeparator());
@@ -313,7 +317,7 @@ define([
             pMenu.addChild(new PopupMenuItem({
                 label: "Filter By:",
                 popup: pSubMenu
-            }));           
+            }));
             pMenu.startup();
 
             this.workunitsGrid.setStructure([
@@ -323,9 +327,9 @@ define([
                     width: "20px",
                     formatter: function (protected) {
                         if (protected == true) {
-                            return "P";                           
+                            return "P";
                         }
-                            return "";
+                    return "";
                     }
                 },
                 { name: "Wuid", field: "Wuid", width: "12" },
