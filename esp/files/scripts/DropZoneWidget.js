@@ -16,7 +16,6 @@
 define([
     "dojo/_base/declare",
     "dojo/dom",
-    "dojo/on",
     "dojo/dom-class",
     "dojo/data/ObjectStore",
     "dojo/date",
@@ -56,7 +55,7 @@ define([
     "dijit/TooltipDialog",
     "dijit/form/DateTextBox"
 
-], function (declare, dom, on, domClass, ObjectStore, date, Menu, MenuItem, MenuSeparator, ComboBox, PopupMenuItem, Dialog,
+], function (declare, dom, domClass, ObjectStore, date, Menu, MenuItem, MenuSeparator, ComboBox, PopupMenuItem, Dialog,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry, EnhancedGrid, Pagination, IndirectSelection, Uploader,IFrame, FileList,
                 FileSpray,
                 template) {
@@ -80,16 +79,24 @@ define([
             this.inherited(arguments);
             this.initDropZonesGrid();
             this.refreshActionState();
+            this.setForms();
             registry.byId(this.id + "Submit").set("disabled", true);
-            domClass.add(this.id + "fileQueue", "hidden");
         },
+
         resize: function (args) {
             this.inherited(arguments);
             this.borderContainer.resize();
         },
+
+        setForms: function(params) {
+           //console.log(params.netAddress);
+            
+        },
+
         layout: function (args) {
             this.inherited(arguments);
         },
+
         destroy: function (args) {
             this.inherited(arguments);
         },
@@ -97,8 +104,6 @@ define([
         _onUpload: function (event) {
             //myDialog.show();
             registry.byId(this.id + "Submit").set("disabled", false);
-            domClass.remove(this.id + "fileQueue", "hidden");
-            domClass.add(this.id + "fileQueue", "show");
         },
 
         _onDelete: function (event) {
@@ -117,7 +122,6 @@ define([
         _onSubmit: function(){
             //myDialog.hide();
             //registry.byId(this.id + "UploadForm").submit();
-
         },
 
         getValues: function () {
@@ -131,8 +135,8 @@ define([
             this.dropzonesGrid.setQuery({
                 NetAddress: params.netAddress
             });
-            
 
+            fileUploadForm.action = "/FileSpray/UploadFile?upload_&NetAddress=" + params.netAddress + "&OS=1&Path=/var/lib/HPCCSystems/mydropzone/";
         },
         initDropZonesGrid: function() {
             this.dropzonesGrid.setStructure([
@@ -168,12 +172,9 @@ define([
         refreshActionState: function () {
             var selection = this.dropzonesGrid.selection.getSelected();
             var hasSelection = false;
-           
-            
             for (var i = 0; i < selection.length; ++i) {
                 hasSelection = true;
             }
-
              registry.byId(this.id + "Delete").set("disabled", !hasSelection);
         },
     });
