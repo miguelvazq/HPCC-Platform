@@ -469,7 +469,7 @@ function selectGraphVertex(GraphToSelect, VertextToSelect)
     {
         gotovertex = VertextToSelect;
         initfind = true;
-        selectGraph(GraphToSelect);        
+        selectGraph(GraphToSelect);
     }
 
 }
@@ -481,7 +481,6 @@ function selectVertex(TargetVertex) {
 
 var forceFinalCountRefresh = true;
 
-        
 function reloadGraph()
 {
     if (isrunning == '1' || forceFinalCountRefresh)
@@ -547,7 +546,7 @@ function loadXGMMLGraph(xgmmlResponse) {
                 alert(xgmmlStr.substring(i + 9, j));
             }
         }
-        hideElement('loadingMsg'); 
+        hideElement('loadingMsg');
         return;
     }
     i = xgmmlStr.indexOf('<Name>' + graphName + '</Name');
@@ -609,7 +608,7 @@ function loadXGMMLGraph(xgmmlResponse) {
         if (gt != null) {
             clearTimeout(gt);
         }
-        gt = setTimeout("reloadGraph()", 8000);
+        gt = setTimeout("reloadGraph()", 15000);
     }
 
     update_details();
@@ -735,7 +734,7 @@ function loadWuInfo(xmlResponse)
             var graphstate = 0;
             if (typeof wuinfoJson.WUInfoResponse.Workunit.Graphs.ECLGraph.Failed != 'undefined' && wuinfoJson.WUInfoResponse.Workunit.Graphs.ECLGraph.Failed == '1')
             {
-                graphstate = 3;    
+                graphstate = 3;
             }
             if (typeof wuinfoJson.WUInfoResponse.Workunit.Graphs.ECLGraph.Complete != 'undefined' && wuinfoJson.WUInfoResponse.Workunit.Graphs.ECLGraph.Complete == '1')
             {
@@ -785,13 +784,13 @@ function loadWuInfo(xmlResponse)
               catch(e)
               {
               
-                break; 
+                break;
               }
             }
           }
           
           displayWsWorkunitsDetails();
-          update_details();  
+          update_details();
         }
     }
     return;
@@ -842,7 +841,7 @@ function getUrlParam( Url, Param)
     Url = Url.replace(/%3F/g, '?');
     Url = Url.replace(/%3D/g, '=');
     Url = Url.replace(/%26/g, '&');
-    var regexS = "[\\?&]"+Param+"=([^&#]*)";  
+    var regexS = "[\\?&]"+Param+"=([^&#]*)";
     var regex = new RegExp( regexS );  
     var results = regex.exec( Url );  
     if (results == null)
@@ -1014,7 +1013,7 @@ function sendWuInfoRequest() {
     if (wuinfoRequest != null)
     {
         wuinfoRequest.abort();
-        wuinfoRequest = null; 
+        wuinfoRequest = null;
     }
 
     // send request.
@@ -1034,7 +1033,7 @@ function sendWuInfoRequest() {
                 }
             }
             else {
-                gt = setTimeout("reloadGraph()", 8000);
+                gt = setTimeout("reloadGraph()", 15000);
                 hideElement('loadingMsg');
             }
         },
