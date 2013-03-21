@@ -31,7 +31,10 @@ define([
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
     "dijit/Dialog",
+<<<<<<< HEAD
     "dijit/focus",
+=======
+>>>>>>> 2806687e888e45099bc76446d8aef8cf79c22b5d
 
     "dojox/grid/EnhancedGrid",
     "dojox/grid/enhanced/plugins/Pagination",
@@ -62,7 +65,11 @@ define([
     "hpcc/TargetSelectWidget"
 
 ], function (declare, lang, arrayUtil, dom, domClass, domForm, ObjectStore, date, on, Menu, MenuItem, MenuSeparator,
+<<<<<<< HEAD
                 _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, focusUtil,
+=======
+                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog,
+>>>>>>> 2806687e888e45099bc76446d8aef8cf79c22b5d
                 EnhancedGrid, Pagination, IndirectSelection,
                 _TabContainerWidget, WsDfu, ESPLogicalFile, LFDetailsWidget, SFDetailsWidget,
                 template) {
@@ -173,6 +180,7 @@ define([
         },
 
         hasFilter: function () {
+<<<<<<< HEAD
             var filter = domForm.toObject(this.id + "FilterForm")
                     for (var key in filter) {
                         if (filter[key] != ""){
@@ -180,6 +188,15 @@ define([
                         }
                     }
                         return false
+=======
+            var filter = domForm.toObject(this.id + "FilterForm");
+            console.log(filter);
+                    for (key in filter) {
+                        if (filter.key != "")
+                            return true
+                        }
+                        return
+>>>>>>> 2806687e888e45099bc76446d8aef8cf79c22b5d
         },
 
         getFilter: function () {
