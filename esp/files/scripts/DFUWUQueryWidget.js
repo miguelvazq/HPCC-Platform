@@ -31,6 +31,7 @@ define([
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
     "dijit/Dialog",
+    "dijit/focus",
 
     "dojox/grid/EnhancedGrid",
     "dojox/grid/enhanced/plugins/Pagination",
@@ -61,7 +62,7 @@ define([
     "hpcc/TargetSelectWidget"
 
 ], function (declare, lang, arrayUtil, dom, domClass, domForm, ObjectStore, date, on, Menu, MenuItem, MenuSeparator,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog,
+                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, focusUtil,
                 EnhancedGrid, Pagination, IndirectSelection,
                 _TabContainerWidget, WsDfu, ESPLogicalFile, LFDetailsWidget, SFDetailsWidget,
                 template) {
@@ -172,13 +173,13 @@ define([
         },
 
         hasFilter: function () {
-            var filter = domForm.toObject(this.id + "FilterForm");
-            console.log(filter);
-                    for (key in filter) {
-                        if (filter.key != "")
+            var filter = domForm.toObject(this.id + "FilterForm")
+                    for (var key in filter) {
+                        if (filter[key] != ""){
                             return true
                         }
-                        return
+                    }
+                        return false
         },
 
         getFilter: function () {
@@ -218,10 +219,10 @@ define([
             this.initalized = true;
 
             this.selectChild(this.legacyPane, true);
-            this.clusterTargetSelect.init({
+            /*this.clusterTargetSelect.init({
                 Groups: true,
                 includeBlank: true
-            });
+            });*/
         },
 
         initTab: function() {
