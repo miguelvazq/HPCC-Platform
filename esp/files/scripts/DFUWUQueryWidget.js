@@ -144,11 +144,14 @@ define([
             this.workunitsGrid.rowSelectCell.toggleAllSelection(false);
             var context = this;
             arrayUtil.forEach(registry.byId(this.id + "FilterForm").getDescendants(), function (item, idx) {
+               
                 if (item.id == context.id + "ClusterTargetSelect") {
                     item.setValue("");
                 } else {
+
                     item.set('value', null);
                 }
+
             });
             this.refreshGrid();
         },
@@ -182,12 +185,13 @@ define([
                 EndDate: this.getISOString("ToDate", "ToTime")
             });
             if (retVal.StartDate != "" && retVal.EndDate != "") {
-            } else if (retVal.LastNDays) {
+            } else if (retVal.FirstN) {
                 var now = new Date();
-                retVal.StartDate = date.add(now, "day", dom.byId(this.id + "LastNDays").value * -1).toISOString();
+                retVal.StartDate = date.add(now, "day", dom.byId(this.id + "FirstN").value * -1).toISOString();
                 retVal.EndDate = now.toISOString();
             }
             return retVal;
+            console.log(this.clusterTargetSelect.getValue());
         },
         getISOString: function (dateField, timeField) {
             var d = registry.byId(this.id + dateField).attr("value");
@@ -207,12 +211,11 @@ define([
             if (this.initalized)
                 return;
             this.initalized = true;
-
             this.selectChild(this.legacyPane, true);
-            /*this.clusterTargetSelect.init({
+            this.clusterTargetSelect.init({
                 Groups: true,
                 includeBlank: true
-            });*/
+            });
         },
         initTab: function() {
             var currSel = this.getSelectedChild();
@@ -343,10 +346,7 @@ define([
                 title: "Filter",
                 content: "No filter criteria specified."
             });
-            dojo.connect(registry.byId(this.id + "FromDate"), 'onClick', function (evt) {
-            });
-            dojo.connect(registry.byId(this.id + "ToDate"), 'onClick', function (evt) {
-            });
+          
         },
         refreshGrid: function (args) {
             this.workunitsGrid.setQuery(this.getFilter());
