@@ -23,14 +23,15 @@ define([
     "dojo/data/ObjectStore",
     "dojo/date",
     "dojo/on",
-    "dijit/Menu",
-    "dijit/MenuItem",
-    "dijit/MenuSeparator",
-
+    
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
     "dijit/Dialog",
+    "dijit/Menu",
+    "dijit/MenuItem",
+    "dijit/MenuSeparator",
+
 
     "dojox/grid/EnhancedGrid",
     "dojox/grid/enhanced/plugins/Pagination",
@@ -41,6 +42,7 @@ define([
     "hpcc/ESPLogicalFile",
     "hpcc/LFDetailsWidget",
     "hpcc/SFDetailsWidget",
+    "hpcc/TargetSelectWidget",
 
     "dojo/text!../templates/DFUWUQueryWidget.html",
 
@@ -56,21 +58,18 @@ define([
     "dijit/Toolbar",
     "dijit/TooltipDialog",
 
-    "dojox/layout/TableContainer",
+    "dojox/layout/TableContainer"
 
-    "hpcc/TargetSelectWidget"
-], function (declare, lang, arrayUtil, dom, domClass, domForm, ObjectStore, date, on, Menu, MenuItem, MenuSeparator,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog,
+], function (declare, lang, arrayUtil, dom, domClass, domForm, ObjectStore, date, on,
+                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, Menu, MenuItem, MenuSeparator,
                 EnhancedGrid, Pagination, IndirectSelection,
-                _TabContainerWidget, WsDfu, ESPLogicalFile, LFDetailsWidget, SFDetailsWidget,
+                _TabContainerWidget, WsDfu, ESPLogicalFile, LFDetailsWidget, SFDetailsWidget, TargetSelectWidget,
                 template) {
     return declare("DFUWUQueryWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
         baseClass: "DFUWUQueryWidget",
         workunitsTab: null,
         workunitsGrid: null,
-        legacyPane: null,
-        legacyPaneLoaded: false,
 
         tabMap: [],
 
@@ -78,19 +77,21 @@ define([
             this.inherited(arguments);
             this.workunitsTab = registry.byId(this.id + "_Workunits");
             this.workunitsGrid = registry.byId(this.id + "WorkunitsGrid");
-            this.legacyPane = registry.byId(this.id + "_Legacy");
             this.clusterTargetSelect = registry.byId(this.id + "ClusterTargetSelect");
         },
+
         startup: function (args) {
             this.inherited(arguments);
             this.initWorkunitsGrid();
             this.initFilter();
             this.refreshActionState();
         },
+
         //  Hitched actions  ---
         _onRefresh: function (event) {
             this.refreshGrid();
         },
+
         _onOpen: function (event) {
             var selections = this.workunitsGrid.selection.getSelected();
             var firstTab = null;
@@ -104,6 +105,7 @@ define([
                 this.selectChild(firstTab, true);
             }
         },
+
         _onDelete: function (event) {
             if (confirm('Delete selected files?')) {
                 var context = this;
@@ -115,6 +117,7 @@ define([
                 });
             }
         },
+
         _onAddToSuperfileOk: function (event) {
             var context = this;
             var formData = domForm.toObject(this.id + "AddToSuperfileForm");
@@ -127,19 +130,23 @@ define([
             var d = registry.byId(this.id + "AddtoDropDown");
             registry.byId(this.id + "AddtoDropDown").closeDropDown();
         },
+
         _onAddToSuperfileCancel: function (event) {
             var d = registry.byId(this.id + "AddtoDropDown");
             registry.byId(this.id + "AddtoDropDown").closeDropDown();
         },
+
         _onFilterApply: function (event) {
             this.workunitsGrid.rowSelectCell.toggleAllSelection(false);
             if (this.hasFilter()) {
                 registry.byId(this.id + "FilterDropDown").closeDropDown();
                 this.refreshGrid();
             } else {
+                registry.byId(this.id + "FilterDropDown").closeDropDown();
                 this.validateDialog.show();
             }
         },
+
         _onFilterClear: function(event) {
             this.workunitsGrid.rowSelectCell.toggleAllSelection(false);
             var context = this;
@@ -155,6 +162,7 @@ define([
             });
             this.refreshGrid();
         },
+
         getISOString: function (dateField, timeField) {
             var d = registry.byId(this.id + dateField).attr("value");
             var t = registry.byId(this.id + timeField).attr("value");
@@ -168,6 +176,7 @@ define([
             }
             return "";
         },
+
         hasFilter: function () {
             var filter = domForm.toObject(this.id + "FilterForm")
             for (var key in filter) {
@@ -177,6 +186,7 @@ define([
             }
             return false
         },
+
         getFilter: function () {
             var retVal = domForm.toObject(this.id + "FilterForm");
             lang.mixin(retVal, {
@@ -191,8 +201,8 @@ define([
                 retVal.EndDate = now.toISOString();
             }
             return retVal;
-            console.log(this.clusterTargetSelect.getValue());
         },
+
         getISOString: function (dateField, timeField) {
             var d = registry.byId(this.id + dateField).attr("value");
             var t = registry.byId(this.id + timeField).attr("value");
@@ -206,29 +216,22 @@ define([
             }
             return "";
         },
+
         //  Implementation  ---
         init: function (params) {
             if (this.initalized)
                 return;
             this.initalized = true;
-            this.selectChild(this.legacyPane, true);
             this.clusterTargetSelect.init({
                 Groups: true,
                 includeBlank: true
             });
         },
+
         initTab: function() {
             var currSel = this.getSelectedChild();
             if (currSel && !currSel.initalized) {
                 if (currSel.id == this.workunitsTab.id) {
-                } else if (currSel.id == this.legacyPane.id) {
-                    if (!this.legacyPaneLoaded) {
-                        this.legacyPaneLoaded = true;
-                        this.legacyPane.set("content", dojo.create("iframe", {
-                            src: "/WsDfu/DFUQuery",
-                            style: "border: 0; width: 100%; height: 100%"
-                        }));
-                    }
                 } else {
                     if (!currSel.initalized) {
                         currSel.init(currSel._hpccParams);
@@ -236,6 +239,7 @@ define([
                 }
             }
         },
+
         initWorkunitsGrid: function() {
             var pMenu;
             var context = this;
@@ -341,6 +345,7 @@ define([
 
             this.workunitsGrid.startup();
         },
+
         initFilter: function () {
             this.validateDialog = new Dialog({
                 title: "Filter",
@@ -348,6 +353,7 @@ define([
             });
           
         },
+
         refreshGrid: function (args) {
             this.workunitsGrid.setQuery(this.getFilter());
             var context = this;
@@ -355,6 +361,7 @@ define([
                 context.refreshActionState()
             }, 200);
         },
+
         refreshActionState: function () {
             var selection = this.workunitsGrid.selection.getSelected();
             var hasSelection = false;
@@ -367,6 +374,7 @@ define([
             registry.byId(this.id + "AddtoDropDown").set("disabled", !hasSelection);
             dom.byId(this.id + "IconFilter").src = hasFilter ? "img/filter.png" : "img/noFilter.png";
         },
+
         ensurePane: function (id, params) {
             var obj = id.split("::");
             id = obj.join("");
@@ -403,10 +411,12 @@ define([
             }
             return retVal;
         },
+
         onRowDblClick: function (item) {
             var wuTab = this.ensurePane(this.id + "_" + item.Name, item);
             this.selectChild(wuTab);
         },
+
          onRowContextMenu: function (idx,item,colField,mystring) {
             this.workunitsGrid.selection.clear(idx,true);
             this.workunitsGrid.selection.setSelected(idx,true);
