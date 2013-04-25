@@ -132,19 +132,9 @@ define([
 
         initTab: function () {
             var currSel = this.getSelectedChild();
-            if (currSel.id == this.id + "_Legacy") {
-                if (!this.legacyPaneLoaded) {
-                    this.legacyPaneLoaded = true;
-                    this.legacyPane.set("content", dojo.create("iframe", {
-                        src: "/FileSpray/DropZoneFiles",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                }
-            } else {
                 if (currSel && !currSel.initalized) {
                     currSel.init(currSel.params);
                 }
-            }
         },
 
         ensurePane: function (id, params) {
