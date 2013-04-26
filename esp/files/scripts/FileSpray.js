@@ -23,7 +23,7 @@ define([
     "dojo/store/Cache", 
     "dojo/store/Observable",
     
-    "dojox/xml/parser",    
+    "dojox/xml/parser",
 
     "hpcc/ESPBase",
     "hpcc/ESPRequest"
@@ -131,6 +131,12 @@ define([
         },
         GetDFUWorkunit: function (params) {
             return ESPRequest.send("FileSpray", "GetDFUWorkunit", params);
+        },
+        GetDropZoneFiles: function(params){
+            return ESPRequest.send("FileSpray", "DropZoneFiles", params);
+        },
+        DeleteDropZoneFiles: function (params) {
+            return ESPRequest.send("FileSpray", "DeleteDropZoneFiles", params);
         },
         UpdateDFUWorkunit: function (params) {
             return ESPRequest.send("FileSpray", "UpdateDFUWorkunit", params);
