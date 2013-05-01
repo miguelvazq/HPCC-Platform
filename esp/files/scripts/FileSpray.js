@@ -132,11 +132,11 @@ define([
         GetDFUWorkunit: function (params) {
             return ESPRequest.send("FileSpray", "GetDFUWorkunit", params);
         },
-        GetDropZoneFiles: function(params){
-            return ESPRequest.send("FileSpray", "DropZoneFiles", params);
-        },
         DeleteDropZoneFiles: function (params) {
             return ESPRequest.send("FileSpray", "DeleteDropZoneFiles", params);
+        },
+        GetDropZoneFiles: function (params) {
+            return ESPRequest.send("FileSpray", "DropZoneFiles", params);
         },
         UpdateDFUWorkunit: function (params) {
             return ESPRequest.send("FileSpray", "UpdateDFUWorkunit", params);

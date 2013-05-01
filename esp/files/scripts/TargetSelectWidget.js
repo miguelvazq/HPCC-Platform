@@ -175,7 +175,6 @@ require([
                                 value: targetData[i].Name
                             });
                         }
-
                         if (context._value == "") {
                             context._value = context.targetSelectControl.options[0].value;
                         }
