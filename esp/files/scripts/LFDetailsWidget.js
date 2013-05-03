@@ -38,6 +38,10 @@ define([
     "dijit/form/DropDownButton",
     "dijit/TitlePane",
     "dijit/registry",
+    "dijit/form/Select",
+
+    "dojox/form/Uploader",
+    "dojox/form/uploader/plugins/IFrame",
 
     "hpcc/_TabContainerWidget",
     "hpcc/ResultWidget",
@@ -52,7 +56,8 @@ define([
 
     "dijit/TooltipDialog"
 ], function (exports, declare, lang, arrayUtil, dom, domAttr, domClass, domForm, query,
-                _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Form, SimpleTextarea, TextBox, Button, DropDownButton, TitlePane, registry,
+                _TemplatedMixin, _WidgetsInTemplateMixin, BorderContainer, TabContainer, ContentPane, Toolbar, TooltipDialog, Form, SimpleTextarea, TextBox, Button, DropDownButton, TitlePane, registry, Select,
+                Uploader, IFrame,
                 _TabContainerWidget, ResultWidget, EclSourceWidget, FilePartsWidget, WUDetailsWidget, DFUWUDetailsWidget, TargetSelectWidget, ESPLogicalFile,
                 template) {
     exports.fixCircularDependency = declare("LFDetailsWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
@@ -92,6 +97,14 @@ define([
             this.dfuWorkunitWidget = registry.byId(this.id + "_DFUWorkunit");
             this.copyTargetSelect = registry.byId(this.id + "CopyTargetSelect");
             this.desprayTargetSelect = registry.byId(this.id + "DesprayTargetSelect");
+            this.sprayFixedTargetSelect = registry.byId(this.id + "SprayFixedTargetSelect");
+            this.sprayFixedDestinationSelect = registry.byId(this.id + "SprayFixedDestination");
+            this.sprayVariableTargetSelect = registry.byId(this.id + "SprayVariableTargetSelect");
+            this.sprayVariableDestinationSelect = registry.byId(this.id + "SprayVariableDestination");
+            this.sprayXmlTargetSelect = registry.byId(this.id + "SprayXmlTargetSelect");
+            this.sprayXmlDestinationSelect = registry.byId(this.id + "SprayXmlDestinationSelect");
+
+
         },
 
         //  Hitched actions  ---
@@ -153,6 +166,36 @@ define([
             this.selectChild(this.summaryWidget, true);
             this.copyTargetSelect.init({
                 Groups: true
+            });
+            this.sprayFixedDestinationSelect.init({
+                Groups: true
+            });
+            this.sprayVariableDestinationSelect.init({
+                Groups: true
+            });
+            this.sprayXmlTargetSelect.init({
+                Groups: true
+            });
+            this.sprayFixedTargetSelect.init({
+                DropZones: true,
+                callback: function (value, item) {
+                    context.updateInput("SprayFixedIPAddress", null, item.machine.Netaddress);
+                    context.updateInput("SprayFixedTargetPath", null, item.machine.Directory + "/" + context.logicalFile.Filename);
+                }
+            });
+            this.sprayVariableTargetSelect.init({
+                DropZones: true,
+                callback: function (value, item) {
+                    context.updateInput("SprayVariableIPAddress", null, item.machine.Netaddress);
+                    context.updateInput("SprayVariableTargetPath", null, item.machine.Directory + "/" + context.logicalFile.Filename);
+                }
+            });
+            this.sprayXmlDestinationSelect.init({
+                DropZones: true,
+                callback: function (value, item) {
+                    context.updateInput("SprayXmlIPAddress", null, item.machine.Netaddress);
+                    context.updateInput("SprayXmlTargetPath", null, item.machine.Directory + "/" + context.logicalFile.Filename);
+                }
             });
             this.desprayTargetSelect.init({
                 DropZones: true,
