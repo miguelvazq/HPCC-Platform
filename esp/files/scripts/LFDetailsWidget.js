@@ -97,11 +97,11 @@ define([
             this.dfuWorkunitWidget = registry.byId(this.id + "_DFUWorkunit");
             this.copyTargetSelect = registry.byId(this.id + "CopyTargetSelect");
             this.desprayTargetSelect = registry.byId(this.id + "DesprayTargetSelect");
-            this.sprayFixedTargetSelect = registry.byId(this.id + "SprayFixedTargetSelect");
+            //this.sprayFixedTargetSelect = registry.byId(this.id + "SprayFixedTargetSelect");
             this.sprayFixedDestinationSelect = registry.byId(this.id + "SprayFixedDestination");
-            this.sprayVariableTargetSelect = registry.byId(this.id + "SprayVariableTargetSelect");
+            //this.sprayVariableTargetSelect = registry.byId(this.id + "SprayVariableTargetSelect");
             this.sprayVariableDestinationSelect = registry.byId(this.id + "SprayVariableDestination");
-            this.sprayXmlTargetSelect = registry.byId(this.id + "SprayXmlTargetSelect");
+            //this.sprayXmlTargetSelect = registry.byId(this.id + "SprayXmlTargetSelect");
             this.sprayXmlDestinationSelect = registry.byId(this.id + "SprayXmlDestinationSelect");
 
 
@@ -148,6 +148,15 @@ define([
         _onRenameCancel: function (event) {
             registry.byId(this.id + "RenameDropDown").closeDropDown();
         },
+        _onSprayFixedCancel: function (event) {
+            registry.byId(this.id + "SprayFixedDropDown").closeDropDown();
+        },
+        _onSprayVariableCancel: function (event) {
+            registry.byId(this.id + "SprayVariableDropDown").closeDropDown();
+        },
+        _onSprayXmlCancel: function (event) {
+            registry.byId(this.id + "SprayXMLDropDown").closeDropDown();
+        },
 
         //  Implementation  ---
         init: function (params) {
@@ -173,10 +182,10 @@ define([
             this.sprayVariableDestinationSelect.init({
                 Groups: true
             });
-            this.sprayXmlTargetSelect.init({
+            this.sprayXmlDestinationSelect.init({
                 Groups: true
             });
-            this.sprayFixedTargetSelect.init({
+            /*this.sprayFixedTargetSelect.init({
                 DropZones: true,
                 callback: function (value, item) {
                     context.updateInput("SprayFixedIPAddress", null, item.machine.Netaddress);
@@ -190,13 +199,13 @@ define([
                     context.updateInput("SprayVariableTargetPath", null, item.machine.Directory + "/" + context.logicalFile.Filename);
                 }
             });
-            this.sprayXmlDestinationSelect.init({
+            this.sprayXmlTargetSelect.init({
                 DropZones: true,
                 callback: function (value, item) {
                     context.updateInput("SprayXmlIPAddress", null, item.machine.Netaddress);
                     context.updateInput("SprayXmlTargetPath", null, item.machine.Directory + "/" + context.logicalFile.Filename);
                 }
-            });
+            });*/
             this.desprayTargetSelect.init({
                 DropZones: true,
                 callback: function (value, item) {
