@@ -107,6 +107,13 @@ form h2{
     padding:5px 0;
 }
 
+table td{
+    vertical-align: top;
+}
+
+form table label{
+    width:13em;
+}
 /*IDs************************/
 
 #myProgressBar{

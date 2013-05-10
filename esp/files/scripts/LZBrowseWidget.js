@@ -50,6 +50,7 @@ define([
     "dijit/layout/BorderContainer",
     "dijit/layout/TabContainer",
     "dijit/layout/ContentPane",
+    "dijit/form/Form",
     "dijit/form/Textarea",
     "dijit/form/DateTextBox",
     "dijit/form/TimeTextBox",
@@ -57,7 +58,11 @@ define([
     "dijit/form/RadioButton",
     "dijit/form/Select",
     "dijit/Toolbar",
+    "dijit/ToolbarSeparator",
     "dijit/TooltipDialog",
+    "dijit/form/DropDownButton",
+
+    "hpcc/TargetSelectWidget",
 
     "dojox/layout/TableContainer"
 
@@ -80,6 +85,9 @@ define([
         postCreate: function (args) {
             this.inherited(arguments);
             this.landingZonesTab = registry.byId(this.id + "_LandingZones");
+            this.sprayFixedDestinationSelect = registry.byId(this.id + "SprayFixedDestination");
+            this.sprayVariableDestinationSelect = registry.byId(this.id + "SprayVariableDestination");
+            this.sprayXmlDestinationSelect = registry.byId(this.id + "SprayXmlDestinationSelect");
         },
 
         startup: function (args) {
@@ -105,6 +113,18 @@ define([
             if (firstTab) {
                 this.selectChild(firstTab);
             }
+        },
+
+        _onSprayFixedCancel: function (event) {
+            registry.byId(this.id + "SprayFixedDropDown").closeDropDown();
+        },
+
+        _onSprayVariableCancel: function (event) {
+            registry.byId(this.id + "SprayVariableDropDown").closeDropDown();
+        },
+        
+        _onSprayXmlCancel: function (event) {
+            registry.byId(this.id + "SprayXMLDropDown").closeDropDown();
         },
 
         _onDelete: function (event) {
@@ -204,6 +224,16 @@ define([
             this.initalized = true;
             this.initLandingZonesGrid();
             this.selectChild(this.landingZonesTab, true);
+
+            this.sprayFixedDestinationSelect.init({
+                Groups: true
+            });
+            this.sprayVariableDestinationSelect.init({
+                Groups: true
+            });
+            this.sprayXmlDestinationSelect.init({
+                Groups: true
+            });
         },
 
         initTab: function () {
