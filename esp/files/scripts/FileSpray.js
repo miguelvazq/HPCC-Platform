@@ -291,6 +291,12 @@ define([
         },
         DropZoneFiles: function (params) {
             return ESPRequest.send("FileSpray", "DropZoneFiles", params);
+        },
+        SprayFixed: function (params) {
+            return ESPRequest.send("FileSpray", "SprayFixed", params);
+        },
+        SprayVariable: function (params) {
+            return ESPRequest.send("FileSpray", "SprayVariable", params);
         }
     };
 });
