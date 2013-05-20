@@ -18,6 +18,7 @@ define([
     "dojo/_base/lang",
     "dojo/_base/array",
     "dojo/dom",
+    "dojo/dom-attr",
     "dojo/dom-class",
     "dojo/dom-form",
     "dojo/date",
@@ -64,9 +65,10 @@ define([
     "dijit/TooltipDialog",
     "dijit/form/DropDownButton",
 
-    "dojox/layout/TableContainer"
+    "dojox/layout/TableContainer",
+    "dojox/form/Uploader"
 
-], function (declare, lang, arrayUtil, dom, domClass, domForm, date, on,
+], function (declare, lang, arrayUtil, dom, domAttr, domClass, domForm, date, on,
                 _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 OnDemandGrid, tree, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
                 _TabContainerWidget, FileSpray, ESPUtil, HexViewWidget, TargetSelectWidget,
@@ -77,6 +79,7 @@ define([
 
         landingZonesTab: null,
         landingZonesGrid: null,
+        
 
         tabMap: [],
 
@@ -88,10 +91,12 @@ define([
             this.sprayFixedDestinationSelect = registry.byId(this.id + "SprayFixedDestination");
             this.sprayVariableDestinationSelect = registry.byId(this.id + "SprayVariableDestination");
             this.sprayXmlDestinationSelect = registry.byId(this.id + "SprayXmlDestinationSelect");
+            this.dropZoneSelect = registry.byId(this.id + "DropZoneTargetSelect");
         },
 
         startup: function (args) {
             this.inherited(arguments);
+            registry.byId(this.id + "Submit").set("disabled", true);
         },
 
         _handleResponse: function (wuidQualifier, response) {
@@ -148,36 +153,14 @@ define([
             }
         },
 
-        /*_onSprayFixed: function(){
-            var context = this;
-            this.logicalFile.copy({
-                request: domForm.toObject(this.id + "SprayFixedDialog")
-            }).then(function (response) {
-                context._handleResponse("CopyResponse.result", response);
-            });
-            registry.byId(this.id + "CopyDropDown").closeDropDown();
+        _onUpload: function (event) {
+            registry.byId(this.id + "Submit").set("disabled", false);
+        },
+        
+        _onSubmit: function (event) {
+            context.refreshGrid();
         },
 
-            _onSprayVariable: function(){
-                var context = this;
-                this.logicalFile.despray({
-                    request: domForm.toObject(this.id + "SprayVariableDialog")
-                }).then(function (response) {
-                    context._handleResponse("DesprayResponse.wuid", response);
-                });
-                registry.byId(this.id + "DesprayDropDown").closeDropDown();
-            },
-
-            _onSprayXml: function(){
-             var context = this;
-            this.logicalFile.rename({
-                request: domForm.toObject(this.id + "SprayXmlDialog")
-            }).then(function (response) {
-                context._handleResponse("RenameResponse.wuid", response);
-            });
-            registry.byId(this.id + "RenameDropDown").closeDropDown();
-        },
-        */
 
         _onSprayFixed: function(event) {
             var context = this;
@@ -195,9 +178,6 @@ define([
                     var tab = context.ensurePane(context.id + "_" + item.name, {
                         logicalFile: item.getLogicalFile()
                     });
-                    //console.log(item.DropZone.NetAddress);
-                    //console.log(item.fullPath);
-                    //context._handleRepsonse("SprayFixedResponse.response", response);
                 })
             });
              registry.byId(this.id + "SprayFixedDropDown").closeDropDown();
@@ -219,9 +199,6 @@ define([
                 FileSpray.SprayVariable({
                     request: formData
                 }).then(function (response) {
-                    //context._handleRepsonse("SprayVariableResponse.BLARG", response);
-                    console.log(item.DropZone.NetAddress);
-                    console.log(item.fullPath);
                 });
             });
              registry.byId(this.id + "SprayVariableDropDown").closeDropDown();
@@ -238,14 +215,12 @@ define([
                 var formData = domForm.toObject(context.id + "SprayXmlDialog");
                 lang.mixin(formData, {
                     sourceIP: item.DropZone.NetAddress,
-                    sourcePath: item.DropZone.fullPath
+                    sourcePath: item.DropZone.Path
+
                 });
                 FileSpray.SprayVariable({
                     request: formData
                 }).then(function (response) {
-                    //context._handleRepsonse("SprayXmlResponse.BLARG", response);
-                    console.log(item.DropZone.NetAddress);
-                    console.log(item.fullPath);
                 });
             });
              registry.byId(this.id + "SprayXmlDropDown").closeDropDown();
@@ -270,6 +245,7 @@ define([
             if (this.initalized)
                 return;
             this.initalized = true;
+            var context = this;
             this.initLandingZonesGrid();
             this.selectChild(this.landingZonesTab, true);
 
@@ -282,6 +258,13 @@ define([
             this.sprayXmlDestinationSelect.init({
                 Groups: true
             });
+            this.dropZoneSelect.init({
+                DropZones: true,
+                callback: function (value, item) {
+                    context.updateInput("FileUploadForm", null, "/FileSpray/UploadFile?upload_&NetAddress=" + item.machine.Netaddress + "&OS=" + item.machine.OS + "&Path=" + item.machine.Directory + "");
+                }
+            });
+            
         },
 
         initTab: function () {
@@ -291,6 +274,24 @@ define([
                 } else {
                     if (!currSel.initalized) {
                         currSel.init(currSel.params);
+                    }
+                }
+            }
+        },
+
+        updateInput: function (name, oldValue, newValue) {
+            var registryNode = registry.byId(this.id + name);
+            if (registryNode) {
+                registryNode.set("action", newValue);
+            }else {
+                var domElem = dom.byId(this.id + name);
+                if (domElem) {
+                    switch (domElem.tagName) {
+                        case "FORM":
+                            domAttr.set(this.id + name, "action", newValue);
+                            break;
+                        default:
+                            alert(domElem.tagName);
                     }
                 }
             }
@@ -350,7 +351,7 @@ define([
                     return retVal;
                 }
             }, this.id + "LandingZonesGrid");
-            this.landingZonesGrid.set("noDataMessage", "<span class='dojoxGridNoData'>Zero Workunits (check filter).</span>");
+            this.landingZonesGrid.set("noDataMessage", "<span>Zero Files (Upload Some Files).</span>");
 
             var context = this;
             on(document, ".WuidClick:click", function (evt) {

@@ -215,6 +215,10 @@ margin-left:-20px;
 .CodeMirror {
 }
 
+.dgrid-no-data {
+    text-align: center;
+}
+
 .CodeMirror-scroll {
     position: absolute;
     height: 100%;
