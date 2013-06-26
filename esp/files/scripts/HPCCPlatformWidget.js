@@ -15,38 +15,16 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/lang",
-    "dojo/_base/array",
     "dojo/dom",
-    "dojo/dom-class",
-    "dojo/dom-form",
-    "dojo/date",
-    "dojo/on",
 
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
-    "dijit/Dialog",
-    "dijit/Menu",
-    "dijit/MenuItem",
-    "dijit/MenuSeparator",
-    "dijit/PopupMenuItem",
-
-    "dgrid/Grid",
-    "dgrid/Keyboard",
-    "dgrid/Selection",
-    "dgrid/selector",
-    "dgrid/extensions/ColumnResizer",
-    "dgrid/extensions/DijitRegistry",
-    "dgrid/extensions/Pagination",
+    "dijit/Tooltip",
 
     "hpcc/_TabContainerWidget",
-    "hpcc/WsWorkunits",
-    "hpcc/ESPUtil",
-    "hpcc/ESPWorkunit",
     "hpcc/ESPRequest",
-    "hpcc/WUDetailsWidget",
-    "hpcc/TargetSelectWidget",
+    "hpcc/WsAccount",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -55,28 +33,20 @@ define([
     "dijit/layout/StackContainer",
     "dijit/layout/StackController",
     "dijit/layout/ContentPane",
-    "dijit/form/Textarea",
-    "dijit/form/DateTextBox",
-    "dijit/form/TimeTextBox",
-    "dijit/form/Button",
-    "dijit/form/RadioButton",
-    "dijit/form/Select",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
-
-    "dojox/layout/TableContainer",
 
     "hpcc/DFUQueryWidget",
     "hpcc/LZBrowseWidget",
     "hpcc/GetDFUWorkunitsWidget",
-    "hpcc/WUQueryWidget"
+    "hpcc/WUQueryWidget",
+    "hpcc/OpsWidget"
 
-], function (declare, lang, arrayUtil, dom, domClass, domForm, date, on,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, Menu, MenuItem, MenuSeparator, PopupMenuItem,
-                Grid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
-                _TabContainerWidget, WsWorkunits, ESPUtil, ESPWorkunit, ESPRequest, WUDetailsWidget, TargetSelectWidget,
+], function (declare, dom,
+                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Tooltip,
+                _TabContainerWidget, ESPRequest, WsAccount,
                 template) {
-    return declare("HPCCPlatformWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin, ESPUtil.FormHelper], {
+    return declare("HPCCPlatformWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
         baseClass: "HPCCPlatformWidget",
 
@@ -89,7 +59,12 @@ define([
         },
 
         //  Hitched actions  ---
-        _onAbout: function(evt) {
+        _onOpenLegacy: function (evt) {
+            var win = window.open("\\", "_blank");
+            win.focus();
+        },
+
+        _onAbout: function (evt) {
         },
 
         //  Implementation  ---
@@ -97,7 +72,49 @@ define([
             if (this.initalized)
                 return;
             this.initalized = true;
+
+            var context = this;
+            WsAccount.MyAccount({
+            }).then(function (response) {
+                dom.byId(context.id + "UserID").innerHTML = response.MyAccountResponse.username;
+            },
+            function (error) {
+            });
             this.initTab();
+
+            new Tooltip({
+                connectId: ["stubStackController_stub_ECL"],
+                label: "Workunits",
+                position: ["below"]
+             });
+
+            new Tooltip({
+                connectId: ["stubStackController_stub_DFU"],
+                label: "DFU Workunits",
+                position: ["below"]
+            });
+
+            new Tooltip({
+                connectId: ["stubStackController_stub_LF"],
+                label: "Logical Files",
+                position: ["below"]
+            });
+            new Tooltip({
+                connectId: ["stubStackController_stub_Queries"],
+                label: "Targets",
+                position: ["below"]
+            });
+            new Tooltip({
+                connectId: ["stubStackController_stub_LZ"],
+                label: "Landing Zones",
+                position: ["below"]
+            });
+
+            new Tooltip({
+                connectId: ["stubStackController_stub_OPS"],
+                label: "Operations",
+                position: ["below"]
+            });
         },
 
         initTab: function () {
