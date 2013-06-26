@@ -37,8 +37,8 @@ define([
     var Store = declare([ESPRequest.Store, ESPBase], {
         service: "WsWorkunits",
         action: "WUResult",
-        responseQualifier: "Result",
-        responseTotalQualifier: "Total",
+        responseQualifier: "WUResultResponse.Result",
+        responseTotalQualifier: "WUResultResponse.Total",
         idProperty: "rowNum",
         startProperty: "Start",
         countProperty: "Count",

@@ -37,7 +37,7 @@ define([
         service: "WsDfu",
         action: "DFUQuery",
         responseQualifier: "DFUQueryResponse.DFULogicalFiles.DFULogicalFile",
-        responseTotalQualifier: "NumFiles",
+        responseTotalQualifier: "DFUQueryResponse.NumFiles",
         idProperty: "Name",
         startProperty: "PageStartFrom",
         countProperty: "PageSize",

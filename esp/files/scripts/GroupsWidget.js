@@ -130,6 +130,12 @@ define([
             registry.byId(this.id + "EditDialog").hide();
         },
 
+        _onEdit: function (event) {
+        },
+
+        _onMemberOf: function (event) {
+        },
+
         /*_onEdit: function (event) {
             var context = this;
             var selections = this.usersGrid.getSelected();

@@ -35,7 +35,7 @@ define([
         service: "WsWorkunits",
         action: "WUQuery",
         responseQualifier: "WUQueryResponse.Workunits.ECLWorkunit",
-        responseTotalQualifier: "NumWUs",
+        responseTotalQualifier: "WUQueryResponse.NumWUs",
         idProperty: "Wuid",
         startProperty: "PageStartFrom",
         countProperty: "Count",

@@ -33,7 +33,7 @@ define([
         service: "FileSpray",
         action: "GetDFUWorkunits",
         responseQualifier: "GetDFUWorkunitsResponse.results.DFUWorkunit",
-        responseTotalQualifier: "NumWUs",
+        responseTotalQualifier: "GetDFUWorkunitsResponse.NumWUs",
         idProperty: "ID",
         startProperty: "PageStartFrom",
         countProperty: "PageSize",

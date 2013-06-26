@@ -159,9 +159,9 @@ hr.dashedLine {
 }
 
 #loadingOverlay .loadingMessage {
-        padding: 25px 40px;
-        color: rgb(153, 153, 153);
-    }
+    padding: 25px 40px;
+    color: rgb(153, 153, 153);
+}
 
 #timings, #properties {
     padding: 0;

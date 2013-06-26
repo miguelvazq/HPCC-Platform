@@ -43,7 +43,7 @@ define([
         },
 
         getBaseURL: function (service) {
-            if (!service) {
+            if (service === undefined) {
                 service = "WsWorkunits";
             }
             if (this.serverIP)
