@@ -15,38 +15,16 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/lang",
-    "dojo/_base/array",
     "dojo/dom",
-    "dojo/dom-class",
-    "dojo/dom-form",
-    "dojo/date",
-    "dojo/on",
 
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
-    "dijit/Dialog",
-    "dijit/Menu",
-    "dijit/MenuItem",
-    "dijit/MenuSeparator",
-    "dijit/PopupMenuItem",
-
-    "dgrid/Grid",
-    "dgrid/Keyboard",
-    "dgrid/Selection",
-    "dgrid/selector",
-    "dgrid/extensions/ColumnResizer",
-    "dgrid/extensions/DijitRegistry",
-    "dgrid/extensions/Pagination",
+    "dijit/Tooltip",
 
     "hpcc/_TabContainerWidget",
-    "hpcc/WsWorkunits",
-    "hpcc/ESPUtil",
-    "hpcc/ESPWorkunit",
     "hpcc/ESPRequest",
-    "hpcc/WUDetailsWidget",
-    "hpcc/TargetSelectWidget",
+    "hpcc/WsAccount",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -55,28 +33,23 @@ define([
     "dijit/layout/StackContainer",
     "dijit/layout/StackController",
     "dijit/layout/ContentPane",
-    "dijit/form/Textarea",
-    "dijit/form/DateTextBox",
-    "dijit/form/TimeTextBox",
-    "dijit/form/Button",
-    "dijit/form/RadioButton",
-    "dijit/form/Select",
+    "dijit/form/DropDownButton",
+    "dijit/Menu",
+    "dijit/MenuSeparator",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
 
-    "dojox/layout/TableContainer",
+    "hpcc/HPCCPlatformMainWidget",
+    "hpcc/HPCCPlatformECLWidget",
+    "hpcc/HPCCPlatformFilesWidget",
+    "hpcc/HPCCPlatformRoxieWidget",
+    "hpcc/HPCCPlatformOpsWidget"
 
-    "hpcc/DFUQueryWidget",
-    "hpcc/LZBrowseWidget",
-    "hpcc/GetDFUWorkunitsWidget",
-    "hpcc/WUQueryWidget"
-
-], function (declare, lang, arrayUtil, dom, domClass, domForm, date, on,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Dialog, Menu, MenuItem, MenuSeparator, PopupMenuItem,
-                Grid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
-                _TabContainerWidget, WsWorkunits, ESPUtil, ESPWorkunit, ESPRequest, WUDetailsWidget, TargetSelectWidget,
+], function (declare, dom,
+                _TemplatedMixin, _WidgetsInTemplateMixin, registry, Tooltip,
+                _TabContainerWidget, ESPRequest, WsAccount,
                 template) {
-    return declare("HPCCPlatformWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin, ESPUtil.FormHelper], {
+    return declare("HPCCPlatformWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
         baseClass: "HPCCPlatformWidget",
 
@@ -89,7 +62,12 @@ define([
         },
 
         //  Hitched actions  ---
-        _onAbout: function(evt) {
+        _onOpenLegacy: function (evt) {
+            var win = window.open("\\", "_blank");
+            win.focus();
+        },
+
+        _onAbout: function (evt) {
         },
 
         //  Implementation  ---
@@ -97,19 +75,42 @@ define([
             if (this.initalized)
                 return;
             this.initalized = true;
+
+            var context = this;
+            WsAccount.MyAccount({
+            }).then(function (response) {
+                dom.byId(context.id + "UserID").innerHTML = response.MyAccountResponse.username;
+            },
+            function (error) {
+            });
             this.initTab();
+
+            new Tooltip({
+                connectId: ["stubStackController_stub_ECL"],
+                label: "ECL",
+                position: ["below"]
+             });
+            new Tooltip({
+                connectId: ["stubStackController_stub_Files"],
+                label: "Files",
+                position: ["below"]
+            });
+            new Tooltip({
+                connectId: ["stubStackController_stub_Queries"],
+                label: "Targets",
+                position: ["below"]
+            });
+            new Tooltip({
+                connectId: ["stubStackController_stub_OPS"],
+                label: "Operations",
+                position: ["below"]
+            });
         },
 
         initTab: function () {
             var currSel = this.getSelectedChild();
             if (currSel && !currSel.initalized) {
-                if (currSel.id === this.id + "_Queries") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: ESPRequest.getBaseURL() + "/WUQuerySets",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                    currSel.initalized = true;
-                } else if (currSel.init) {
+                if (currSel.init) {
                     currSel.init(currSel.params);
                 }
             }
