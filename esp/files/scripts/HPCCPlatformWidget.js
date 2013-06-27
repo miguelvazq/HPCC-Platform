@@ -16,6 +16,7 @@
 define([
     "dojo/_base/declare",
     "dojo/dom",
+    "dojo/dom-construct",
 
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
@@ -42,7 +43,7 @@ define([
     "hpcc/WUQueryWidget",
     "hpcc/OpsWidget"
 
-], function (declare, dom,
+], function (declare, dom, domConstruct,
                 _TemplatedMixin, _WidgetsInTemplateMixin, registry, Tooltip,
                 _TabContainerWidget, ESPRequest, WsAccount,
                 template) {
@@ -76,7 +77,12 @@ define([
             var context = this;
             WsAccount.MyAccount({
             }).then(function (response) {
+                if(response.MyAccountResponse.user = null){
+                    //domConstruct.destroy("userAccount");
+                    console.log("no user");
+                }
                 dom.byId(context.id + "UserID").innerHTML = response.MyAccountResponse.username;
+                
             },
             function (error) {
             });

@@ -147,23 +147,6 @@ hr.dashedLine {
     cursor: pointer;
 }
 
-.claro #stubTitlebar .dijitToggleButton .dijitButtonNode{
-    background: none;
-    border:none;
-    box-shadow: none;
-    margin:0;
-    cursor: pointer;
-}
-
-.claro #stubTitlebar .dijitToggleButton, .dijitButton, .dijitDropDownButton, .dijitComboButton{
-    margin:0;
-    cursor: pointer;
-}
-
-.claro .dijitPopup .dijitMenuPopup{
-    top:56px !important;
-}
-
 #stubTitlebar :focus {
     outline: none;
 }
@@ -178,55 +161,7 @@ hr.dashedLine {
     cursor: pointer;
 }
 
-.iconLogo{
-    background-image: url("../img/hpcc_systems_logo.png");
-    width: 180px;
-    height: 45px;
-    cursor: pointer;
-}
 
-.iconWu{
-    background-image: url("../img/WUCog.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
-
-.iconDFU{
-    background-image: url("../img/FolderSmart.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
-
-.iconGetDFU{
-    background-image: url("../img/LZFolder.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
-
-.iconOperations{
-    background-image: url("../img/Operations.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
-
-
-.iconLandingZone{
-    background-image: url("../img/LandingZone.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
-
-.iconTargets{
-    background-image: url("../img/Targets.png");
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-}
 
 #userTools{
     float:right;
@@ -347,6 +282,24 @@ hr.dashedLine {
 }
 
 /*CLASSES******************/
+.claro #stubTitlebar .dijitToggleButton .dijitButtonNode{
+    background: none;
+    border:none;
+    box-shadow: none;
+    margin:0;
+    cursor: pointer;
+}
+
+.claro #stubTitlebar .dijitToggleButton, .dijitButton, .dijitDropDownButton, .dijitComboButton{
+    margin:0;
+    cursor: pointer;
+}
+
+.claro .dijitPopup{
+    /*top:56px !important;*/
+    color:#fff;
+}
+
 .claro #userIcons .dijitArrowButtonInner{
     margin:5px auto 0 5px;
 }
@@ -363,15 +316,16 @@ hr.dashedLine {
 
 .corner {
     border: 0px;
-    margin:0 0 3px -25px;
+    margin:0 0 6px -25px;
     vertical-align:bottom;
     background-color: transparent; /*important*/
 }
 
 .holder{
-    width:40px;
-    height:60px;
-    float:left;
+    width:55px;
+    height:55px;
+    padding:0 10px;
+    float:right;
 }
 
 .seperator{
@@ -517,7 +471,6 @@ vertical-align: middle;
 margin-left:-20px;
 }
 
-
 .pageOverlay{
     left: 0;
     top: 0;
@@ -563,6 +516,56 @@ margin-left:-20px;
 
 .iconAlign{
     vertical-align: middle;
+}
+
+.iconLogo{
+    background-image: url("../img/hpcc_systems_logo.png");
+    width: 180px;
+    height: 45px;
+    cursor: pointer;
+}
+
+.iconWu{
+    background-image: url("../img/WUCog.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+}
+
+.iconDFU{
+    background-image: url("../img/FolderSmart.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+}
+
+.iconGetDFU{
+    background-image: url("../img/LZFolder.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+}
+
+.iconOperations{
+    background-image: url("../img/Operations.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+}
+
+
+.iconLandingZone{
+    background-image: url("../img/LandingZone.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+}
+
+.iconTargets{
+    background-image: url("../img/Targets.png");
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
 }
 
 .iconFilter{
@@ -653,7 +656,7 @@ margin-left:-20px;
     background-image: url("../img/workunit_running.png"); 
     width: 16px;
     height: 16px; 
-    display: inline-block;  
+    display: inline-block;
 }
 
 .iconFailed, .iconStateAborted{
@@ -668,7 +671,7 @@ margin-left:-20px;
     background-image: url("../img/workunit_warning.png"); 
     width: 16px;
     height: 16px;
-    display: inline-block;    
+    display: inline-block;
 }
 
 .iconAborting{
