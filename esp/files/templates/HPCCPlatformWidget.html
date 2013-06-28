@@ -20,7 +20,7 @@
                         <div class="holder">
                             <div data-dojo-type="dijit.form.DropDownButton">
                                 <span>
-                                    <img src="img/Info.png" alt="User" />
+                                    <img src="img/More.png" alt="User" />
                                 </span>
                                 <div data-dojo-type="dijit.Menu">
                                     <div id="${id}Legacy" data-dojo-attach-event="onClick:_onOpenLegacy" data-dojo-type="dijit.MenuItem">Open Legacy ECL Watch</div>
@@ -43,7 +43,7 @@
             </div>
             <div id="${id}_Queries" data-dojo-props="iconClass: 'iconTargets'" data-dojo-type="HPCCPlatformRoxieWidget">
             </div>
-            <div id="${id}_OPS" data-dojo-props="iconClass: 'iconOperations'" data-dojo-type="HPCCPlatformOpsWidget">
+            <div id="${id}_OPS" class="greyedOut" data-dojo-props="iconClass: 'iconOperations'" data-dojo-type="HPCCPlatformOpsWidget">
             </div>
         </div>
     </div>

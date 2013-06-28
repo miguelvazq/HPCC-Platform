@@ -16,6 +16,10 @@
 define([
     "dojo/_base/declare",
     "dojo/dom",
+    "dojo/on",
+    "dojo/mouse",
+    "dojo/query",
+    "dojo/dom-class",
 
     "dijit/_TemplatedMixin",
     "dijit/_WidgetsInTemplateMixin",
@@ -45,7 +49,7 @@ define([
     "hpcc/HPCCPlatformRoxieWidget",
     "hpcc/HPCCPlatformOpsWidget"
 
-], function (declare, dom,
+], function (declare, dom, on, mouse, query, domClass,
                 _TemplatedMixin, _WidgetsInTemplateMixin, registry, Tooltip,
                 _TabContainerWidget, ESPRequest, WsAccount,
                 template) {
@@ -105,6 +109,14 @@ define([
                 label: "Operations",
                 position: ["below"]
             });
+            
+            var icons = query(".dijitIcon");
+                on(icons, mouse.enter,  function(e){
+                    //domClass.add("stubTitlebar", "fullColor");
+                    //dojo.style(stubStackController_stub_OPS, "-webkit-filter", "100%");
+                     var node = dom.byId("stubTitlebar")
+                    console.log(node.id)
+            })
         },
 
         initTab: function () {

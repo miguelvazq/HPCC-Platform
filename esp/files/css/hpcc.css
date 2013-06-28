@@ -15,7 +15,8 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ############################################################################## */
 
-/*ELEMENT STYLES***************/
+/*ELEMENT STYLES**************/
+@import url(http://fonts.googleapis.com/css?family=Roboto);
 html, body {
     background: white;
     width: 100%;
@@ -232,19 +233,25 @@ hr.dashedLine {
     cursor: pointer;
 }
 
-
 .iconLandingZone{
     background-image: url("../img/LandingZone.png");
     width: 32px;
     height: 32px;
-    cursor: pointer;
-}
+    cursor: pointer}
 
 .iconTargets{
     background-image: url("../img/Targets.png");
     width: 32px;
     height: 32px;
     cursor: pointer;
+}
+
+.greyedOut {
+    -webkit-filter: grayscale(100%);
+}
+
+.fullColor {
+    -webkit-filter: grayscale(0%);
 }
 
 #userTools{
@@ -257,6 +264,7 @@ hr.dashedLine {
     padding:5px 20px 0 0;
     text-align: right;
     padding-top:10px;
+    display:none;/*REMOVE*/
 }
 
 #userAccount a{
@@ -367,7 +375,8 @@ hr.dashedLine {
 
 /*CLASSES******************/
 .claro #userIcons .dijitArrowButtonInner{
-    margin:5px auto 0 5px;
+    /*margin:5px auto 0 5px;*/
+    display:none;
 }
 
 .holder :focus{
@@ -382,15 +391,16 @@ hr.dashedLine {
 
 .corner {
     border: 0px;
-    margin:0 0 3px -25px;
+    margin:0 0 6px -25px;
     vertical-align:bottom;
     background-color: transparent; /*important*/
 }
 
 .holder{
-    width:40px;
-    height:60px;
-    float:left;
+    width:32px;
+    height:55px;
+    padding:0 10px;
+    float:right;
 }
 
 .seperator{
@@ -507,6 +517,34 @@ hr.dashedLine {
 .hpccApp {
     height: 100%;
 }
+
+.claro .miniTitlebar{
+    background:rgb(255,255,255);
+    border-bottom:solid 1px #D8D8D8;
+    height:40px;
+    font-family: 'Roboto', sans-serif;
+    font-size:15px;
+    outline: none;
+}
+
+.claro .miniTitlebar span{
+    color:rgb(63, 63, 66);
+}
+
+.claro .miniTitlebar .dijitIcon :hover span:nth-child(1){
+    color:rgb(0, 0, 0);
+    border-bottom:solid 3px red;
+}
+
+.claro .miniTitlebar :focus{
+    outline:none;
+}
+
+.claro .miniTitlebar :hover span{
+    cursor: pointer;
+}
+
+.miniTitlebar .dijitContentPane .selected {color:red;}
 
 .navBarLoggedin{
     text-transform: uppercase;
