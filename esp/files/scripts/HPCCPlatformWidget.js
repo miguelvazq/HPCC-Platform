@@ -112,9 +112,9 @@ define([
             
             var icons = query(".dijitIcon");
                 on(icons, mouse.enter,  function(e){
-                    //domClass.add("stubTitlebar", "fullColor");
+                    //domClass.add("nodeName", "selected");
                     //dojo.style(stubStackController_stub_OPS, "-webkit-filter", "100%");
-                     var node = dom.byId("stubTitlebar")
+                    var node = dom.byId("stubTitlebar")
                     console.log(node.id)
             })
         },
