@@ -19,7 +19,8 @@ define([
     "dijit/registry",
 
     "hpcc/_TabContainerWidget",
-    "hpcc/ESPRequest",
+    "hpcc/QuerySetQueryWidget",
+    "hpcc/PackageMapQueryWidget",
 
     "dojo/text!../templates/HPCCPlatformRoxieWidget.html",
 
@@ -29,7 +30,7 @@ define([
 
 ], function (declare,
                 registry,
-                _TabContainerWidget, ESPRequest,
+                _TabContainerWidget, QuerySetQueryWidget, PackageMapQueryWidget,
                 template) {
     return declare("HPCCPlatformRoxieWidget", [_TabContainerWidget], {
         templateString: template,
@@ -53,20 +54,13 @@ define([
         init: function (params) {
             if (this.inherited(arguments))
                 return;
-
             this.initTab();
         },
 
         initTab: function () {
             var currSel = this.getSelectedChild();
             if (currSel && !currSel.initalized) {
-                if (currSel.id === this.id + "_Queries") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: ESPRequest.getBaseURL() + "/WUQuerySets",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                    currSel.initalized = true;
-                } else if (currSel.init) {
+                if (currSel.init) {
                     currSel.init({});
                 }
             }

@@ -17,10 +17,13 @@ define([
     "dojo/_base/declare",
     "dojo/_base/lang",
     "dojo/_base/array",
+    "dojo/promise/all",
+    "dojo/store/Observable",
     
     "hpcc/ESPRequest"
-], function (declare, lang, arrayUtil,
+], function (declare, lang, arrayUtil, all, Observable,
     ESPRequest) {
+
     return {
         States: {
             0: "unknown",
@@ -56,6 +59,50 @@ define([
 
         WUResubmit: function (params) {
             return ESPRequest.send("WsWorkunits", "WUResubmit", params);
+        },
+
+        WUQueryDetails: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUQueryDetails", params);
+        },
+
+        WUQuerysetAliasAction: function (selection, action) {
+            var requests = [];
+            arrayUtil.forEach(selection, function (item, idx) {
+                var request = {
+                    QuerySetName: item.QuerySetId,
+                    Action: action,
+                    "Aliases.QuerySetAliasActionItem.0.Name": item.Name,
+                    "Aliases.QuerySetAliasActionItem.itemcount": 1
+                };
+                requests.push(ESPRequest.send("WsWorkunits", "WUQuerysetAliasAction", {
+                    request: request
+                }));
+            });
+            return all(requests);
+        },
+
+        WUQuerysetQueryAction: function (selection, action) {
+            if (action === "Deactivate") {
+                return this.WUQuerysetAliasAction(selection, action);
+            }
+            var requests = [];
+            arrayUtil.forEach(selection, function (item, idx) {
+                var request = {
+                    QuerySetName: item.QuerySetId,
+                    Action: action,
+                    "Queries.QuerySetQueryActionItem.0.QueryId": item.Id,
+                    "Queries.QuerySetQueryActionItem.itemcount": 1
+                };
+                requests.push(ESPRequest.send("WsWorkunits", "WUQuerysetQueryAction", {
+                    request: request
+                }));
+            });
+            return all(requests);
+        },
+
+        CreateQuerySetStore: function (options) {
+            var store = new QuerySetStore(options);
+            return Observable(store);
         },
 
         WUPublishWorkunit: function (params) {

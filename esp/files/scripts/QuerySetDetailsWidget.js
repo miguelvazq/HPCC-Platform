@@ -1,0 +1,162 @@
+/*##############################################################################
+#   HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems.
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+############################################################################## */
+define([
+    "dojo/_base/declare",
+    "dojo/_base/lang",
+    "dojo/dom",
+    "dojo/dom-attr",
+    "dojo/dom-class",
+    "dojo/query",
+    "dojo/store/Memory",
+    "dojo/store/Observable",
+    "dojo/promise/all",
+
+    "dijit/registry",
+
+    "dgrid/OnDemandGrid",
+    "dgrid/Keyboard",
+    "dgrid/Selection",
+    "dgrid/selector",
+    "dgrid/extensions/ColumnResizer",
+    "dgrid/extensions/DijitRegistry",
+
+    "hpcc/ESPWorkunit",
+    "hpcc/ESPQuery",
+    "hpcc/WsWorkunits",
+    "hpcc/_TabContainerWidget",
+
+    "dojo/text!../templates/QuerySetDetailsWidget.html",
+
+    "dijit/layout/BorderContainer",
+    "dijit/layout/TabContainer",
+    "dijit/layout/ContentPane",
+    "dijit/form/Textarea",
+    "dijit/form/Button",
+    "dijit/form/CheckBox",
+    "dijit/Toolbar",
+    "dijit/ToolbarSeparator",
+    "dijit/TooltipDialog",
+    "dijit/TitlePane",
+
+    "hpcc/WUDetailsWidget"
+
+], function (declare, lang, dom, domAttr, domClass, query, Memory, Observable, all,
+                registry,
+                OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
+                ESPWorkunit, ESPQuery, WsWorkunits, _TabContainerWidget,
+                template) {
+    return declare("QuerySetDetailsWidget", [_TabContainerWidget], {
+        templateString: template,
+        baseClass: "QuerySetDetailsWidget",
+        
+        query: null,
+
+        initalized: false,
+        summaryWidget: null,
+        workunitsTab: null,
+        loaded:false,
+
+        postCreate: function (args) {
+            this.inherited(arguments);
+            this.summaryWidget = registry.byId(this.id + "_Summary");
+            this.workunitsTab = registry.byId(this.id + "_Workunit");
+        },
+
+        //  Hitched actions  ---
+        _onSave: function (event) {
+            var suspended = registry.byId(this.id + "Suspended").get("value");
+            var activated = registry.byId(this.id + "Activated").get("value");
+            var context = this;
+            all({
+                suspend: this.query.setSuspended(suspended),
+                activate: this.query.setActivated(activated)
+            });
+        },
+        _onDelete: function (event) {
+            if (confirm('Delete selected workunits?')) {
+                this.query.doDelete();
+            }
+        },
+        _onRefresh: function () {
+            this.query.refresh();
+        },
+
+        //  Implementation  ---
+        init: function (params) {
+            if (this.inherited(arguments))
+                return;
+
+            this.query = ESPQuery.Get(params.Id);
+
+            var context = this;
+            var data = this.query.getData();
+            for (key in data) {
+                this.updateInput(key, null, data[key]);
+            }
+            this.query.watch(function (name, oldValue, newValue) {
+                context.updateInput(name, oldValue, newValue);
+            });
+            this.query.refresh();
+
+            this.selectChild(this.summaryWidget, true);
+        },
+
+        initTab: function () {
+            var currSel = this.getSelectedChild();
+            if (currSel.id == this.summaryWidget.id && !this.summaryWidgetLoaded) {
+                this.summaryWidgetLoaded = true;
+            } else if (currSel.id == this.workunitsTab.id && !this.workunitsTabLoaded) {
+                this.workunitsTabLoaded = true;
+                this.workunitsTab.init({
+                    Wuid: this.query.Wuid,
+                });
+            }
+        },
+
+        updateInput: function (name, oldValue, newValue) {
+           var registryNode = registry.byId(this.id + name);
+            if (registryNode) {
+                registryNode.set("value", newValue);
+            } else {
+                var domElem = dom.byId(this.id + name);
+                if (domElem) {
+                    switch (domElem.tagName) {
+                        case "SPAN":
+                        case "DIV":
+                            domAttr.set(this.id + name, "innerHTML", newValue);
+                            break;
+                        case "INPUT":
+                        case "TEXTAREA":
+                            domAttr.set(this.id + name, "value", newValue);
+                            break;
+                        default:
+                            alert(domElem.tagName);
+                            break;
+                    }
+                }
+            }
+            if (name === "Wuid") {
+                this.workunitsTab.set("title", newValue);
+            }
+            if (name === "Suspended") {
+                dom.byId(this.id + "SuspendImg").src = newValue ? "img/suspended.png" : "img/unsuspended.png";
+            }
+            if (name === "Activated") {
+                dom.byId(this.id + "ActiveImg").src = newValue ? "img/active.png" : "img/inactive.png";
+            }
+        }
+    });
+});
