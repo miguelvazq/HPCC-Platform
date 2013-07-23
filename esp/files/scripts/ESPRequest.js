@@ -353,7 +353,7 @@ define([
                         }
                         arrayUtil.forEach(context._getResponseContent(response), function (item, index) {
                             if (context.preProcessRow) {
-                                context.preProcessRow(item);
+                                context.preProcessRow(item, query, options);
                             }
                             var storeItem = context.get(context.getIdentity(item), item);
                             context.update(context.getIdentity(item), item);

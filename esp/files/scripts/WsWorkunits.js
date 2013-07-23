@@ -17,10 +17,25 @@ define([
     "dojo/_base/declare",
     "dojo/_base/lang",
     "dojo/_base/array",
+    "dojo/store/Observable",
     
     "hpcc/ESPRequest"
-], function (declare, lang, arrayUtil,
+], function (declare, lang, arrayUtil, Observable,
     ESPRequest) {
+
+    var QuerySetStore = declare([ESPRequest.Store], {
+            service: "WsWorkunits",
+            action: "WUQuerysetDetails",
+            responseQualifier: "WUQuerySetDetailsResponse.QuerysetQueries.QuerySetQuery",
+            idProperty: "Id",
+
+            preProcessRow: function (item, query, options) { 
+                lang.mixin(item, {
+                    QuerySetName:  query.QuerySetName
+                });
+            } 
+    });
+
     return {
         States: {
             0: "unknown",
@@ -56,6 +71,30 @@ define([
 
         WUResubmit: function (params) {
             return ESPRequest.send("WsWorkunits", "WUResubmit", params);
+        },
+
+        /*WUQuerysetQueryAction: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUQuerysetQueryAction", params);
+        },*/
+
+        WUQuerysetQueryAction: function (querySetName, selection, action) {
+            var request = {};
+            arrayUtil.forEach(selection, function (item, idx) {
+                request["Queries.QuerySetQueryActionItem." + idx + ".QueryId"] = item.Id;
+            });
+            lang.mixin(request, {
+                QuerySetName: querySetName,
+                Action: action,
+                "Queries.QuerySetQueryActionItem.itemcount": selection.length
+            });
+            return ESPRequest.send("WsWorkunits", "WUQuerysetQueryAction", {
+                request: request
+            });
+        },
+
+        CreateQuerySetStore: function (options) {
+            var store = new QuerySetStore(options);
+            return Observable(store);
         },
 
         WUPublishWorkunit: function (params) {
