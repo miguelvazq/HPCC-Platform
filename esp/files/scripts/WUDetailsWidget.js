@@ -121,6 +121,10 @@ define([
             this.variablesGrid.startup();
         },
 
+        getTitle: function () {
+            return "HPCC Platform: Workunit Details";
+        },
+
         //  Hitched actions  ---
         _onSave: function (event) {
             var protectedCheckbox = registry.byId(this.id + "Protected");

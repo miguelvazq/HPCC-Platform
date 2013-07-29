@@ -61,6 +61,10 @@ define([
             this._refreshActionState();
         },
 
+        getTitle: function () {
+            return "HPCC Platform: Results Widget";
+        },
+
         createGrid: function (domID) {
             var context = this;
             var retVal = new declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({

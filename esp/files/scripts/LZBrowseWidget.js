@@ -120,6 +120,10 @@ define([
             this.inherited(arguments);
         },
 
+        getTitle: function () {
+            return "HPCC Platform: Landing Zone";
+        },
+
         _handleResponse: function (wuidQualifier, response) {
             if (lang.exists(wuidQualifier, response)) {
                 var wu = ESPDFUWorkunit.Get(lang.getObject(wuidQualifier, false, response));

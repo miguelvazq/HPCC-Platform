@@ -76,6 +76,10 @@ define([
             stateSelect.addOption(stateOptions);
         },
 
+        getTitle: function () {
+            return "HPCC Platform: DFU Details";
+        },
+
         //  Hitched actions  ---
         _onRefresh: function (event) {
             this.wu.refresh(true);
