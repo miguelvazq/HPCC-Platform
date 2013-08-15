@@ -49,7 +49,6 @@ define([
     "hpcc/ESPUtil",
     "hpcc/WUDetailsWidget",
 
-
     "dojo/text!../templates/QuerySetQueryWidget.html",
 
     "dijit/layout/BorderContainer",
@@ -71,7 +70,7 @@ define([
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
                 _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPUtil, WUDetailsWidget,/*WsAccess,  GroupsWidget, PermissionsWidget,*/
                 template) {
-    return declare("QuerySetQueryWidget", [_TabContainerWidget,_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("QuerySetQueryWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "QuerySetQueryWidget",
 
@@ -134,7 +133,7 @@ define([
             if (currSel && !currSel.initalized) {
                 if (currSel.id == this.queriesTab.id) {
                 } else {
-                    currSel.init(currSel.params);
+                    currSel.init(currSel.hpcc.params);
                 }
             }
         },
@@ -441,15 +440,18 @@ define([
         },
 
         ensurePane: function (id, params) {
+            id = id.split(".").join("x");
             var retVal = registry.byId(id);
-            var id = id.split(".").join("_");
             if (!retVal) {
                 var context = this;
                 retVal = new QuerySetDetailsWidget({
                     id: id,
                     title: params.Id,
                     closable: true,
-                    params: params
+                    hpcc: {
+                        type: "QuerySetDetailsWidget",
+                        params: params
+                    }
                 });
                 this.addChild(retVal, 1);
             }

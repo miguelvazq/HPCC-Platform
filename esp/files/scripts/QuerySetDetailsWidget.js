@@ -22,8 +22,6 @@ define([
     "dojo/store/Memory",
     "dojo/store/Observable",
 
-    "dijit/_TemplatedMixin",
-    "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
 
     "dgrid/OnDemandGrid",
@@ -48,11 +46,11 @@ define([
     "dijit/TooltipDialog",
     "dijit/TitlePane"
 ], function (declare, dom, domAttr, domClass, query, Memory, Observable,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry,
+                registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
                 ESPWorkunit, WsWorkunits, _TabContainerWidget,
                 template) {
-    return declare("QuerySetDetailsWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("QuerySetDetailsWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "QuerySetDetailsWidget",
         
@@ -76,7 +74,7 @@ define([
 
         //  Hitched actions  ---
         _onSave: function (event) {
-            
+
         },
         _onDelete: function (event) {
             if (confirm('Delete selected workunits?')) {
@@ -162,6 +160,6 @@ define([
             /*else if(name === "Suspended"){
                 registry.byId(this.id + "Suspended").get("value");
             }*/
-        },
+        }
     });
 });
