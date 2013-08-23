@@ -22,9 +22,6 @@ define([
     "dojo/_base/array",
     "dojo/on",
 
-    "dijit/layout/_LayoutWidget",
-    "dijit/_TemplatedMixin",
-    "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
     "dijit/Menu",
     "dijit/MenuItem",
@@ -46,9 +43,8 @@ define([
     "hpcc/TargetSelectWidget",
     "hpcc/QuerySetDetailsWidget",
     "hpcc/WsWorkunits",
+    "hpcc/ESPQuery",
     "hpcc/ESPUtil",
-    "hpcc/WUDetailsWidget",
-
 
     "dojo/text!../templates/QuerySetQueryWidget.html",
 
@@ -67,11 +63,11 @@ define([
 
     "dojox/layout/TableContainer"
 ], function (declare, lang, dom, domForm, iframe, arrayUtil, on,
-                _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry, Menu, MenuItem, MenuSeparator, PopupMenuItem,
+                registry, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
-                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPUtil, WUDetailsWidget,/*WsAccess,  GroupsWidget, PermissionsWidget,*/
+                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPQuery, ESPUtil,
                 template) {
-    return declare("QuerySetQueryWidget", [_TabContainerWidget,_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("QuerySetQueryWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "QuerySetQueryWidget",
 
@@ -113,17 +109,15 @@ define([
         },
 
         init: function (params) {
+            if (this.inherited(arguments))
+                return;
+
             var context = this;
             var firstCall = true;
             this.clusterTargetSelect.init({
                 Targets: true,
+                includeBlank: true,
                 Target: params.Cluster,
-                callback: function (value, item) {
-                    if (firstCall){
-                        firstCall = false;
-                        context._onFilterApply();
-                    }
-                }
             });
             this.initQuerySetGrid();
             this.selectChild(this.queriesTab, true);
@@ -256,22 +250,21 @@ define([
 
         initQuerySetGrid: function (params) {
             var context = this;
-            var store = new WsWorkunits.CreateQuerySetStore();
+            var store = ESPQuery.CreateQueryStore();
             this.querySetGrid = declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({
                 allowSelectAll: true,
                 deselectOnRefresh: false,
                 store: store,
                 columns: {
                     col1: selector({
-                        width: 20,
-                        selectorType: 'checkbox',
-                        label: " "
+                        width: 27,
+                        selectorType: 'checkbox'
                     }),
                     Suspended: {
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<img src='../files/img/suspended.png'>";
                         },
-                        width: 8,
+                        width: 25,
                         sortable: false,
                         formatter: function (suspended) {
                             if (suspended == true) {
@@ -280,40 +273,39 @@ define([
                             return "";
                         }
                     },
-                    Active: {
+                    Activated: {
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<img src='../files/img/active.png'>";
                         },
-                        width: 8,
+                        width: 25,
                         sortable: false,
-                        formatter: function (active) {
-                            if (active == true) {
+                        formatter: function (activated) {
+                            if (activated == true) {
                                 return ("<img src='../files/img/active.png'>");
                             }
                             return "";
                         }
                     },
                     Id: {
-                        width: 100,
+                        width: 180,
                         label: "Id",
                         formatter: function (Id, idx) {
                             return "<a href='#' rowIndex=" + idx + " class='" + context.id + "WuidClick'>" + Id + "</a>";
                         }
                     },
                     Name: {
-                        width: 90,
                         label: "Name"
                     },
                     QuerySetName:{
-                        width: 90,
+                        width: 180,
                         label: "Cluster"
                     },
                     Wuid: {
-                        width: 90,
+                        width: 180,
                         label: "Wuid"
                     },
                      Dll: {
-                        width: 90,
+                        width: 180,
                         label: "Dll"
                     }
                 },

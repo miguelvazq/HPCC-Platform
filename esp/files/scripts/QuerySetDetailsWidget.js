@@ -15,15 +15,15 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
+    "dojo/_base/lang",
     "dojo/dom",
     "dojo/dom-attr",
     "dojo/dom-class",
     "dojo/query",
     "dojo/store/Memory",
     "dojo/store/Observable",
+    "dojo/promise/all",
 
-    "dijit/_TemplatedMixin",
-    "dijit/_WidgetsInTemplateMixin",
     "dijit/registry",
 
     "dgrid/OnDemandGrid",
@@ -34,6 +34,7 @@ define([
     "dgrid/extensions/DijitRegistry",
 
     "hpcc/ESPWorkunit",
+    "hpcc/ESPQuery",
     "hpcc/WsWorkunits",
     "hpcc/_TabContainerWidget",
 
@@ -44,19 +45,25 @@ define([
     "dijit/layout/ContentPane",
     "dijit/form/Textarea",
     "dijit/form/Button",
+    "dijit/form/CheckBox",
     "dijit/Toolbar",
+    "dijit/ToolbarSeparator",
     "dijit/TooltipDialog",
-    "dijit/TitlePane"
-], function (declare, dom, domAttr, domClass, query, Memory, Observable,
-                _TemplatedMixin, _WidgetsInTemplateMixin, registry,
+    "dijit/TitlePane",
+
+    "hpcc/WUDetailsWidget"
+
+], function (declare, lang, dom, domAttr, domClass, query, Memory, Observable, all,
+                registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                ESPWorkunit, WsWorkunits, _TabContainerWidget,
+                ESPWorkunit, ESPQuery, WsWorkunits, _TabContainerWidget,
                 template) {
-    return declare("QuerySetDetailsWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("QuerySetDetailsWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "QuerySetDetailsWidget",
         
-        wu: null,
+        query: null,
+
         initalized: false,
         summaryWidget: null,
         workunitsTab: null,
@@ -64,79 +71,59 @@ define([
 
         postCreate: function (args) {
             this.inherited(arguments);
-            this.borderContainer = registry.byId(this.id + "BorderContainer");
             this.summaryWidget = registry.byId(this.id + "_Summary");
             this.workunitsTab = registry.byId(this.id + "_Workunit");
         },
 
-        startup: function (args) {
-            this.inherited(arguments);
-        },
-
         //  Hitched actions  ---
         _onSave: function (event) {
-            var suspendedCheckbox = registry.byId(this.id + "Suspended");
+            var suspended = registry.byId(this.id + "Suspended").get("value");
+            var activated = registry.byId(this.id + "Activated").get("value");
             var context = this;
-            this.wu.update({
-                //Description: dom.byId(context.id + "Description").value,
-                //Jobname: dom.byId(context.id + "Jobname").value,
-                Suspended: suspendedCheckbox.get("value")
-            }, null);
+            all({
+                suspend: this.query.setSuspended(suspended),
+                activate: this.query.setActivated(activated)
+            });
         },
         _onDelete: function (event) {
             if (confirm('Delete selected workunits?')) {
-                var context = this;
-                var querySetName
-                WsWorkunits.WUQuerysetQueryAction(querySetName, this.querySetGrid.getSelected(), "Delete");
-                context.refreshGrid();
+                this.query.doDelete();
             }
+        },
+        _onRefresh: function () {
+            this.query.refresh();
         },
 
         //  Implementation  ---
         init: function (params) {
-            if (this.initalized)
+            if (this.inherited(arguments))
                 return;
-            this.initalized = true;
-            if (params.Wuid) {
 
-            this.workunitsTab.set("title", params.Wuid);
-            this.wu = ESPWorkunit.Get(params.Wuid);
-            var data = this.wu.getInfo(this.wu);
-
-            for (key in params) {
-                this.updateInput(key, null, params[key]);
-            }
+            this.query = ESPQuery.Get(params.Id);
 
             var context = this;
-            this.wu.watch(function (name, oldValue, newValue) {
+            var data = this.query.getData();
+            for (key in data) {
+                this.updateInput(key, null, data[key]);
+            }
+            this.query.watch(function (name, oldValue, newValue) {
                 context.updateInput(name, oldValue, newValue);
             });
-            this.wu.refresh();
-            }
+            this.query.refresh();
+
             this.selectChild(this.summaryWidget, true);
         },
 
         initTab: function () {
-            if (!this.wu) {
-                return
-            }
-
             var currSel = this.getSelectedChild();
             if (currSel.id == this.summaryWidget.id && !this.summaryWidgetLoaded) {
                 this.summaryWidgetLoaded = true;
             } else if (currSel.id == this.workunitsTab.id && !this.workunitsTabLoaded) {
                 this.workunitsTabLoaded = true;
                 this.workunitsTab.init({
-                    Wuid: this.wu.Wuid,
+                    Wuid: this.query.Wuid,
                 });
             }
-        },
-
-        resetPage: function () {
-        },
-
-        resize: function (args) {
-            this.inherited(arguments);
         },
 
         updateInput: function (name, oldValue, newValue) {
@@ -155,25 +142,21 @@ define([
                         case "TEXTAREA":
                             domAttr.set(this.id + name, "value", newValue);
                             break;
-                        case "IMG":
-                            domAttr.set(this.id + name, "src", newValue);
-                            break;
                         default:
                             alert(domElem.tagName);
                             break;
                     }
                 }
             }
-            if (name === "Id") {
-                this.updateInput("DetailsFor", oldValue, "Query details for: " + newValue);
+            if (name === "Wuid") {
+                this.workunitsTab.set("title", newValue);
             }
-            if (name === "Suspended" && newValue == true) {
-                this.updateInput("SuspendImg", oldValue, "img/suspended.png");
-                //console.log(name + newValue);
+            if (name === "Suspended") {
+                dom.byId(this.id + "SuspendImg").src = newValue ? "img/suspended.png" : "img/unsuspended.png";
             }
-            /*else if(name === "Suspended"){
-                registry.byId(this.id + "Suspended").get("value");
-            }*/
-        },
+            if (name === "Activated") {
+                dom.byId(this.id + "ActiveImg").src = newValue ? "img/active.png" : "img/inactive.png";
+            }
+        }
     });
 });

@@ -236,7 +236,7 @@ define([
                 delete target[arrayName];
                 var singularName = arrayName.substr(0, arrayName.length - 1);
                 var i = 0;
-                for (key in appData) {
+                for (var key in appData) {
                     target[arrayName + "." + singularName + "." + i + '.Application'] = "ESPRequest.js";
                     target[arrayName + "." + singularName + "." + i + '.Name'] = key;
                     target[arrayName + "." + singularName + "." + i + '.Value'] = appData[key];
@@ -354,13 +354,16 @@ define([
                 Deferred.when(results, function (response) {
                     var items = [];
                     if (context._hasResponseContent(response)) {
+                        if (context.preProcessFullResponse) {
+                            context.preProcessFullResponse(response, request, query, options);
+                        }
                         if (context.preProcessResponse) {
                             var responseQualiferArray = context.responseQualifier.split(".");
-                            context.preProcessResponse(lang.getObject(responseQualiferArray[0], false, response), request);
+                            context.preProcessResponse(lang.getObject(responseQualiferArray[0], false, response), request, query, options);
                         }
                         arrayUtil.forEach(context._getResponseContent(response), function (item, index) {
                             if (context.preProcessRow) {
-                                context.preProcessRow(item, query, options);
+                                context.preProcessRow(item, request, query, options);
                             }
                             var storeItem = context.get(context.getIdentity(item), item);
                             context.update(context.getIdentity(item), item);

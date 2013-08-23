@@ -23,19 +23,6 @@ define([
 ], function (declare, lang, arrayUtil, Observable,
     ESPRequest) {
 
-    var QuerySetStore = declare([ESPRequest.Store], {
-            service: "WsWorkunits",
-            action: "WUQuerysetDetails",
-            responseQualifier: "WUQuerySetDetailsResponse.QuerysetQueries.QuerySetQuery",
-            idProperty: "Id",
-
-            preProcessRow: function (item, query, options) { 
-                lang.mixin(item, {
-                    QuerySetName:  query.QuerySetName
-                });
-            } 
-    });
-
     return {
         States: {
             0: "unknown",
@@ -77,7 +64,29 @@ define([
             return ESPRequest.send("WsWorkunits", "WUQuerysetQueryAction", params);
         },*/
 
+        WUQueryDetails: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUQueryDetails", params);
+        },
+
+        WUQuerysetAliasAction: function (querySetName, selection, action) {
+            var request = {};
+            arrayUtil.forEach(selection, function (item, idx) {
+                request["Aliases.QuerySetAliasActionItem." + idx + ".Name"] = item.Name;
+            });
+            lang.mixin(request, {
+                QuerySetName: querySetName,
+                Action: action,
+                "Aliases.QuerySetAliasActionItem.itemcount": selection.length
+            });
+            return ESPRequest.send("WsWorkunits", "WUQuerysetAliasAction", {
+                request: request
+            });
+        },
+
         WUQuerysetQueryAction: function (querySetName, selection, action) {
+            if (action === "Deactivate") {
+                return this.WUQuerysetAliasAction(querySetName, selection, action);
+            }
             var request = {};
             arrayUtil.forEach(selection, function (item, idx) {
                 request["Queries.QuerySetQueryActionItem." + idx + ".QueryId"] = item.Id;
