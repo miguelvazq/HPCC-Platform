@@ -178,6 +178,10 @@ define([
             return ESPRequest.send("WsWorkunits", "WUResult", params);
         },
 
+        WUQueryGetGraph: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUQueryGetGraph", params);
+        },
+
         WUFile: function (params) {
             lang.mixin(params, {
                 handleAs: "text"

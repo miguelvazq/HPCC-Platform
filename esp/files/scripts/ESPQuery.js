@@ -58,7 +58,8 @@ define([
                 });
             }
         },
-        preProcessFullResponse: function (response, request, query, options) {
+
+        /*preProcessFullResponse: function (response, request, query, options) {
             this.activeQueries = [];
             var context = this;
             //TODO:  See HPCC-10080
@@ -67,14 +68,21 @@ define([
                     context.activeQueries.push(item.Id);
                 })
             }
-        },
-        preProcessRow: function (item, request, query, options) { 
+        },*/
+        preProcessRow: function (item, request, query, options) {
+            var ErrorCount = 0;
+            if (lang.exists("Clusters", item)) {
+                arrayUtil.forEach(item.Clusters.ClusterQueryState, function(cqs, idx){
+                    if (lang.exists("Errors", cqs) && cqs.Errors != null && cqs.Errors != "" && cqs.State == "Suspended"){
+                        ErrorCount++
+                    }
+                });
+            }
             lang.mixin(item, {
-                Activated: arrayUtil.indexOf(this.activeQueries, item.Id) >= 0 ? true : false
+                ErrorCount:ErrorCount
             });
-        } 
+        }
     });
-
     var Query = declare([ESPUtil.Singleton], {
         constructor: function (args) {
             this.inherited(arguments);

@@ -21,22 +21,14 @@
                                 <div id="${id}QueryName"></div>
                             </li>
                             <li>
-                                <label class="Prompt" for="${id}Comment">Comment:</label>
-                                <div id="${id}Comment"></div>
-                            </li>
-                            <li>
                                 <label class="Prompt" for="${id}QuerySet">Query Set:</label>
                                 <div id="${id}QuerySet"></div>
                             </li>
                             <li>
-                                <label class="Prompt" for="${id}Wuid">WUID:</label>
-                                <div id="${id}Wuid"></div>
+                                <label class="Prompt" for="${id}Priority">Priority:</label>
+                                <div id="${id}Priority"></div>
                             </li>
-                            <li>
-                                <label class="Prompt" for="${id}Dll">Dll:</label>
-                                <div id="${id}Dll"></div>
-                            </li>
-                            <li>
+                            <li> 
                                 <label class="Prompt" for="${id}PublishedBy">Published By:</label>
                                 <div id="${id}PublishedBy"></div>
                             </li>
@@ -52,11 +44,47 @@
                                 <label class="Prompt" for="${id}Activated">Activated:</label>
                                 <div><input id="${id}Activated" data-dojo-type="dijit.form.CheckBox"/></div>
                             </li>
+                            <li>
+                                <label class="Prompt" for="${id}Comment">Comment:</label>
+                                <div id="${id}Comment"></div>
+                            </li>
+                            <hr class="dashedLine">
+                            <li>
+                                <label class="Prompt" for="${id}Wuid">WUID:</label>
+                                <div id="${id}Wuid"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="${id}Dll">Dll:</label>
+                                <div id="${id}Dll"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="${id}WUSnapShot">WU Snap Shot:</label>
+                                <div id="${id}WUSnapShot"></div>
+                            </li>
+                             <hr class="dashedLine">
+                            <li>
+                                <label class="Prompt" for="${id}IsLibrary">Is Library:</label>
+                                <div id="${id}IsLibrary"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="${id}LibrariesUsed">Libraries Used:</label>
+                                <div id="${id}LibrariesUsed"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="${id}LogicalFiles">Logical Files:</label>
+                                <div id="${id}LogicalFiles"></div>
+                            </li>
+                            <li>
+                                <label class="Prompt" for="${id}SuperFiles">Super Files:</label>
+                                <div id="${id}SuperFiles"></div>
+                            </li>
                         </ul>
                     </form>
                 </div>
             </div>
             <div id="${id}_Workunit" title="WUDetailsWidget" data-dojo-type="WUDetailsWidget">
+            </div>
+            <div id="${id}_Graphs" title="Graphs" data-dojo-type="GraphsWidget">
             </div>
         </div>
     </div>

@@ -144,31 +144,31 @@ define([
             var pMenu = new Menu({
                 targetNodeIds: [this.id + "QuerySetGrid"]
             });
-             this.menuProtect = this.addMenuItem(pMenu, {
+             this.menuOpen = this.addMenuItem(pMenu, {
                 label: "Open",
                 onClick: function () { context._onOpen(); }
             });
-            this.menuOpen = this.addMenuItem(pMenu, {
+            this.menuDelete = this.addMenuItem(pMenu, {
                 label: "Delete",
                 onClick: function () { context._onDelete(); }
             });
              pMenu.addChild(new MenuSeparator());
-            this.menuDelete = this.addMenuItem(pMenu, {
+            this.menuUnsuspend = this.addMenuItem(pMenu, {
                 label: "Unsuspend",
                 onClick: function () { context._onUnsuspend(); }
             });
-            this.menuDelete = this.addMenuItem(pMenu, {
+            this.menuSuspend= this.addMenuItem(pMenu, {
                 label: "Suspend",
                 onClick: function () { context._onSuspend(); }
             });
              pMenu.addChild(new MenuSeparator());
-            this.menuSetToFailed = this.addMenuItem(pMenu, {
+            this.menuActivate = this.addMenuItem(pMenu, {
                 label: "Activate",
-                onClick: function () { context._onToggleActivate(); }
+                onClick: function () { context._onActivate(); }
             });
-            this.menuSetToFailed = this.addMenuItem(pMenu, {
+            this.menuDeactivate = this.addMenuItem(pMenu, {
                 label: "Deactivate",
-                onClick: function () { context._onToggleActivate(); }
+                onClick: function () { context._onDeactivate(); }
             });
             pMenu.addChild(new MenuSeparator());
             {
@@ -287,18 +287,19 @@ define([
                         }
                     },
                     Id: {
-                        width: 180,
+                        width: 220,
                         label: "Id",
                         formatter: function (Id, idx) {
                             return "<a href='#' rowIndex=" + idx + " class='" + context.id + "WuidClick'>" + Id + "</a>";
                         }
                     },
                     Name: {
+                        width: 180,
                         label: "Name"
                     },
                     QuerySetId:{
                         width: 180,
-                        label: "Cluster"
+                        label: "Target"
                     },
                     Wuid: {
                         width: 180,
@@ -307,6 +308,22 @@ define([
                      Dll: {
                         width: 180,
                         label: "Dll"
+                    },
+                    Priority: {
+                        width: 100,
+                        label: "Priority"
+                    },
+                    IsLibrary: {
+                        width: 100,
+                        label: "Is Library"
+                    },
+                    PublishedBy: {
+                        width: 180,
+                        label: "Published By"
+                    },
+                    ErrorCount: {
+                        width: 100,
+                        label: "Error Count"
                     }
                 },
             },

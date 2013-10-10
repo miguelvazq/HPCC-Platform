@@ -65,14 +65,19 @@ define([
         query: null,
 
         initalized: false,
-        summaryWidget: null,
+        summaryTab: null,
+        summaryTabLoaded:false,
         workunitsTab: null,
+        workunitsTabLoaded: false,
+        graphsTab: null,
+        graphsTabLoaded: false,
         loaded:false,
 
         postCreate: function (args) {
             this.inherited(arguments);
-            this.summaryWidget = registry.byId(this.id + "_Summary");
+            this.summaryTab = registry.byId(this.id + "_Summary");
             this.workunitsTab = registry.byId(this.id + "_Workunit");
+            this.graphsTab = registry.byId(this.id + "_Graphs");
         },
 
         //  Hitched actions  ---
@@ -116,12 +121,19 @@ define([
 
         initTab: function () {
             var currSel = this.getSelectedChild();
-            if (currSel.id == this.summaryWidget.id && !this.summaryWidgetLoaded) {
-                this.summaryWidgetLoaded = true;
+            if (currSel.id == this.summaryTab.id && !this.summaryTabLoaded) {
+                this.summaryTabLoaded = true;
             } else if (currSel.id == this.workunitsTab.id && !this.workunitsTabLoaded) {
                 this.workunitsTabLoaded = true;
                 this.workunitsTab.init({
                     Wuid: this.query.Wuid,
+                });
+            }
+            else if (currSel.id == this.graphsTab.id && !this.graphsTabLoaded) {
+                this.graphsTabLoaded = true;
+                this.graphsTab.init({
+                    //Wuid: this.query.Wuid
+                    Query: this.query
                 });
             }
         },
@@ -156,6 +168,23 @@ define([
             }
             if (name === "Activated") {
                 dom.byId(this.id + "ActiveImg").src = newValue ? "img/active.png" : "img/inactive.png";
+            }
+            if (name == "LogicalFiles") {
+                
+            }
+            else if (name === "CountGraphs" && newValue) {
+                this.graphsTab.set("title", "Graphs " + "(" + newValue + ")");
+            } else if (name === "graphs") {
+                this.graphsTab.set("title", "Graphs " + "(" + newValue.length + ")");
+                var tooltip = "";
+                for (var i = 0; i < newValue.length; ++i) {
+                    if (tooltip != "")
+                        tooltip += "\n";
+                    tooltip += newValue[i].Name;
+                    if (newValue[i].Time)
+                        tooltip += " " + newValue[i].Time;
+                }
+                this.graphsTab.set("tooltip", tooltip);
             }
         }
     });
