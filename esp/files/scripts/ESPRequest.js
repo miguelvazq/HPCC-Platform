@@ -259,9 +259,6 @@ define([
         },
 
         Store: declare(null, {
-            SortbyProperty: 'Sortby',
-            DescendingProperty: 'Descending',
-
             constructor: function (options) {
                 if (!this.service) {
                     throw new Error("service:  Undefined - Missing service name (eg 'WsWorkunts').");
@@ -332,8 +329,10 @@ define([
                     }
                 }
                 if (options !== undefined && options.sort !== undefined && options.sort[0].attribute !== undefined) {
-                    request[this.SortbyProperty] = options.sort[0].attribute;
-                    request[this.DescendingProperty] = options.sort[0].descending ? true : false;
+                    request['Sortby'] = options.sort[0].attribute;
+                    if (options.sort[0].descending) {
+                        request['Descending'] = options.sort[0].descending;
+                    }
                 }
                 if (this.preRequest) {
                     this.preRequest(request);
@@ -356,13 +355,16 @@ define([
                 Deferred.when(results, function (response) {
                     var items = [];
                     if (context._hasResponseContent(response)) {
+                        if (context.preProcessFullResponse) {
+                            context.preProcessFullResponse(response, request, query, options);
+                        }
                         if (context.preProcessResponse) {
                             var responseQualiferArray = context.responseQualifier.split(".");
-                            context.preProcessResponse(lang.getObject(responseQualiferArray[0], false, response), request);
+                            context.preProcessResponse(lang.getObject(responseQualiferArray[0], false, response), request, query, options);
                         }
                         arrayUtil.forEach(context._getResponseContent(response), function (item, index) {
                             if (context.preProcessRow) {
-                                context.preProcessRow(item);
+                                context.preProcessRow(item, request, query, options);
                             }
                             var storeItem = context.get(context.getIdentity(item), item);
                             context.update(context.getIdentity(item), item);

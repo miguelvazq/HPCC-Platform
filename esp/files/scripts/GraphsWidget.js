@@ -43,6 +43,7 @@ define([
         idProperty: "Name",
 
         wu: null,
+        query: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
@@ -68,6 +69,24 @@ define([
                     if (context.wu.isComplete() || ++monitorCount % 5 == 0) {
                         context.refreshGrid();
                     }
+                });
+            }
+            else if (params.Query){
+                this.query = params.Query
+                var graphs = [];
+                var loc = params.Query.GraphIds.Item;
+                var context = this;
+                arrayUtil.forEach(loc, function (item, idx) {
+                    var graph = {
+                        Name: item,
+                        Label: "",
+                        Completed: "",
+                        Time: 0,
+                        Type: ""
+                    }
+                    graphs.push(graph);
+                    context.store.setData(graphs);
+                    context.grid.refresh();
                 });
             }
             this.timingTreeMap.init(params);
@@ -130,20 +149,55 @@ define([
         },
 
         createDetail: function (id, row, params) {
-            return new GraphPageWidget({
+            var localParams = {}
+             if (this.wu){
+                localParams = {
+                    Wuid: this.wu.Wuid,
+                    GraphName: row.Name,
+                    GraphName: row.Name,
+                    SubGraphId: (params && params.SubGraphId) ? params.SubGraphId : null,
+                    SafeMode: (params && params.safeMode) ? true : false
+                }
+             }else if(this.query){
+                localParams = {
+                    Target: this.query.QuerySet,
+                    QueryId: this.query.QueryId,
+                    GraphName: row.Name,
+                    SubGraphId: (params && params.SubGraphId) ? params.SubGraphId : null,
+                    SafeMode: (params && params.safeMode) ? true : false
+                }
+            }
+            return new GraphPageWidget({ //add cond on if params.wuid or params.querysetid
                 id: id,
                 title: row.Name,
                 closable: true,
                 hpcc: {
                     type: "graph",
-                    params: {
-                        Wuid: this.wu.Wuid,
+                    params: localParams
+                }
+            });
+
+
+             //var localParams = {};
+             /*if(localParams == params.Wuid){
+                localParams {
+                    Wuid: this.wu.Wuid,
+                    GraphName: row.Name,
+                    SubGraphId: (params && params.SubGraphId) ? params.SubGraphId : null,
+                    SafeMode: (params && params.safeMode) ? true : false
+                }
+                else{
+                    localParams{
+                        Target: this.query.QuerySet,
+                        QueryId: this.query.QueryId,
                         GraphName: row.Name,
                         SubGraphId: (params && params.SubGraphId) ? params.SubGraphId : null,
                         SafeMode: (params && params.safeMode) ? true : false
                     }
                 }
-            });
+            }*/
+
+            
         },
 
         refreshGrid: function (args) {
