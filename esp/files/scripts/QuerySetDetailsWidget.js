@@ -211,7 +211,7 @@ define([
                 this.graphsTab.set("tooltip", tooltip);
             }
             else if (name === "LogicalFiles") {
-                this.logicalFilesTab.set("title", "Logical Files " + "(" + newValue.Item.length + ")");
+                this.logicalFilesTab.set("title", "Logical Files " + "(" + newValue.length + ")");
                 var tooltip = "";
                 for (var i = 0; i < newValue.length; ++i) {
                     if (tooltip != "")
@@ -223,7 +223,7 @@ define([
                 this.logicalFilesTab.set("tooltip", tooltip);
             }
             else if (name === "SuperFiles") {
-                this.superFilesTab.set("title", "Super Files " + "(" + newValue.Name.length + ")");
+                this.superFilesTab.set("title", "Super Files " + "(" + newValue.length + ")");
                 var tooltip = "";
                 for (var i = 0; i < newValue.length; ++i) {
                     if (tooltip != "")
