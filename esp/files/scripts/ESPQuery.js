@@ -36,7 +36,7 @@ define([
                 service: "WsWorkunits",
                 action: "WUQueryDetails",
                 responseQualifier: "WUQueryDetailsResponse.LogicalFiles.Item",
-                idProperty: "Id",
+                idProperty: "Id"
     });
 
     var Store = declare([ESPRequest.Store], {
@@ -143,6 +143,6 @@ define([
         CreateQueryLogicalFileStore: function (options){
             var store = new CreateLFStore (options);
             return new Observable(store);
-        },
+        }
     };
 });

@@ -15,10 +15,8 @@
 ############################################################################## */
 define([
     "dojo/_base/declare",
-    "dojo/_base/array",
+    "dojo/_base/lang",
     "dojo/on",
-
-    "dijit/form/Button",
 
     "dgrid/OnDemandGrid",
     "dgrid/Keyboard",
@@ -28,14 +26,11 @@ define([
     "dgrid/extensions/DijitRegistry",
 
     "hpcc/GridDetailsWidget",
-    "hpcc/ESPWorkunit",
-    "hpcc/ESPQuery",
-    "hpcc/ESPUtil",
-
-], function (declare, arrayUtil, on,
-                Button,
+    "hpcc/WsWorkunits",
+    "hpcc/ESPUtil"
+], function (declare, lang, on,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                GridDetailsWidget, ESPWorkunit, ESPQuery, ESPUtil) {
+                GridDetailsWidget, WsWorkunits, ESPUtil) {
     return declare("QuerySetLogicalFilesWidget", [GridDetailsWidget], {
 
         gridTitle: "Logical Files",
@@ -44,30 +39,19 @@ define([
         queryId: null,
         querySet: null,
 
-
         init: function (params) {
-           if (this.inherited(arguments))
+            if (this.inherited(arguments))
                 return;
+            this.refreshGrid();
             this._refreshActionState();
-           // this.refreshGrid();
-            if (params) {
-                this.querySet = params.QuerySet;
-                this.queryId = params.QueryId;
-                
-                this.grid.set("query", {
-                    QueryId: "icecream_query1.1",
-                    QuerySet: "roxie"
-                 });
-            }
-
         },
 
-         createGrid: function (domID) {
+        createGrid: function (domID) {
             var context = this;
             var retVal = new declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({
                 allowSelectAll: true,
                 deselectOnRefresh: false,
-                store: ESPQuery.CreateQueryLogicalFileStore(),
+                store: this.store,
                 columns: {
                     col1: selector({ width: 27, selectorType: 'checkbox' }),
                     /*Item: {
@@ -82,7 +66,6 @@ define([
                 }
             }, domID);
 
-            var context = this;
             on(document, "." + this.id + "WuidClick:click", function (evt) {
                 if (context._onRowDblClick) {
                     var row = retVal.row(evt).data;
@@ -92,11 +75,21 @@ define([
             return retVal;
         },
 
-       refreshGrid: function (args) {
-        },
-
-        refreshActionState: function (selection) {
-           
+        refreshGrid: function (args) {
+            var context = this;
+            WsWorkunits.WUQueryDetails({
+                request: {
+                    QuerySet: this.params.QuerySet,
+                    QueryId: this.params.QueryId,
+                    IncludeStateOnClusters: false,
+                    IncludeSuperFiles: false
+                }
+            }).then(function (response) {
+                if (lang.exists("WUQueryDetailsResponse.LibrariesUsed", response)) {
+                    context.store.setData(response.WUQueryDetailsResponse.LibrariesUsed);
+                    context.grid.refresh();
+                }
+            });
         }
     });
 });
