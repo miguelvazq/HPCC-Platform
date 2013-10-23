@@ -184,6 +184,14 @@ define([
             return ESPRequest.send("WsWorkunits", "WUResult", params);
         },
 
+        WUGetBugReportInfo: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUGetBugReportInfo", params);
+        },
+
+        WUReportBug: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUReportBug", params);
+        },
+
         WUQueryGetGraph: function (params) {
             return ESPRequest.send("WsWorkunits", "WUQueryGetGraph", params);
         },
