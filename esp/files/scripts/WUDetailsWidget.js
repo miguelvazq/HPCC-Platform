@@ -96,6 +96,9 @@ define([
         buildVersion: null,
         espIPAddress: null,
         thorIPAddress: null,
+        zapDescription: null,
+        warnHistory: null,
+        warnTimings: null,
 
         prevState: "",
 
@@ -112,8 +115,10 @@ define([
             this.playgroundWidget = registry.byId(this.id + "_Playground");
             this.xmlWidget = registry.byId(this.id + "_XML");
             this.publishForm = registry.byId(this.id + "PublishForm");
-
             this.infoGridWidget = registry.byId(this.id + "InfoContainer");
+            this.zapDescription = registry.byId(this.id + "ZapDescription");
+            this.warnHistory = registry.byId(this.id + "WarnHistory");
+            this.warnTimings = registry.byId(this.id + "WarnTimings");
         },
 
         startup: function (args) {
@@ -141,7 +146,7 @@ define([
 
         _onCancelDialog: function (){
             registry.byId(this.id + "ZapDialog").hide();
-        }, 
+        },
 
         //  Hitched actions  ---
         _onSave: function (event) {
@@ -194,17 +199,16 @@ define([
                     context.updateInput("BuildVersion", null, response.WUGetZAPInfoResponse.BuildVersion);
                     context.updateInput("ESPIPAddress", null, response.WUGetZAPInfoResponse.ESPIPAddress);
                     context.updateInput("ThorIPAddress", null, response.WUGetZAPInfoResponse.ThorIPAddress);
-                    
                     context.buildVersion = response.WUGetZAPInfoResponse.BuildVersion;
                     context.espIPAddress = response.WUGetZAPInfoResponse.ESPIPAddress;
                     context.thorIPAddress = response.WUGetZAPInfoResponse.ThorIPAddress;
-                }                
+                }
             });
         },
 
         onZapSubmit: function (event) {
             var frame = iframe.create("ZapDownload" + uniqueID++);
-            var url = ESPRequest.getBaseURL("WsWorkunits") + "/WUCreateZAPInfo?WUID=" + this.wu.Wuid + "&ESPIPAddress=" + this.espIPAddress + "&ThorIPAddress=" + this.thorIPAddress + "&BuildVersion=" + encodeURIComponent(this.buildVersion);
+            var url = ESPRequest.getBaseURL("WsWorkunits") + "/WUCreateZAPInfo?WUID=" + this.wu.Wuid + "&ESPIPAddress=" + this.espIPAddress + "&ThorIPAddress=" + this.thorIPAddress + "&BuildVersion=" + encodeURIComponent(this.buildVersion) + "&ProblemDescription=" + encodeURIComponent(this.zapDescription.value) + "&WhatChanged=" + encodeURIComponent(this.warnHistory.value) + "&WhereSlow=" + encodeURIComponent(this.warnTimings.value);
             iframe.setSrc(frame, url, true);
             registry.byId(this.id + "ZapDialog").hide();
         },
