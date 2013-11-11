@@ -41,6 +41,7 @@ define([
     "hpcc/ESPWorkunit",
     "hpcc/ESPLogicalFile",
     "hpcc/TargetSelectWidget",
+    "hpcc/FilterDropDownWidget",
     "hpcc/QuerySetDetailsWidget",
     "hpcc/WsWorkunits",
     "hpcc/ESPQuery",
@@ -65,7 +66,7 @@ define([
 ], function (declare, lang, dom, domForm, iframe, arrayUtil, on,
                 registry, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
-                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPQuery, ESPUtil,
+                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, FilterDropDownWidget, QuerySetDetailsWidget, WsWorkunits, ESPQuery, ESPUtil,
                 template) {
     return declare("QuerySetQueryWidget", [_TabContainerWidget], {
         templateString: template,
@@ -75,6 +76,7 @@ define([
         queriesTab: null,
         querySetGrid: null,
         clusterTargetSelect: null,
+        filter: null,
 
         initalized: false,
         loaded: false,
@@ -87,6 +89,7 @@ define([
             this.inherited(arguments);
             this.queriesTab = registry.byId(this.id + "_Queries");
             this.clusterTargetSelect = registry.byId(this.id + "ClusterTargetSelect");
+            this.filter = registry.byId(this.id + "Filter");
             this.borderContainer = registry.byId(this.id + "BorderContainer");
         },
 
@@ -121,7 +124,14 @@ define([
             });
             this.initQuerySetGrid();
             this.selectChild(this.queriesTab, true);
-            this.refreshGrid();
+
+            var context = this;
+            this.filter.on("clear", function (evt) {
+                context.refreshGrid();
+            });
+            this.filter.on("apply", function (evt) {
+                context.refreshGrid();
+            });
         },
 
         initTab: function () {
@@ -256,6 +266,7 @@ define([
                 allowSelectAll: true,
                 deselectOnRefresh: false,
                 store: store,
+                query: this.getFilter(),
                 rowsPerPage: 50,
                 pagingLinks: 1,
                 pagingTextBox: true,
@@ -401,21 +412,6 @@ define([
            this.refreshGrid();
         },
 
-        _onFilterClear: function(event) {
-            this.clearFilter();
-            this.refreshGrid();
-        },
-
-        clearFilter: function () {
-            arrayUtil.forEach(registry.byId(this.id + "FilterForm").getDescendants(), function (item, idx) {
-                item.set('value', null);
-            });
-        },
-
-        _onFilterApply: function(){
-            this.querySetGrid.set("query", this.getFilter());
-        },
-
         _onDelete:function(){
             if (confirm('Delete Selected Queries?')) {
                 var context = this;
@@ -478,7 +474,7 @@ define([
 
         getFilter: function(){
             var context = this;
-            var retVal = domForm.toObject(this.id + "FilterForm");
+            var retVal = this.filter.toObject();
             return retVal;
         },
 
