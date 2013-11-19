@@ -248,7 +248,7 @@ define([
                 if (currSel.id == this.workunitsTab.id) {
                 } else {
                     if (!currSel.initalized) {
-                        currSel.init(currSel.hpcc.params);
+                        currSel.init(currSel.params);
                     }
                 }
             }
