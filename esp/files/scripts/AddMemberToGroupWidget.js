@@ -16,14 +16,16 @@
 define([
     "dojo/_base/declare",
     "dojo/_base/lang",
-    "dojo/dom",
     "dojo/_base/array",
     "dojo/on",
 
-    "dijit/registry",
-    "dijit/layout/_LayoutWidget",
-    "dijit/_TemplatedMixin",
-    "dijit/_WidgetsInTemplateMixin",
+    "dijit/form/Button",
+    "dijit/Menu",
+    "dijit/MenuItem",
+    "dijit/MenuSeparator",
+    "dijit/PopupMenuItem",
+    "dijit/form/DropDownButton",
+    "dijit/DropDownMenu",
 
     "dgrid/OnDemandGrid",
     "dgrid/Keyboard",
@@ -32,79 +34,39 @@ define([
     "dgrid/extensions/ColumnResizer",
     "dgrid/extensions/DijitRegistry",
 
+    "hpcc/GridDetailsWidget",
     "hpcc/WsAccess",
     "hpcc/ESPUtil",
-    "hpcc/AddMemberToGroupWidget",
 
-    "dojo/text!../templates/MemberOfWidget.html",
-
-    "dijit/form/Button",
-    "dijit/Menu",
-    "dijit/MenuItem",
-    "dijit/MenuSeparator",
-    "dijit/PopupMenuItem",
-    "dijit/form/DropDownButton",
-    "dijit/DropDownMenu"
-], function (declare, lang, dom, arrayUtil, on,
-                registry, _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin,
+], function (declare, lang, arrayUtil, on,
+                Button, Menu, MenuItem, MenuSeparator, PopupMenuItem, DropDownButton, DropDownMenu,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                WsAccess, ESPUtil, AddMemberToGroupWidget,
-                template) {
-    return declare("MemberOfWidget", [_LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
-        templateString: template,
-        baseClass: "MemberOfWidget",
+                GridDetailsWidget, WsAccess, ESPUtil) {
+    return declare("AddMemberToGroup", [GridDetailsWidget], {
 
-        borderContainer: null,
-        memberofGrid: null,
+        gridTitle: "Groups",
+        idProperty: "name",
         user:null,
-
-        initalized: false,
-        loaded: false,
-
-        buildRendering: function (args) {
-            this.inherited(arguments);
-        },
-
-        postCreate: function (args) {
-            this.inherited(arguments);
-            this.borderContainer = registry.byId(this.id + "BorderContainer");
-        },
-
-        startup: function (args) {
-            this.inherited(arguments);
-        },
-
-        resize: function (args) {
-            this.inherited(arguments);
-            this.borderContainer.resize(); //is needed
-        },
-
-        layout: function (args) {
-            this.inherited(arguments);
-        },
-
-        destroy: function (args) {
-            this.inherited(arguments);
-        },
 
         init: function (params) {
             if (this.initalized)
                 return;
-            this.dirtyRows = {};
             this.initalized = true;
-            this.initMemberOfGrid();
             this.refreshGrid();
-            //this.initContextMenu();
+            this._refreshActionState();
+            this.initContextMenu();
 
-            if (params.username) {
+            /*if (params.username) {
                 this.user = params.username;
-                this.memberofGrid.set("query", {
+                //this.summaryWidget.set("title", "User Summary");
+                //dom.byId(this.id + "User").innerHTML = this.user;
+                this.grid.set("query", {
                     username: this.user
                  });
-            }
+            }*/
         },
 
-        /*getTitle: function () {
+        getTitle: function () {
             return "Member Of";
         },
 
@@ -114,7 +76,7 @@ define([
             return menuItem;
         },
 
-        initContextMenu:function(){
+        /*initContextMenu:function(){
             var context = this;
             var pMenu = new Menu({
                 targetNodeIds: [this.grid.id]
@@ -129,56 +91,39 @@ define([
             });
         },*/
 
-        initMemberOfGrid: function () {
+        createGrid: function (domID) {
             var context = this;
-            var store = new WsAccess.GroupsStore();
-            this.memberofGrid = declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({
-                allowSelectAll: false,
+            this.addBtn = new Button({
+                label: "Save",
+                onClick: function (event) {
+                    context._onSave();
+                }
+            }, this.id + "ContainerNode");
+
+            var retVal = new declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({
+                allowSelectAll: true,
                 deselectOnRefresh: false,
-                store: store,
-                 columns: {
-                    check: selector({
-                        width: 1,
-                        label: " "
-                    },"checkbox"),
+                store: WsAccess.UserGroupEditInputStore(),
+                columns: {
+                    col1: selector({ width: 27, selectorType: 'checkbox' }),
                     name: {
                         label: "Group Name", width: 180, sortable: true,
-                        formatter: function (Wuid, row) {
-                            var wu = row.name === "DFUserver" ? ESPDFUWorkunit.Get(Wuid) : ESPWorkunit.Get(Wuid);
-                            //return "<a href='#' class='" + context.id + "WuidClick'>" + Wuid + "</a>";
-                        },
-                         canEdit: function(rowData, value) {
-                             return value != 10;
-                        }
+                        /*formatter: function (Wuid, row) {
+                            var wu = row.Server === "DFUserver" ? ESPDFUWorkunit.Get(Wuid) : ESPWorkunit.Get(Wuid);
+                            return "<a href='#' class='" + context.id + "WuidClick'>" + Wuid + "</a>";
+                        }*/
                     }
                 }
-            },
+            }, domID);
 
-            this.id + "MemberOfGrid");
-            this.memberofGrid.on("dgrid-datachange", function (evt) {
-                var context = this;
-                var rowID = evt.rowId;
-                var fieldThatChanged = evt.cell.column.field;
-                var newValue = evt.value;
-                context.dirtyRows[evt.rowId] = {
-                    fieldThatChanged: evt.cell.column.field,
-                    newValue: evt.value
-                };
+            var context = this;
+            on(document, "." + this.id + "WuidClick:click", function (evt) {
+                if (context._onRowDblClick) {
+                    var row = retVal.row(evt).data;
+                    context._onRowDblClick(row);
+                }
             });
-
-            this.memberofGrid.onSelectionChanged(function (event) {
-                context.refreshActionState();
-            });
-            this.memberofGrid.onContentChanged(function (event) {
-                context.refreshActionState();
-            });
-
-            this._onRefresh();
-            this.refreshActionState();
-
-            this.memberofGrid.set("noDataMessage", "<span class='dojoxGridNoData'>Zero Groups.</span>");
-            this.memberofGrid.startup();
-            this.refreshActionState();
+            return retVal;
         },
 
         /*createDetail: function (id, row, params) {
@@ -206,7 +151,7 @@ define([
             });
         },*/
 
-        /*buildFilter: function(){
+       /* buildFilter: function(){
             var menu = new DropDownMenu({ style: "display: none;"});
             var menuItem1 = new MenuItem({
                 label: "Save",
@@ -227,28 +172,17 @@ define([
                 id: "progButton"
             }, this.id + "FilterNode");
         },
-*//*
-        _onAdd: function (event) {
-            //var firstTab = null;
-            var tab = this.ensurePane(this.id + "_" + this.user, {
-                Username: this.user
-            });
 
-            if (i == 0) {
-                firstTab = tab;
-            }
-            if (firstTab) {
-                this.selectChild(firstTab);
-            }
+        _onAdd: function (event) {
                 var context = this;
-                WsAccess.UserGroupEditInput(this.user, "Deschedule", {
+                var selection = this.grid.getSelected();
+                /*WsWorkunits.WUAction(selection, "Deschedule", {
                     load: function (response) {
                         context.refreshGrid(response);
                     }
                 });
-        },*/
 
-
+        },
 
         _onDelete: function (event) {
                 var context = this;
@@ -258,10 +192,6 @@ define([
                         context.refreshGrid(response);
                     }
                 });
-        },
-
-        _onRefresh:function(){
-            this.refreshGrid();
         },
 
         /*_onDelete: function (params){
@@ -288,36 +218,31 @@ define([
             }
             setTimeout(this.refreshGrid(), 2000);
         },
-*/
+
+
         _onDelete: function (event) {
             if (confirm('Delete this user from selected group?')) {
                 var context = this;
-
+                var selection = this.grid.getSelected();
+                WsWorkunits.WUAction(selection, "Deschedule", {
+                    load: function (response) {
+                        context.refreshGrid(response);
+                    }
+                });
             }
-        },
-
-        /*_onAdd:function(){
-            var tab = this.ensurePane(this.id + "_" + this.user, {
-                Username: this.user
-            });
-
         },*/
-
-         _onAdd: function (event){
-            registry.byId(this.id + "AddMemberDialog").show();
-        },
 
         refreshGrid: function (args) {
             var context = this;
-            this.memberofGrid.set("query", {
-                username: this.user
+            this.grid.set("query",{
+               username: this.user
             });
         },
 
         refreshActionState: function (selection) {
-            var selection = this.memberofGrid.getSelected();
-            var hasSelection = selection.length;
-            registry.byId(this.id + "Save").set("disabled", !hasSelection);
+            this.inherited(arguments);
+            this.menuDelete.set("disabled", !selection.length);
+            this.menuAdd.set("disabled", !selection.length);
         }
     });
 });

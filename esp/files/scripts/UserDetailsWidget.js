@@ -39,6 +39,7 @@ define([
     "hpcc/WsAccess",
     "hpcc/MemberOfWidget",
     "hpcc/UserPermissionsWidget",
+    "hpcc/UserQueryWidget",
 
     "dojo/text!../templates/UserDetailsWidget.html",
 
@@ -46,6 +47,7 @@ define([
     "dijit/layout/TabContainer",
     "dijit/layout/ContentPane",
     "dijit/form/Textarea",
+    "dijit/form/TextBox",
     "dijit/form/Button",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
@@ -57,7 +59,7 @@ define([
 ], function (declare, lang, dom, domForm, domAttr, domClass, query, Memory, Observable,
                 _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                _TabContainerWidget, WsAccess, MemberOfWidget, UserPermissionsWidget,
+                _TabContainerWidget, WsAccess, MemberOfWidget, UserPermissionsWidget, UserQueryWidget,
                 template) {
     return declare("UserDetailsWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
@@ -68,6 +70,8 @@ define([
         membersWidgetLoaded:false,
         userPermissionsWidget:null,
         userPermissionsWidgetLoaded:false,
+        userQueryWidget:null,
+        userQueryWidgetLoaded: false,
         user:null,
 
 
@@ -76,6 +80,7 @@ define([
             this.summaryWidget = registry.byId(this.id + "_Summary");
             this.membersWidget = registry.byId(this.id + "_Members");
             this.userPermissionsWidget = registry.byId(this.id + "_UserPermissions");
+            this.userQueryWidget = registry.byId(this.id + "_UserQueryWidget")
         },
 
         startup: function (args) {
@@ -87,9 +92,6 @@ define([
         },
 
         //  Hitched actions  ---
-        _onSave: function (event) {
-           
-        },
 
         //  Implementation  ---
         init: function (params) {
@@ -102,6 +104,7 @@ define([
             if (params.Username) {
                 this.summaryWidget.set("title", "User Summary");
                 context.updateInput("User", null, this.user);
+                context.updateInput("Username", null, this.user);
                 context.updateInput("PasswordExpiration", null, params.Passwordexpiration);
             }
 
@@ -135,18 +138,7 @@ define([
             }
         },
 
-        _onCancelDialog: function (nodeName) {
-            registry.byId(this.id + "EditDialog").hide();
-            registry.byId(this.id + "PasswordDialog").hide();
-        },
-
-        _onPassword: function (params) {
-            var context = this;
-            registry.byId(this.id + "PasswordDialog").show();
-            context.updateInput("PasswordUsername", null, this.user);
-        },
-
-        _onEdit: function (params) {
+        /*_onEdit: function (params) {
             var context = this;
             registry.byId(this.id + "EditDialog").show();
             context.updateInput("UsersUsername", null, this.user);
@@ -162,43 +154,42 @@ define([
                 }
             });
         },
-
-        _onEditSubmit: function (event) {
+*/
+        _onSave: function (event) {
             var context = this;
-            context.updateInput("UsersUsername", null, this.user);
-             
+
              WsAccess.UserInfoEdit({
-               request: domForm.toObject(this.id + "EditForm")
+                request: {
+                 username: dom.byId(context.id + "Username").value,
+                 firstname: dom.byId(context.id + "FirstName").value,
+                 lastname: dom.byId(context.id + "LastName").value
+                }
             }).then(function (response) {
-                if(lang.exists("UserInfoEditResponse.retmsg" == "", response)){
+                if(lang.exists("UserInfoEditResponse.retcode" == -1, response)){
                     dojo.publish("hpcc/brToaster", {
-                            message: "<p>User password updated successfully</p>",
-                            type: "error",
-                            duration: -1
+                        message: "<p>Please specify both firstname and lastname</p>",
+                        type: "error",
+                        duration: -1
                     });
                 }
             });
-            context.updateInput("FirstName", null, registry.byId(this.id + "UsersFirstName").value);
-            context.updateInput("LastName", null, registry.byId(this.id + "UsersLastName").value);
-            registry.byId(this.id + "EditDialog").hide();
-        },
 
-        _onPasswordSubmit: function (event) {
-            var context = this;
-            context.updateInput("PasswordUsername", null, this.user);
             WsAccess.UserResetPass({
                request: domForm.toObject(this.id + "PasswordForm")
             }).then(function (response) {
                 if(lang.exists("UserResetPassResponse.retcode", response)){
                     dojo.publish("hpcc/brToaster", {
-                            message: "<p>" + response.UserResetPassResponse.retmsg + "</p>",
-                            type: "error",
-                            duration: -1
+                        message: "<p>" + response.UserResetPassResponse.retmsg + "</p>",
+                        type: "error",
+                        duration: -1
                     });
                 }
             });
-            registry.byId(this.id + "PasswordDialog").hide();
 
+            context.updateInput("FirstName", null, registry.byId(this.id + "FirstName").value);
+            context.updateInput("LastName", null, registry.byId(this.id + "LastName").value);
+            context.updateInput("PasswordUsername", null, this.user);
+            this.userQueryWidget._onRefresh();
         },
 
         updateInput: function (name, oldValue, newValue) {

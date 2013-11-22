@@ -18,6 +18,7 @@ define([
     "dojo/_base/lang",
     "dojo/dom",
     "dojo/dom-form",
+    "dojo/request/iframe",
     "dojo/_base/array",
 
     "dijit/layout/_LayoutWidget",
@@ -41,14 +42,14 @@ define([
     "hpcc/ESPLogicalFile",
     "hpcc/WsAccess",
     "hpcc/ESPUtil"
-], function (declare, lang, dom, domForm, arrayUtil,
+], function (declare, lang, dom, domForm, iframe, arrayUtil,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, Button, registry,
                 OnDemandGrid, Keyboard, Selection, selector, editor, ColumnResizer, DijitRegistry, Pagination,
                 GridDetailsWidget, ESPBase, ESPWorkunit, ESPLogicalFile, WsAccess, ESPUtil) {
-    return declare("UserPermissionsWidget", [GridDetailsWidget], {
+    return declare("IndividualPermissionsWidget", [GridDetailsWidget], {
 
         gridTitle: "Permissions",
-        idProperty: "ResourceName",
+        idProperty: "account_name",
 
         buildRendering: function (args) {
             this.inherited(arguments);
@@ -59,15 +60,27 @@ define([
                 return;
 
             this.dirtyRows = {};
-            this._onRefresh();
+            this.refreshGrid();
             this._refreshActionState();
         },
 
         createGrid: function (domID) {
             var context = this;
-
-            this.addButton = new Button({
+            this.saveButton = new Button({
                 label: "Save",
+                onClick: function (event) {
+                    for (var key in context.dirtyRows) {
+                        var row = context.store.get(key);
+                        WsAccess.UpdateIndividualPermission(context.params.AccountName, {
+                            request: row
+                        });
+                    }
+                    context.dirtyRows = {};
+                }
+            }, this.id + "ContainerNode");
+
+            /*this.addButton = new Button({
+                label: "Add"
                 onClick: function (event) {
                     for (var key in context.dirtyRows) {
                         var row = context.store.get(key);
@@ -77,23 +90,19 @@ define([
                     }
                     context.dirtyRows = {};
                 }
-            }, this.id + "ContainerNode");
+            }, this.id + "ContainerNode");*/
 
             var retVal = new declare([OnDemandGrid, Keyboard, Selection, ColumnResizer, DijitRegistry, ESPUtil.GridHelper])({
                 store: this.store,
                 columns: {
-                    ResourceName: {
+                    account_name: {
                         width: 240,
-                        label: "Resource"
-                    },
-                    PermissionName: {
-                        width: 240,
-                        label: "Permission"
+                        label: "Account"
                     },
                     allow_access: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Allow<br>Access";
                         }
@@ -101,7 +110,7 @@ define([
                     allow_read: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Allow<br>Read</center>";
                         }
@@ -127,7 +136,7 @@ define([
                     deny_access: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Deny<br>Access</center>";
                         }
@@ -135,7 +144,7 @@ define([
                     deny_read: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Deny<br>Read</center>";
                         }
@@ -143,7 +152,7 @@ define([
                     deny_write: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Deny<br>Write</center>";
                         }
@@ -151,7 +160,7 @@ define([
                     deny_full: editor({
                         width: 54,
                         editor: "checkbox",
-                        autoSave: true,
+                        //autoSave: true,
                         renderHeaderCell: function (node) {
                             node.innerHTML = "<center>Deny<br>Full</center>";
                         }
@@ -170,23 +179,17 @@ define([
                 };
             });
             return retVal;
-
-            this._onRefresh();
-            this.refreshActionState();
         },
 
-        createDetail: function (id, row, params) {
-        },
-
-        _onRefresh: function (args) {
+        refreshGrid: function (args) {
             var context = this;
-            WsAccess.AccountPermissions({
+            WsAccess.ResourcePermissions({
                 request: {
-                    AccountName:  context.params.AccountName
+                    AccountName:  this.params.AccountName
                 }
             }).then(function (response) {
-                if (lang.exists("AccountPermissionsResponse.Permissions.Permission", response)) {
-                    context.store.setData(response.AccountPermissionsResponse.Permissions.Permission);
+                if (lang.exists("ResourcePermissionsResponse.Permissions.Permission", response)) {
+                    context.store.setData(response.ResourcePermissionsResponse.Permissions.Permission);
                     context.grid.refresh();
                 }
             });

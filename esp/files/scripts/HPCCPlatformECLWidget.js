@@ -21,6 +21,10 @@ define([
     "hpcc/_TabContainerWidget",
     "hpcc/WUQueryWidget",
     "hpcc/ECLPlaygroundWidget",
+    "hpcc/UserQueryWidget",
+    "hpcc/GroupsWidget",
+    "hpcc/ResourcePermissionsWidget",
+
 
     "dojo/text!../templates/HPCCPlatformECLWidget.html",
 
@@ -30,7 +34,7 @@ define([
 
 ], function (declare,
                 registry,
-                _TabContainerWidget, WUQueryWidget, ECLPlaygroundWidget,
+                _TabContainerWidget, WUQueryWidget, ECLPlaygroundWidget, UserQueryWidget, GroupsWidget, ResourcePermissionsWidget,
                 template) {
     return declare("HPCCPlatformECLWidget", [_TabContainerWidget], {
         templateString: template,

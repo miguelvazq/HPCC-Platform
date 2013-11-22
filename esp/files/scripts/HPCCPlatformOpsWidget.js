@@ -20,6 +20,10 @@ define([
 
     "hpcc/_TabContainerWidget",
     "hpcc/ESPRequest",
+    "hpcc/UserQueryWidget",
+    "hpcc/GroupsWidget",
+    "hpcc/ResourcePermissionsWidget",
+
 
     "dojo/text!../templates/HPCCPlatformOpsWidget.html",
 
@@ -29,7 +33,7 @@ define([
 
 ], function (declare,
                 registry,
-                _TabContainerWidget, ESPRequest,
+                _TabContainerWidget, ESPRequest, UserQueryWidget, GroupsWidget, ResourcePermissionsWidget,
                 template) {
     return declare("HPCCPlatformOpsWidget", [_TabContainerWidget], {
         templateString: template,
@@ -63,21 +67,6 @@ define([
                 if (currSel.id === this.id + "_Resources") {
                     currSel.set("content", dojo.create("iframe", {
                         src: ESPRequest.getBaseURL("WsSMC") + "/BrowseResources",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                } else if (currSel.id === this.id + "_Users") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: ESPRequest.getBaseURL("ws_access") + "/Users",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                } else if (currSel.id === this.id + "_Groups") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: ESPRequest.getBaseURL("ws_access") + "/Groups",
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
-                } else if (currSel.id === this.id + "_Permissions") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: ESPRequest.getBaseURL("ws_access") + "/Permissions",
                         style: "border: 0; width: 100%; height: 100%"
                     }));
                 } else if (currSel.id === this.id + "_TargetClusters") {

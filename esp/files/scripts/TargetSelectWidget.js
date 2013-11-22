@@ -168,6 +168,10 @@ require([
             this._postLoad();
         },
 
+        loadMemberGroups: function () {
+            
+        },
+
         LogicalFileSearchType: function() {
             this.options.push({
                 label: "Created",

@@ -47,7 +47,9 @@ define([
     "dijit/form/Button",
     "dijit/ToolbarSeparator",
     "dijit/form/TextBox",
-    "dijit/Dialog"
+    "dijit/Dialog",
+
+    "dojox/layout/TableContainer"
 ], function (declare, lang, dom, domForm, iframe, arrayUtil,
                 _LayoutWidget, _TemplatedMixin, _WidgetsInTemplateMixin, registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
@@ -70,7 +72,6 @@ define([
         postCreate: function (args) {
             this.inherited(arguments);
             this.borderContainer = registry.byId(this.id + "BorderContainer");
-           
         },
 
         startup: function (args) {
@@ -103,7 +104,7 @@ define([
                 store: store,
                 columns: {
                     check: selector({
-                        width: 1, 
+                        width: 1,
                         label: " "
                     },"checkbox"),
                     name: {
@@ -126,6 +127,11 @@ define([
         },
 
         //  Hitched actions  ---
+
+        _onAdd: function (event) {
+            registry.byId(this.id + "AddGroupDialog").show();
+        },
+
         _onCancelDialog: function (event) {
             registry.byId(this.id + "EditDialog").hide();
         },
@@ -134,7 +140,7 @@ define([
             var context = this;
             var selections = this.usersGrid.getSelected();
             registry.byId(this.id + "EditDialog").show();
-            
+
              arrayUtil.forEach(selections, function (item, idx) {
                 context.updateInput("Username", null, item.username);
             });
@@ -156,7 +162,6 @@ define([
              var context = this;
             var selections = this.usersGrid.getSelected();
             registry.byId(this.id + "EditDialog").show();
-            
              arrayUtil.forEach(selections, function (item, idx) {
                 context.updateInput("Username", null, item.username);
             });
@@ -172,22 +177,36 @@ define([
         },*/
 
 
-         _onPassWord: function (event) {
-            
+        _onPassWord: function (event) {
         },
 
-         _onPermissions: function (event) {
-        
+        _onPermissions: function (event) {
+        },
+
+        _onDelete: function (event) {
+        },
+
+        _onOpen: function (event) {
         },
 
         refreshActionState: function () {
             var selection = this.groupsGrid.getSelected();
             var hasSelection = selection.length;
-            registry.byId(this.id + "Refresh").set("disabled", !hasSelection);
-            registry.byId(this.id + "Add").set("disabled", !hasSelection);
             registry.byId(this.id + "Delete").set("disabled", !hasSelection);
             registry.byId(this.id + "EditMembers").set("disabled", !hasSelection);
             registry.byId(this.id + "EditPermissions").set("disabled", !hasSelection);
+            registry.byId(this.id + "ExportUsers").set("disabled", !hasSelection);
+
+            for (var i = 0; i < selection.length; i++) {
+               var auth = selection[i].name;
+               if(auth == "Authenticated Users"){
+                registry.byId(this.id + "EditMembers").set("disabled", hasSelection);
+               }
+            }
+
+           /* if(selection.name == "Authenticated Users"){
+                registry.byId(this.id + "EditMembers").set("disabled", hasSelection);
+            }*/
         },
 
         updateInput: function (name, oldValue, newValue) {

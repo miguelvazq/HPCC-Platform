@@ -18,6 +18,8 @@ define([
     "dojo/_base/lang",
     "dojo/_base/array",
     "dojo/dom",
+    "dojo/dom-form",
+    "dojo/dom-attr",
     "dojo/dom-style",
 
     "dijit/registry",
@@ -28,9 +30,14 @@ define([
     "hpcc/_TabContainerWidget",
     "hpcc/ESPRequest",
     "hpcc/WsAccount",
-    "hpcc/ws_access",
     "hpcc/WsSMC",
+    "hpcc/WsAccess",
     "hpcc/GraphWidget",
+    "hpcc/HPCCPlatformMainWidget",
+    "hpcc/HPCCPlatformECLWidget",
+    "hpcc/HPCCPlatformFilesWidget",
+    "hpcc/HPCCPlatformRoxieWidget",
+    "hpcc/HPCCPlatformOpsWidget",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -46,17 +53,12 @@ define([
     "dijit/MenuSeparator",
     "dijit/Toolbar",
     "dijit/TooltipDialog",
+    "dijit/Dialog",
 
-    "hpcc/HPCCPlatformMainWidget",
-    "hpcc/HPCCPlatformECLWidget",
-    "hpcc/HPCCPlatformFilesWidget",
-    "hpcc/HPCCPlatformRoxieWidget",
-    "hpcc/HPCCPlatformOpsWidget"
-
-], function (declare, lang, arrayUtil, dom, domStyle,
+], function (declare, lang, arrayUtil, dom, domForm, domAttr, domStyle,
                 registry, Tooltip,
                 UpgradeBar,
-                _TabContainerWidget, ESPRequest, WsAccount, WsAccess, WsSMC, GraphWidget,
+                _TabContainerWidget, ESPRequest, WsAccount, WsSMC, WsAccess, GraphWidget, HPCCPlatformMainWidget, HPCCPlatformECLWidget, HPCCPlatformFilesWidget, HPCCPlatformRoxieWidget, HPCCPlatformOpsWidget,
                 template) {
     return declare("HPCCPlatformWidget", [_TabContainerWidget], {
         templateString: template,
@@ -64,11 +66,13 @@ define([
 
         banner: "",
         upgradeBar: null,
+        user: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
             this.searchText = registry.byId(this.id + "FindText");
             this.aboutDialog = registry.byId(this.id + "AboutDialog");
+            this.passwordDialog = registry.byId(this.id + "PasswordDialog");
             this.setBannerDialog = registry.byId(this.id + "SetBannerDialog");
             this.searchPage = registry.byId(this.id + "_Main" + "_Search");
             this.stackContainer = registry.byId(this.id + "TabContainer");
@@ -130,6 +134,7 @@ define([
                 if (lang.exists("MyAccountResponse.username", response)) {
                     dom.byId(context.id + "UserID").innerHTML = response.MyAccountResponse.username;
                     context.checkIfAdmin(response.MyAccountResponse.username);
+                    context.user = response.MyAccountResponse.username;
                 }
             });
 
@@ -187,6 +192,39 @@ define([
             this.searchPage.doSearch(this.searchText.get("value"));
         },
 
+        _onOpenUser: function (evt){
+            var context = this;
+            registry.byId(this.id + "PasswordDialog").show();
+            context.updateInput("PasswordUsername", null, this.user);
+
+            WsAccess.UserResetPassInput({
+                request: {
+                 username: this.user
+                }
+            });
+        },
+
+        _onPasswordSubmit: function (event) {
+            var context = this;
+
+            WsAccess.UserResetPass({
+                request: {
+                    username: this.user,
+                    newPassword: dom.byId(context.id + "NewPassword").value,
+                    newPasswordRetype: dom.byId(context.id + "VerifyPassword").value
+                }
+            }).then(function (response) {
+                if(lang.exists("UserInfoEditResponse.retcode" == -1, response)){
+                    dojo.publish("hpcc/brToaster", {
+                        message: "<p>You can't change password of the system user.</p>",
+                        type: "error",
+                        duration: -1
+                    });
+                }
+            });
+            this.passwordDialog.hide();
+        },
+
         _onOpenLegacy: function (evt) {
             var win = window.open("\\", "_blank");
             win.focus();
@@ -216,6 +254,10 @@ define([
             this.aboutDialog.hide();
         },
 
+        _onPasswordClose: function (evt) {
+           this.passwordDialog.hide();
+        },
+
         _onSetBanner: function (evt) {
             dom.byId(this.id + "BannerText").value = this.banner;
             this.setBannerDialog.show();
@@ -241,6 +283,29 @@ define([
 
         _onSetBannerCancel: function (evt) {
             this.setBannerDialog.hide();
+        },
+
+        updateInput: function (name, oldValue, newValue) {
+            var registryNode = registry.byId(this.id + name);
+            if (registryNode) {
+                registryNode.set("value", newValue);
+            } else {
+                var domElem = dom.byId(this.id + name);
+                if (domElem) {
+                    switch (domElem.tagName) {
+                        case "SPAN":
+                        case "DIV":
+                            domAttr.set(this.id + name, "innerHTML", newValue);
+                            break;
+                        case "INPUT":
+                        case "TEXTAREA":
+                            domAttr.set(this.id + name, "value", newValue);
+                            break;
+                        default:
+                            alert(domElem.tagName);
+                    }
+                }
+            }
         },
 
         createStackControllerTooltip: function (widgetID, text) {

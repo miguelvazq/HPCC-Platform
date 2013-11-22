@@ -11,7 +11,7 @@
                 <div class="seperator grey"></div>
                 <div id="userAccount">
                     <span class="navBarLoggedin">logged in as:  </span>
-                    <a id="${id}UserID" href="#"></a>
+                    <a id="${id}UserID" href="#" data-dojo-attach-event="onClick:_onOpenUser"></a>
                 </div>
                 <div class="seperator grey"></div>
                 <div id="${id}More" class="left glow" data-dojo-props="iconClass:'iconAdvanced', showLabel:false" data-dojo-type="dijit.form.DropDownButton">
@@ -43,6 +43,19 @@
                 <div id="${id}ErrWarnGrid" data-dojo-props="title: 'Error/Warning(s)', errWarn: true" data-dojo-type="InfoGridWidget">
                 </div>
             </div>
+        </div>
+    </div>
+    <div id="${id}PasswordDialog" title="Change Password" data-dojo-type="dijit/Dialog">
+        <div class="dijitDialogPaneContentArea">
+            <div data-dojo-props="cols:2" data-dojo-type="dojox.layout.TableContainer">
+                <input id="${id}PasswordUsername" title="Username:" name="username" colspan="2" data-dojo-props="trim: true, readonly: true," data-dojo-type="dijit.form.TextBox" />
+                <input id="${id}NewPassword" title="New&nbsp;password:" name="newPassword" type="password" pwType="new" colspan="2" required="true" data-dojo-type="dijit.form.ValidationTextBox" />
+                <input id="${id}VerifyPassword" title="Retype&nbsp;new&nbsp;password:" name="newPasswordRetype" type="password" pwType="verify" colspan="2" required="true" data-dojo-type="dijit.form.ValidationTextBox" />
+            </div>
+        </div>
+        <div class="dijitDialogPaneActionBar">
+            <button type="submit" data-dojo-attach-event="onClick:_onPasswordClose" data-dojo-type="dijit/form/Button">Close</button>
+            <button id="${id}_onPasswordSubmit" class="bottomFormButtons" data-dojo-attach-event="onClick:_onPasswordSubmit" data-dojo-type="dijit.form.Button">Apply</button>
         </div>
     </div>
     <div id="${id}AboutDialog" title="About HPCC Platform" style="width: 480px;" data-dojo-type="dijit/Dialog">

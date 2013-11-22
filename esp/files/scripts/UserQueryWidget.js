@@ -42,7 +42,7 @@ define([
     "hpcc/ESPUtil",
     "hpcc/UserDetailsWidget",
 
-    "dojo/text!../templates/UsersQueryWidget.html",
+    "dojo/text!../templates/UserQueryWidget.html",
 
     "dijit/layout/BorderContainer",
     "dijit/layout/TabContainer",
@@ -61,9 +61,9 @@ define([
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
                 _TabContainerWidget, WsAccess, ESPUtil, UserDetailsWidget,
                 template) {
-    return declare("UsersQueryWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
+    return declare("UserQueryWidget", [_TabContainerWidget, _TemplatedMixin, _WidgetsInTemplateMixin], {
         templateString: template,
-        baseClass: "UsersQueryWidget",
+        baseClass: "UserQueryWidget",
 
         borderContainer: null,
         usersTab: null,
@@ -233,8 +233,8 @@ define([
         },
 
         _onCancelDialog: function (nodeName) {
-            registry.byId(this.id + "EditDialog").hide();
-            registry.byId(this.id + "PasswordDialog").hide();
+            //registry.byId(this.id + "EditDialog").hide();
+            //registry.byId(this.id + "PasswordDialog").hide();
             registry.byId(this.id + "AddUserDialog").hide();
         },
 
@@ -374,9 +374,9 @@ define([
             var selection = this.usersGrid.getSelected();
             var hasSelection = selection.length;
             registry.byId(this.id + "Open").set("disabled", !hasSelection);
-            registry.byId(this.id + "Password").set("disabled", !hasSelection);
+            //registry.byId(this.id + "Password").set("disabled", !hasSelection);
             registry.byId(this.id + "DeleteUsers").set("disabled", !hasSelection);
-            registry.byId(this.id + "EditUsers").set("disabled", !hasSelection);
+            //registry.byId(this.id + "EditUsers").set("disabled", !hasSelection);
         },
 
         updateInput: function (name, oldValue, newValue) {
@@ -416,6 +416,5 @@ define([
             }
             return retVal;
         }
-
     });
 });

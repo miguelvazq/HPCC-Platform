@@ -65,7 +65,7 @@ define([
     return declare("QuerySetDetailsWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "QuerySetDetailsWidget",
-        
+
         query: null,
 
         initalized: false,
