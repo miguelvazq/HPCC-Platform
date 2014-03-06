@@ -47,6 +47,7 @@ define([
     "hpcc/WsWorkunits",
     "hpcc/ESPQuery",
     "hpcc/ESPUtil",
+    "hpcc/FilterDropDownWidget",
 
     "dojo/text!../templates/QuerySetQueryWidget.html",
 
@@ -67,7 +68,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, dom, domForm, iframe, arrayUtil, on,
                 registry, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 Grid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, Pagination,
-                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPQuery, ESPUtil,
+                _TabContainerWidget, ESPBase, ESPWorkunit, ESPLogicalFile, TargetSelectWidget, QuerySetDetailsWidget, WsWorkunits, ESPQuery, ESPUtil, FilterDropDownWidget,
                 template) {
     return declare("QuerySetQueryWidget", [_TabContainerWidget], {
         templateString: template,
@@ -78,6 +79,7 @@ define([
         queriesTab: null,
         querySetGrid: null,
         clusterTargetSelect: null,
+        filter: null,
 
         initalized: false,
         loaded: false,
@@ -91,6 +93,7 @@ define([
             this.queriesTab = registry.byId(this.id + "_PublishedQueries");
             this.clusterTargetSelect = registry.byId(this.id + "ClusterTargetSelect");
             this.borderContainer = registry.byId(this.id + "BorderContainer");
+            this.filter = registry.byId(this.id + "Filter");
         },
 
         startup: function (args) {
@@ -115,8 +118,6 @@ define([
             if (this.inherited(arguments))
                 return;
 
-            var context = this;
-            var firstCall = true;
             this.clusterTargetSelect.init({
                 Targets: true,
                 includeBlank: true,
@@ -124,6 +125,14 @@ define([
             });
             this.initQuerySetGrid();
             this.selectChild(this.queriesTab, true);
+
+            var context = this;
+            this.filter.on("clear", function (evt) {
+                context.refreshGrid();
+            });
+            this.filter.on("apply", function (evt) {
+                context.refreshGrid();
+            });
         },
 
         initTab: function () {
@@ -272,9 +281,9 @@ define([
                     }),
                     Suspended: {
                         renderHeaderCell: function (node) {
-                            node.innerHTML = "<img src='/esp/files/img/suspended.png'>";
+                            node.innerHTML = "<img src='/esp/files/img/suspended.png' title='Suspended by user'>";
                         },
-                        width: 20,
+                        width: 21,
                         sortable: false,
                         formatter: function (suspended) {
                             if (suspended == true) {
@@ -285,9 +294,9 @@ define([
                     },
                     Activated: {
                         renderHeaderCell: function (node) {
-                            node.innerHTML = "<img src='/esp/files/img/active.png'>";
+                            node.innerHTML = "<img src='/esp/files/img/active.png' title='Active'>";
                         },
-                        width: 20,
+                        width: 21,
                         sortable: false,
                         formatter: function (activated) {
                             if (activated == true) {
@@ -298,9 +307,9 @@ define([
                     },
                     ErrorCount: {
                         renderHeaderCell: function (node) {
-                            node.innerHTML = "<img src='/esp/files/img/errwarn.png'>";
+                            node.innerHTML = "<img src='/esp/files/img/errwarn.png' title='Error'>";
                         },
-                        width: 20,
+                        width: 21,
                         sortable: false,
                         formatter: function (error) {
                             if (error > 0) {
@@ -347,10 +356,14 @@ define([
                         width: 180,
                         label: this.i18n.PublishedBy
                     },
+                    SuspendedBy: {
+                        width: 100,
+                        label: i18n.SuspendedBy
+                    },
                 },
             },
             this.id + "QuerySetGrid");
-            //this.querySetGrid.set("noDataMessage", "<span class='dojoxGridNoData'>" + this.i18n.noDataMessage + "</span>");
+            this.querySetGrid.set("noDataMessage", "<span class='dojoxGridNoData'>" + this.i18n.noDataMessage + "</span>");
             on(document, "." + context.id + "WuidClick:click", function (evt) {
                 if (context._onRowDblClick) {
                     var item = context.querySetGrid.row(evt).data;
@@ -387,6 +400,8 @@ define([
             var hasSelection = false;
             var isSuspended = false;
             var isNotSuspended = false;
+            var isActive = false;
+            var isNotActive = false;
             for (var i = 0; i < selection.length; ++i) {
                 hasSelection = true;
                 if (selection[i].Suspended != true) {
@@ -394,49 +409,42 @@ define([
                 } else {
                     isNotSuspended = true;
                 }
+                if (selection[i].Activated != true) {
+                    isActive = true;
+                } else {
+                    isNotActive = true;
+                }
             }
 
             registry.byId(this.id + "Delete").set("disabled", !hasSelection);
-            registry.byId(this.id + "unSuspend").set("disabled", !isNotSuspended);
-            registry.byId(this.id + "onSuspend").set("disabled", !isSuspended);
-            registry.byId(this.id + "Activate").set("disabled", !hasSelection);
-            registry.byId(this.id + "Deactivate").set("disabled", !hasSelection);
+            registry.byId(this.id + "UnSuspend").set("disabled", !isNotSuspended);
+            registry.byId(this.id + "OnSuspend").set("disabled", !isSuspended);
+            registry.byId(this.id + "Activate").set("disabled", !isActive);
+            registry.byId(this.id + "Deactivate").set("disabled", !isNotActive);
             registry.byId(this.id + "Open").set("disabled", !hasSelection);
-        },
+
+
+            this.menuUnsuspend.set("disabled", !isNotSuspended);
+            this.menuSuspend.set("disabled", !isSuspended);
+            this.menuActivate.set("disabled", !isActive);
+            this.menuDeactivate.set("disabled", !isNotActive);
+         },
 
         _onRefresh: function (params) {
            this.refreshGrid();
-        },
-
-        _onFilterClear: function(event) {
-            this.clearFilter();
-            this.refreshGrid();
-        },
-
-        clearFilter: function () {
-            arrayUtil.forEach(registry.byId(this.id + "FilterForm").getDescendants(), function (item, idx) {
-                item.set('value', null);
-            });
-        },
-
-        _onFilterApply: function(){
-            this.querySetGrid.set("query", this.getFilter());
         },
 
         _onDelete:function(){
             if (confirm(this.i18n.DeleteSelectedQueries)) {
                 var context = this;
                 WsWorkunits.WUQuerysetQueryAction(this.querySetGrid.getSelected(), "Delete").then(function (response) {
-                    context.refreshGrid(true);
                 });
+                context.refreshGrid(true);
             }
         },
 
         refreshGrid: function (clearSelection) {
-            this.querySetGrid.set("query", this.getFilter());
-            if (clearSelection) {
-                this.workunitsGrid.clearSelection();
-            }
+              this.querySetGrid.set("query", this.getFilter());
         },
 
         _onSuspend: function(){
@@ -487,9 +495,7 @@ define([
         },
 
         getFilter: function(){
-            var context = this;
-            var retVal = domForm.toObject(this.id + "FilterForm");
-            return retVal;
+            return this.filter.toObject();
         },
 
         ensurePane: function (id, params) {

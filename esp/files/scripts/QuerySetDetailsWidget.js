@@ -135,7 +135,7 @@ define([
             });
             this.query.refresh();
 
-            this.selectChild(this.summaryWidget, true);
+            this.selectChild(this.summaryTab, true);
         },
 
         initTab: function () {
