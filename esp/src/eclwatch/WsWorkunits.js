@@ -20,10 +20,9 @@ define([
     "dojo/_base/Deferred",
     "dojo/promise/all",
     "dojo/store/Observable",
-    "dojo/topic",
 
     "hpcc/ESPRequest"
-], function (declare, lang, arrayUtil, Deferred, all, Observable, topic,
+], function (declare, lang, arrayUtil, Deferred, all, Observable,
     ESPRequest) {
 
     var EventScheduleStore = declare([ESPRequest.Store], {
@@ -54,12 +53,7 @@ define([
         },
 
         WUCreate: function (params) {
-            return ESPRequest.send("WsWorkunits", "WUCreate", params).then(function (response) {
-                topic.publish("hpcc/ecl_wu_created", {
-                    wuid: response.WUCreateResponse.Workunit.Wuid
-                });
-                return response;
-            });
+            return ESPRequest.send("WsWorkunits", "WUCreate", params);
         },
 
         WUUpdate: function (params) {
@@ -85,6 +79,10 @@ define([
 
         WUShowScheduled: function (params) {
             return ESPRequest.send("WsWorkunits", "WUShowScheduled", params);
+        },
+
+        WUPushEvent: function (params) {
+            return ESPRequest.send("WsWorkunits", "WUPushEvent", params);
         },
 
         WUQuerysetAliasAction: function (selection, action) {
@@ -131,14 +129,25 @@ define([
             return ESPRequest.send("WsWorkunits", "WUPublishWorkunit", params).then(function (response) {
                 if (lang.exists("WUPublishWorkunitResponse", response)) {
                     if (response.WUPublishWorkunitResponse.ErrorMesssage) {
-                        topic.publish("hpcc/brToaster", {
+                        dojo.publish("hpcc/brToaster", {
                             Severity: "Error",
                             Source: service + "." + action,
                             Exceptions: response.Exceptions
                         });
                     } else {
-                        topic.publish("hpcc/ecl_wu_published", {
-                            wuid: params.request.Wuid
+                        dojo.publish("hpcc/brToaster", {
+                            Severity: "Error",
+                            Source: "WsWorkunits.WUPublishWorkunit",
+                            Exceptions: [{
+                                Source: "Query ID",
+                                Message: response.WUPublishWorkunitResponse.QueryId
+                            }, {
+                                Source: "Query Name",
+                                Message: response.WUPublishWorkunitResponse.QueryName
+                            }, {
+                                Source: "Query Set",
+                                Message: response.WUPublishWorkunitResponse.QuerySet
+                            }]
                         });
                     }
                 }
@@ -152,12 +161,10 @@ define([
                         if (item.Code === 20081) {
                             lang.mixin(response, {
                                 WUQueryResponse: {
-                                    Workunits: {
-                                        ECLWorkunit: [{
-                                            Wuid: params.request.Wuid,
-                                            StateID: 999,
-                                            State: "deleted"
-                                        }]
+                                    Workunit: {
+                                        Wuid: params.request.Wuid,
+                                        StateID: 999,
+                                        State: "deleted"
                                     }
                                 }
                             });
@@ -226,7 +233,7 @@ define([
                     if (lang.exists("WUActionResponse.ActionResults.WUActionResult", response)) {
                         arrayUtil.forEach(response.WUActionResponse.ActionResults.WUActionResult, function (item, index) {
                             if (item.Result.indexOf("Failed:") === 0) {
-                                topic.publish("hpcc/brToaster", {
+                                dojo.publish("hpcc/brToaster", {
                                     Severity: "Error",
                                     Source: "WsWorkunits.WUAction",
                                     Exceptions: [{Source: item.Action + " " + item.Wuid, Message: item.Result}]
@@ -265,17 +272,14 @@ define([
             }
             return deferred.promise;
         },
-        
+
         CreateEventScheduleStore: function (options) {
             var store = new EventScheduleStore(options);
             return Observable(store);
         },
 
         //  Helpers  ---
-        isComplete: function (stateID, actionEx, archived) {
-            if (archived) {
-                return true;
-            }
+        isComplete: function (stateID, actionEx) {
             switch (stateID) {
                 case 1: //WUStateCompiled
                     if (actionEx && actionEx == "compile") {

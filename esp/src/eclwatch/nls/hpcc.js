@@ -246,6 +246,7 @@ define({root:
     Operations: "Operations",
     Options: "Options",
     Outputs: "Outputs",
+    OutputsWorkflows: "Ouputs / Workflows",
     Overview: "Overview",
     Overwrite: "Overwrite",
     Owner: "Owner",

@@ -357,9 +357,9 @@ define([
                 this.variablesStore.setData(newValue);
                 this.variablesGrid.refresh();
             } else if (name === "ResultCount" && newValue) {
-                this.resultsWidget.set("title", this.i18n.Outputs + " (" + newValue + ")");
+                this.resultsWidget.set("title", this.i18n.OutputsWorkflows + " (" + newValue + ")");
             } else if (name === "results") {
-                this.resultsWidget.set("title", this.i18n.Outputs + " (" + newValue.length + ")");
+                this.resultsWidget.set("title", this.i18n.OutputsWorkflows + " (" + newValue.length + ")");
                 var tooltip = "";
                 for (var key in newValue) {
                     if (tooltip != "")
