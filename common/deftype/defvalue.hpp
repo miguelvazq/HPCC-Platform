@@ -73,7 +73,7 @@ extern DEFTYPE_API IValue * createValueFromMem(ITypeInfo * type, const void * pt
 
 extern DEFTYPE_API IValue * createStringValue(const char * value, unsigned size);
 extern DEFTYPE_API IValue * createStringValue(const char * value, ITypeInfo *type);
-extern DEFTYPE_API IValue * createStringValue(const char *val, ITypeInfo *type, int srcLength, ICharsetInfo *srcCharset);
+extern DEFTYPE_API IValue * createStringValue(const char *val, ITypeInfo *type, size32_t srcLength, ICharsetInfo *srcCharset);
 extern DEFTYPE_API IValue * createUnicodeValue(char const * value, unsigned size, char const * locale, bool utf8, bool unescape = false); // size is length of ascii or utf8 string; locale is like fr_BE_EURO
 extern DEFTYPE_API IValue * createUnicodeValue(char const * value, ITypeInfo *type); // only for ascii string, use above for utf8
 extern DEFTYPE_API IValue * createUnicodeValue(char const * value, ITypeInfo *type, unsigned srclen); // only for ascii string
@@ -82,6 +82,7 @@ extern DEFTYPE_API IValue * createVarUnicodeValue(char const * value, unsigned s
 extern DEFTYPE_API IValue * createVarUnicodeValue(size32_t len, const void * text, ITypeInfo * type);
 extern DEFTYPE_API IValue * createUtf8Value(char const * value, ITypeInfo *type);
 extern DEFTYPE_API IValue * createUtf8Value(unsigned srclen, char const * value, ITypeInfo *type);
+extern DEFTYPE_API IValue * createUtf8Value(size32_t len, char const * value, char const * locale, bool unescape);
 extern DEFTYPE_API IValue * createDataValue(const char * value, unsigned size);
 extern DEFTYPE_API IValue * createDataValue(const char * value, ITypeInfo *type);
 extern DEFTYPE_API IValue * createQStringValue(unsigned len, const char * value, ITypeInfo *type);

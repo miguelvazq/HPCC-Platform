@@ -38,7 +38,6 @@
 namespace roxiemem {
 
 #define NOTIFY_UNUSED_PAGES_ON_FREE     // avoid linux swapping 'freed' pages to disk
-#define TIMEOUT_CHECK_FREQUENCY_MILLISECONDS 10
 
 unsigned memTraceLevel = 1;
 memsize_t memTraceSizeLimit = 0;
@@ -751,6 +750,7 @@ static void *subrealloc_aligned(void *ptr, unsigned pages, unsigned newPages)
     }
 }
 
+//---------------------------------------------------------------------------------------------------------------------
 static inline unsigned getRealActivityId(unsigned allocatorId, const IRowAllocatorCache *allocatorCache)
 {
     if ((allocatorId & ACTIVITY_FLAG_ISREGISTERED) && allocatorCache)
@@ -813,6 +813,13 @@ bool HeapletBase::isShared(const void *ptr)
     throwUnexpected();
 }
 
+void HeapletBase::internalReleaseNoDestructor(const void *ptr)
+{
+    dbgassertex(isValidRoxiePtr(ptr));
+    HeapletBase *h = findBase(ptr);
+    return h->_internalReleaseNoDestructor(ptr);
+}
+
 memsize_t HeapletBase::capacity(const void *ptr)
 {
     if (isValidRoxiePtr(ptr))
@@ -821,6 +828,14 @@ memsize_t HeapletBase::capacity(const void *ptr)
         return h->_capacity();
     }
     throwUnexpected();   // should never ask about capacity of anything but a row you allocated from Roxie heap
+}
+
+const void * HeapletBase::compactRow(const void * ptr, HeapCompactState & state)
+{
+    if (!isValidRoxiePtr(ptr))
+        return ptr;
+    HeapletBase *h = findBase(ptr);
+    return h->_compactRow(ptr, state);
 }
 
 void HeapletBase::setDestructorFlag(const void *ptr)
@@ -841,13 +856,15 @@ bool HeapletBase::hasDestructor(const void *ptr)
         return false;
 }
 
-
-class BigHeapletBase : public HeapletBase
+class CHeap;
+static void noteEmptyPage(CHeap * heap);
+class Heaplet : public HeapletBase
 {
-    friend class CChunkingHeap;
+    friend class CHeap;
 protected:
-    BigHeapletBase *next;
+    Heaplet *next;
     const IRowAllocatorCache *allocatorCache;
+    CHeap * const heap;
     memsize_t chunkCapacity;
     
     inline unsigned getActivityId(unsigned allocatorId) const
@@ -856,8 +873,9 @@ protected:
     }
 
 public:
-    BigHeapletBase(const IRowAllocatorCache *_allocatorCache, memsize_t _chunkCapacity) : chunkCapacity(_chunkCapacity)
+    Heaplet(CHeap * _heap, const IRowAllocatorCache *_allocatorCache, memsize_t _chunkCapacity) : heap(_heap), chunkCapacity(_chunkCapacity)
     {
+        assertex(heap);
         next = NULL;
         allocatorCache = _allocatorCache;
     }
@@ -880,8 +898,6 @@ public:
     {
         subfree_aligned(p, 1);
     }
-
-    virtual void *allocate(unsigned allocatorId) = 0;
 };
 
 
@@ -897,7 +913,8 @@ public:
 #define CACHE_LINE_SIZE 64
 #define HEAPLET_DATA_AREA_OFFSET(heapletType) ((size32_t) ((sizeof(heapletType) + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE) * CACHE_LINE_SIZE)
 
-class FixedSizeHeapletBase : public BigHeapletBase
+class CChunkedHeap;
+class ChunkedHeaplet : public Heaplet
 {
 protected:
     atomic_t r_blocks;  // the free chain as a relative pointer
@@ -914,8 +931,8 @@ protected:
     //classes, but that means it is hard to common up some of the code efficiently
 
 public:
-    FixedSizeHeapletBase(const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, size32_t _chunkCapacity)
-        : BigHeapletBase(_allocatorCache, _chunkCapacity), chunkSize(_chunkSize)
+    ChunkedHeaplet(CHeap * _heap, const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, size32_t _chunkCapacity)
+        : Heaplet(_heap, _allocatorCache, _chunkCapacity), chunkSize(_chunkSize)
     {
         sharedAllocatorId = 0;
         atomic_set(&freeBase, 0);
@@ -924,7 +941,9 @@ public:
 
     virtual size32_t sizeInPages() { return 1; }
 
-    inline static unsigned dataOffset() { return HEAPLET_DATA_AREA_OFFSET(FixedSizeHeapletBase); }
+    inline unsigned numChunks() const { return queryCount()-1; }
+
+    inline static unsigned dataOffset() { return HEAPLET_DATA_AREA_OFFSET(ChunkedHeaplet); }
 
     inline static size32_t dataAreaSize() { return  (size32_t)(HEAP_ALIGNMENT_SIZE - dataOffset()); }
 
@@ -943,73 +962,39 @@ public:
         return (rowCount & ROWCOUNT_DESTRUCTOR_FLAG) != 0;
     }
 
-    virtual void reportLeaks(unsigned &leaked, const IContextLogger &logctx) const
+    virtual const void * _compactRow(const void * ptr, HeapCompactState & state);
+
+    const void * moveRow(const void * row)
     {
-        //This function may not give correct results if called if there are concurrent allocations/releases
-        unsigned base = 0;
-        unsigned limit = atomic_read(&freeBase);
-        while (leaked > 0 && base < limit)
-        {
-            const char *block = data() + base;
-            const char *ptr = block + (chunkSize-chunkCapacity);  // assumes the overhead is all at the start
-            unsigned rowCount = atomic_read((atomic_t *) (ptr - sizeof(atomic_t)));
-            if (ROWCOUNT(rowCount) != 0)
-            {
-                reportLeak(block, logctx);
-                leaked--;
-            }
-            base += chunkSize;
-        }
+        //If this pointer already lives in this page don't move it (but update the current page source)
+        if (findBase(row) == this)
+            return row;
+
+        //Don't clone rows into empty pages
+        if (isEmpty())
+            return NULL;
+
+        char * chunk = allocateChunk();
+        if (!chunk)
+            return NULL;
+        return doMoveRow(chunk, row);
     }
+
+    virtual const void * doMoveRow(char * chunk, const void * row) = 0;
+
+    virtual void * initChunk(char * chunk, unsigned allocatorId) = 0;
+
+    void * allocate(unsigned allocatorId)
+    {
+        char * ret = allocateChunk();
+        if (!ret)
+            return NULL;
+        return initChunk(ret, allocatorId);
+    }
+
+    char * allocateChunk();
 
 protected:
-    virtual void reportLeak(const void * block, const IContextLogger &logctx) const = 0;
-
-    inline char * allocateChunk()
-    {
-        char *ret;
-        const size32_t size = chunkSize;
-        loop
-        {
-            unsigned old_blocks = atomic_read(&r_blocks);
-            unsigned r_ret = (old_blocks & RBLOCKS_OFFSET_MASK);
-            if (r_ret)
-            {
-                ret = makeAbsolute(r_ret);
-                //may have been allocated by another thread, but still legal to dereference
-                //the cas will fail if the contents are invalid.
-                unsigned next = *(unsigned *)ret;
-
-                //There is a potential ABA problem if other thread(s) allocate two or more items, and free the first
-                //item in the window before the following cas.  r_block would match, but next would be invalid.
-                //To avoid that a tag is stored in the top bits of r_blocks which is modified whenever an item is added
-                //onto the free list.  The offsets in the freelist do not need tags.
-                unsigned new_blocks = (old_blocks & RBLOCKS_CAS_TAG_MASK) | next;
-                if (atomic_cas(&r_blocks, new_blocks, old_blocks))
-                    break;
-            }
-            else
-            {
-                unsigned curFreeBase = atomic_read(&freeBase);
-                //There is no ABA issue on freeBase because it is never decremented (and no next chain with it)
-                size32_t bytesFree = dataAreaSize() - curFreeBase;
-                if (bytesFree >= size)
-                {
-                    if (atomic_cas(&freeBase, curFreeBase + size, curFreeBase))
-                    {
-                        ret = data() + curFreeBase;
-                        break;
-                    }
-                }
-                else
-                    return NULL;
-            }
-        }
-
-        atomic_inc(&count);
-        return ret;
-    }
-
     inline unsigned makeRelative(const char *ptr)
     {
         dbgassertex(ptr);
@@ -1055,14 +1040,19 @@ protected:
                 break;
         }
 
-        atomic_dec(&count);
+        CHeap * savedHeap = heap;
+        // after the following dec it is possible that the page could be freed, so cannot access any members of this
+        compiler_memory_barrier();
+        if (atomic_dec_and_read(&count) == 1)
+            noteEmptyPage(savedHeap);
     }
 };
 
 //================================================================================
 
-class FixedSizeHeaplet : public FixedSizeHeapletBase
+class FixedSizeHeaplet : public ChunkedHeaplet
 {
+    //NOTE: This class should not contain any more data - otherwise the dataOffset() may be calculated incorrectly
     struct ChunkHeader
     {
         unsigned allocatorId;
@@ -1071,7 +1061,8 @@ class FixedSizeHeaplet : public FixedSizeHeapletBase
 public:
     enum { chunkHeaderSize = sizeof(ChunkHeader) };
 
-    FixedSizeHeaplet(const IRowAllocatorCache *_allocatorCache, size32_t size) : FixedSizeHeapletBase(_allocatorCache, size, size - chunkHeaderSize)
+    FixedSizeHeaplet(CHeap * _heap, const IRowAllocatorCache *_allocatorCache, size32_t size)
+    : ChunkedHeaplet(_heap, _allocatorCache, size, size - chunkHeaderSize)
     {
     }
 
@@ -1101,24 +1092,58 @@ public:
         }
     }
 
+    virtual void _internalReleaseNoDestructor(const void * _ptr)
+    {
+        char *ptr = (char *) _ptr - chunkHeaderSize;
+        ChunkHeader * header = (ChunkHeader *)ptr;
+        unsigned rowCount = atomic_dec_and_read(&header->count);
+        assertex(ROWCOUNT(rowCount) == 0);
+        inlineReleasePointer(ptr);
+    }
+
+
     virtual void noteLinked(const void *_ptr)
     {
         checkPtr(_ptr, "Link");
         inlineNoteLinked(_ptr);
     }
 
-    virtual void *allocate(unsigned allocatorId)
+    virtual void * initChunk(char * chunk, unsigned allocatorId)
     {
-        char * ret = allocateChunk();
-        if (ret)
-        {
-            ChunkHeader * header = (ChunkHeader *)ret;
-            header->allocatorId = (allocatorId & ACTIVITY_MASK) | ACTIVITY_MAGIC;
-            atomic_set(&header->count, 1);
-            ret += chunkHeaderSize;
+        char * ret = chunk;
+        ChunkHeader * header = (ChunkHeader *)ret;
+        header->allocatorId = (allocatorId & ACTIVITY_MASK) | ACTIVITY_MAGIC;
+        atomic_set(&header->count, 1);
+        ret += chunkHeaderSize;
 #ifdef _CLEAR_ALLOCATED_ROW
-            memset(ret, 0xcc, chunkCapacity);
+        memset(ret, 0xcc, chunkCapacity);
 #endif
+        return ret;
+    }
+
+    virtual const void * doMoveRow(char * chunk, const void * row)
+    {
+        char * ret = (char *)chunk;
+        //Clone across the information from the old row
+        char * oldPtr = (char *)row - chunkHeaderSize;
+        ChunkHeader * oldHeader = (ChunkHeader *)oldPtr;
+        ChunkHeader * newHeader = (ChunkHeader *)ret;
+        unsigned rowCountValue = atomic_read(&oldHeader->count);
+        unsigned destructFlag = (rowCountValue & ROWCOUNT_DESTRUCTOR_FLAG);
+        unsigned allocatorId = oldHeader->allocatorId;
+        newHeader->allocatorId = allocatorId;
+        atomic_set(&newHeader->count, 1|destructFlag);
+        ret += chunkHeaderSize;
+        memcpy(ret, row, chunkCapacity);
+
+        //If this was the only instance then release the old row without calling the destructor
+        if (ROWCOUNT(rowCountValue) == 1)
+            HeapletBase::internalReleaseNoDestructor(row);
+        else
+        {
+            if (destructFlag)
+                allocatorCache->onClone(allocatorId & MAX_ACTIVITY_ID, ret);
+            ReleaseRoxieRow(row);
         }
         return ret;
     }
@@ -1134,15 +1159,23 @@ public:
         return header->allocatorId;
     }
 
-    virtual void reportLeak(const void * block, const IContextLogger &logctx) const
+    virtual void reportLeaks(unsigned &leaked, const IContextLogger &logctx) const
     {
-        ChunkHeader * header = (ChunkHeader *)block;
-        unsigned allocatorId = header->allocatorId;
-        unsigned rowCount = atomic_read(&header->count);
-        bool hasChildren = (rowCount & ROWCOUNT_DESTRUCTOR_FLAG) != 0;
-
-        const char * ptr = (const char *)block + chunkHeaderSize;
-        logctx.CTXLOG("Block size %u at %p %swas allocated by activity %u and not freed (%d)", chunkSize, ptr, hasChildren ? "(with children) " : "", getActivityId(allocatorId), ROWCOUNT(rowCount));
+        //This function may not give correct results if called if there are concurrent allocations/releases
+        unsigned base = 0;
+        unsigned limit = atomic_read(&freeBase);
+        while (leaked > 0 && base < limit)
+        {
+            const char *block = data() + base;
+            const char *ptr = block + (chunkSize-chunkCapacity);  // assumes the overhead is all at the start
+            unsigned rowCount = atomic_read((atomic_t *) (ptr - sizeof(atomic_t)));
+            if (ROWCOUNT(rowCount) != 0)
+            {
+                reportLeak(block, logctx);
+                leaked--;
+            }
+            base += chunkSize;
+        }
     }
 
     virtual void checkHeap() const 
@@ -1173,31 +1206,36 @@ public:
         unsigned base = 0;
         unsigned limit = atomic_read(&freeBase);
         memsize_t running = 0;
+        unsigned runningCount = 0;
         unsigned lastId = 0;
         while (base < limit)
         {
             const char *block = data() + base;
             ChunkHeader * header = (ChunkHeader *)block;
-            unsigned activityId = getActivityId(header->allocatorId);
+            unsigned allocatorId = header->allocatorId;
             //Potential race condition - a block could become allocated between these two lines.
             //That may introduce invalid activityIds (from freed memory) in the memory tracing.
             unsigned rowCount = atomic_read(&header->count);
             if (ROWCOUNT(rowCount) != 0)
             {
-                if (activityId != lastId)
+                if (allocatorId != lastId)
                 {
                     if (lastId)
-                        map->noteMemUsage(lastId, running);
-                    lastId = activityId;
+                        map->noteMemUsage(lastId, running, runningCount);
+                    lastId = allocatorId;
                     running = chunkSize;
+                    runningCount = 1;
                 }
                 else
+                {
                     running += chunkSize;
+                    runningCount++;
+                }
             }
             base += chunkSize;
         }
         if (lastId)
-            map->noteMemUsage(lastId, running);
+            map->noteMemUsage(lastId, running, runningCount);
     }
 
 private:
@@ -1222,14 +1260,26 @@ private:
             HEAPERROR("Invalid pointer");
         }
     }
+
+    void reportLeak(const void * block, const IContextLogger &logctx) const
+    {
+        ChunkHeader * header = (ChunkHeader *)block;
+        unsigned allocatorId = header->allocatorId;
+        unsigned rowCount = atomic_read(&header->count);
+        bool hasChildren = (rowCount & ROWCOUNT_DESTRUCTOR_FLAG) != 0;
+
+        const char * ptr = (const char *)block + chunkHeaderSize;
+        logctx.CTXLOG("Block size %u at %p %swas allocated by activity %u and not freed (%d)", chunkSize, ptr, hasChildren ? "(with children) " : "", getActivityId(allocatorId), ROWCOUNT(rowCount));
+    }
 };
 
 //================================================================================
 
 // NOTE - this delivers rows that are NOT 8 byte aligned, so can't safely be used to allocate ptr arrays
 
-class PackedFixedSizeHeaplet : public FixedSizeHeapletBase
+class PackedFixedSizeHeaplet : public ChunkedHeaplet
 {
+    //NOTE: This class should not contain any more data - otherwise the dataOffset() may be calculated incorrectly
     struct ChunkHeader
     {
         atomic_t count;
@@ -1237,8 +1287,8 @@ class PackedFixedSizeHeaplet : public FixedSizeHeapletBase
 public:
     enum { chunkHeaderSize = sizeof(ChunkHeader) };
 
-    PackedFixedSizeHeaplet(const IRowAllocatorCache *_allocatorCache, size32_t size, unsigned _allocatorId)
-        : FixedSizeHeapletBase(_allocatorCache, size, size - chunkHeaderSize)
+    PackedFixedSizeHeaplet(CHeap * _heap, const IRowAllocatorCache *_allocatorCache, size32_t size, unsigned _allocatorId)
+        : ChunkedHeaplet(_heap, _allocatorCache, size, size - chunkHeaderSize)
     {
         sharedAllocatorId = _allocatorId;
     }
@@ -1263,34 +1313,69 @@ public:
         }
     }
 
+    virtual void _internalReleaseNoDestructor(const void * _ptr)
+    {
+        char *ptr = (char *) _ptr - chunkHeaderSize;
+        ChunkHeader * header = (ChunkHeader *)ptr;
+        unsigned rowCount = atomic_dec_and_read(&header->count);
+        assertex(ROWCOUNT(rowCount) == 0);
+        inlineReleasePointer(ptr);
+    }
+
+
     virtual void noteLinked(const void *_ptr)
     {
         inlineNoteLinked(_ptr);
     }
 
-    virtual void *allocate(unsigned allocatorId)
+    virtual void * initChunk(char * chunk, unsigned allocatorId)
     {
-        char * ret = allocateChunk();
-        if (ret)
-        {
-            ChunkHeader * header = (ChunkHeader *)ret;
-            atomic_set(&header->count, 1);
-            ret += chunkHeaderSize;
+        char * ret = chunk;
+        ChunkHeader * header = (ChunkHeader *)ret;
+        atomic_set(&header->count, 1);
+        ret += chunkHeaderSize;
 #ifdef _CLEAR_ALLOCATED_ROW
-            memset(ret, 0xcc, chunkCapacity);
+        memset(ret, 0xcc, chunkCapacity);
 #endif
+        return ret;
+    }
+
+    virtual const void * doMoveRow(char * chunk, const void * row)
+    {
+        char * ret = chunk;
+
+        //Clone across the information from the old row
+        char * oldPtr = (char *)row - chunkHeaderSize;
+        ChunkHeader * oldHeader = (ChunkHeader *)oldPtr;
+        ChunkHeader * newHeader = (ChunkHeader *)ret;
+        unsigned rowCountValue = atomic_read(&oldHeader->count);
+        unsigned destructFlag = (rowCountValue & ROWCOUNT_DESTRUCTOR_FLAG);
+        atomic_set(&newHeader->count, 1|destructFlag);
+        ret += chunkHeaderSize;
+        memcpy(ret, row, chunkCapacity);
+
+        //If this was the only instance then release the old row without calling the destructor
+        //(to avoid the overhead of having to call onClone).
+        if (ROWCOUNT(rowCountValue) == 1)
+            HeapletBase::internalReleaseNoDestructor(row);
+        else
+        {
+            if (destructFlag)
+                allocatorCache->onClone(sharedAllocatorId & MAX_ACTIVITY_ID, ret);
+            ReleaseRoxieRow(row);
         }
         return ret;
     }
 
-    virtual void reportLeak(const void * block, const IContextLogger &logctx) const
+    virtual void reportLeaks(unsigned &leaked, const IContextLogger &logctx) const
     {
-        ChunkHeader * header = (ChunkHeader *)block;
-        unsigned rowCount = atomic_read(&header->count);
-        bool hasChildren = (rowCount & ROWCOUNT_DESTRUCTOR_FLAG) != 0;
-
-        const char * ptr = (const char *)block + chunkHeaderSize;
-        logctx.CTXLOG("Block size %u at %p %swas allocated by activity %u and not freed (%d)", chunkSize, ptr, hasChildren ? "(with children) " : "", getActivityId(sharedAllocatorId), ROWCOUNT(rowCount));
+        unsigned numLeaked = queryCount()-1;
+        //Because there is only a 4 byte counter on each field which is reused for the field list
+        //it isn't possible to walk the rows in 0..freeBase and see if they are allocated or not
+        //so have to be content with a summary
+        if (numLeaked)
+            logctx.CTXLOG("Packed allocator for size %"I64F"u activity %u leaks %u rows", (unsigned __int64) chunkCapacity, getActivityId(sharedAllocatorId), numLeaked);
+        leaked -= numLeaked;
     }
 
     virtual unsigned _rawAllocatorId(const void *ptr) const
@@ -1321,22 +1406,10 @@ public:
     virtual void getPeakActivityUsage(IActivityMemoryUsageMap *map) const
     {
         //This function may not give 100% accurate results if called if there are concurrent allocations/releases
-        unsigned base = 0;
-        unsigned limit = atomic_read(&freeBase);
-        memsize_t running = 0;
-        while (base < limit)
+        unsigned numAllocs = queryCount()-1;
+        if (numAllocs)
         {
-            const char *block = data() + base;
-            ChunkHeader * header = (ChunkHeader *)block;
-            unsigned rowCount = atomic_read(&header->count);
-            if (ROWCOUNT(rowCount) != 0)
-                running += chunkSize;
-            base += chunkSize;
-        }
-        if (running)
-        {
-            unsigned activityId = getActivityId(sharedAllocatorId);
-            map->noteMemUsage(activityId, running);
+            map->noteMemUsage(sharedAllocatorId, numAllocs * chunkSize, numAllocs);
         }
     }
 };
@@ -1344,12 +1417,14 @@ public:
 //================================================================================
 // Row manager - chunking
 
-class HugeHeaplet : public BigHeapletBase
+class CHugeHeap;
+class HugeHeaplet : public Heaplet
 {
 protected:
     unsigned allocatorId;
+    atomic_t rowCount;  // A separate rowcount is required, otherwise the page could be freed before the destructor is called
 
-    inline unsigned _sizeInPages() 
+    inline unsigned _sizeInPages() const
     {
         return PAGES(chunkCapacity + dataOffset(), HEAP_ALIGNMENT_SIZE);
     }
@@ -1364,9 +1439,8 @@ protected:
         return ((char *) this) + dataOffset();
     }
 
-
 public:
-    HugeHeaplet(const IRowAllocatorCache *_allocatorCache, memsize_t _hugeSize, unsigned _allocatorId) : BigHeapletBase(_allocatorCache, calcCapacity(_hugeSize))
+    HugeHeaplet(CHeap * _heap, const IRowAllocatorCache *_allocatorCache, memsize_t _hugeSize, unsigned _allocatorId) : Heaplet(_heap, _allocatorCache, calcCapacity(_hugeSize))
     {
         allocatorId = _allocatorId;
     }
@@ -1379,7 +1453,7 @@ public:
 
     bool _isShared(const void *ptr) const
     {
-        return atomic_read(&count) > 2; // The heaplet itself has a usage count of 1
+        return atomic_read(&rowCount) > 1;
     }
 
     virtual unsigned sizeInPages() 
@@ -1409,10 +1483,17 @@ public:
 
     virtual void noteReleased(const void *ptr)
     {
-        if (atomic_dec_and_test(&count))
+        if (atomic_dec_and_test(&rowCount))
         {
             if (allocatorId & ACTIVITY_FLAG_NEEDSDESTRUCTOR)
                 allocatorCache->onDestroy(allocatorId & MAX_ACTIVITY_ID, (void *)ptr);
+
+            CHeap * savedHeap = heap;
+            // after the following dec(count) it is possible that the page could be freed, so cannot access any members of this
+            compiler_memory_barrier();
+            unsigned cnt = atomic_dec_and_read(&count);
+            assertex(cnt == 1);
+            noteEmptyPage(savedHeap);
         }
     }
 
@@ -1434,17 +1515,13 @@ public:
 
     virtual void noteLinked(const void *ptr)
     {
-        atomic_inc(&count);
-    }
-
-    virtual void *allocate(unsigned allocatorId)
-    {
-        throwUnexpected();
+        atomic_inc(&rowCount);
     }
 
     void *allocateHuge(memsize_t size)
     {
         atomic_inc(&count);
+        atomic_set(&rowCount, 1);
         dbgassertex(size <= chunkCapacity);
 #ifdef _CLEAR_ALLOCATED_HUGE_ROW
         memset(data(), 0xcc, chunkCapacity);
@@ -1460,13 +1537,23 @@ public:
 
     virtual void getPeakActivityUsage(IActivityMemoryUsageMap *map) const 
     {
-        unsigned activityId = getActivityId(allocatorId);
-        map->noteMemUsage(activityId, chunkCapacity);
+        map->noteMemUsage(allocatorId, chunkCapacity, 1);
+        map->noteHeapUsage(chunkCapacity, RHFpacked, _sizeInPages(), chunkCapacity);
     }
 
     virtual void checkHeap() const
     {
         //MORE
+    }
+
+    virtual const void * _compactRow(const void * ptr, HeapCompactState & state)
+    {
+        return ptr;
+    }
+
+    virtual void _internalReleaseNoDestructor(const void *ptr)
+    {
+        throwUnexpected();
     }
 };
 
@@ -1474,9 +1561,23 @@ public:
 //
 struct ActivityEntry 
 {
-    unsigned activityId;
+    unsigned allocatorId;
     unsigned allocations;
     memsize_t usage;
+};
+
+struct HeapEntry : public CInterface
+{
+public:
+    HeapEntry(memsize_t _allocatorSize, RoxieHeapFlags _heapFlags, memsize_t _numPages, memsize_t _memUsed) :
+        allocatorSize(_allocatorSize), heapFlags(_heapFlags), numPages(_numPages), memUsed(_memUsed)
+    {
+    }
+
+    memsize_t allocatorSize;
+    RoxieHeapFlags heapFlags;
+    memsize_t numPages;
+    memsize_t memUsed;
 };
 
 typedef MapBetween<unsigned, unsigned, ActivityEntry, ActivityEntry> MapActivityToActivityEntry;
@@ -1484,10 +1585,10 @@ typedef MapBetween<unsigned, unsigned, ActivityEntry, ActivityEntry> MapActivity
 class CActivityMemoryUsageMap : public CInterface, implements IActivityMemoryUsageMap
 {
     MapActivityToActivityEntry map;
+    CIArrayOf<HeapEntry> heaps;
     memsize_t maxUsed;
     memsize_t totalUsed;
-    unsigned maxActivity;
-
+    unsigned allocatorIdMax;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -1495,29 +1596,34 @@ public:
     {
         maxUsed = 0;
         totalUsed = 0;
-        maxActivity = 0;
+        allocatorIdMax = 0;
     }
 
-    virtual void noteMemUsage(unsigned activityId, unsigned memUsed)
+    virtual void noteMemUsage(unsigned allocatorId, memsize_t memUsed, unsigned numAllocs)
     {
         totalUsed += memUsed;
-        ActivityEntry *ret = map.getValue(activityId);
+        ActivityEntry *ret = map.getValue(allocatorId);
         if (ret)
         {
             memUsed += ret->usage;
             ret->usage = memUsed;
-            ret->allocations++;
+            ret->allocations += numAllocs;
         }
         else
         {
-            ActivityEntry e = {activityId, 1, memUsed};
-            map.setValue(activityId, e);
+            ActivityEntry e = {allocatorId, numAllocs, memUsed};
+            map.setValue(allocatorId, e);
         }
         if (memUsed > maxUsed)
         {
             maxUsed = memUsed;
-            maxActivity = activityId;
+            allocatorIdMax = allocatorId;
         }
+    }
+
+    void noteHeapUsage(memsize_t allocatorSize, RoxieHeapFlags heapFlags, memsize_t numPages, memsize_t memUsed)
+    {
+        heaps.append(*new HeapEntry(allocatorSize, heapFlags, numPages, memUsed));
     }
 
     static int sortUsage(const void *_l, const void *_r)
@@ -1545,18 +1651,81 @@ public:
             while (j)
             {
                 j--;
-                logctx.CTXLOG("%"I64F"u bytes allocated by activity %u (%u allocations)", (unsigned __int64) results[j]->usage, getRealActivityId(results[j]->activityId, allocatorCache), results[j]->allocations);
+                unsigned activityId = getRealActivityId(results[j]->allocatorId, allocatorCache);
+                logctx.CTXLOG("%"I64F"u bytes allocated by activity %u (%u allocations)", (unsigned __int64) results[j]->usage, activityId, results[j]->allocations);
             }
+
+            memsize_t totalHeapPages = 0;
+            memsize_t totalHeapUsed = 0;
+            logctx.CTXLOG("Heaps:");
+            ForEachItemIn(iHeap, heaps)
+            {
+                HeapEntry & cur = heaps.item(iHeap);
+                StringBuffer flags;
+                if (cur.heapFlags & RHFpacked)
+                    flags.append("P");
+                if (cur.heapFlags & RHFunique)
+                    flags.append("U");
+                if (cur.heapFlags & RHFvariable)
+                    flags.append("V");
+
+                //Should never be called with numPages == 0, but protect against divide by zero in case of race condition etc.
+                unsigned __int64 memReserved = cur.numPages * HEAP_ALIGNMENT_SIZE;
+                unsigned percentUsed = cur.numPages ? (unsigned)((cur.memUsed * 100) / memReserved) : 100;
+                logctx.CTXLOG("size: %"I64F"u [%s] reserved: %"I64F"up %u%% (%"I64F"u/%"I64F"u) used",
+                        (unsigned __int64) cur.allocatorSize, flags.str(), (unsigned __int64) cur.numPages, percentUsed, (unsigned __int64) cur.memUsed, (unsigned __int64) memReserved);
+                totalHeapPages += cur.numPages;
+                totalHeapUsed += cur.memUsed;
+            }
+
+            //Should never be called with numPages == 0, but protect against divide by zero in case of race condition etc.
+            unsigned __int64 totalReserved = totalHeapPages * HEAP_ALIGNMENT_SIZE;
+            unsigned percentUsed = totalHeapPages ? (unsigned)((totalHeapUsed * 100) / totalReserved) : 100;
+            logctx.CTXLOG("Total: %"I64F"up %u%% (%"I64F"u/%"I64F"u) used",
+                    (unsigned __int64) totalHeapPages, percentUsed, (unsigned __int64) totalHeapUsed, (unsigned __int64) totalReserved);
+
             logctx.CTXLOG("------------------ End of snapshot");
             delete [] results;
         }
+    }
+
+    virtual void reportStatistics(IStatisticTarget & target, unsigned detailtarget, const IRowAllocatorCache *allocatorCache)
+    {
+        ActivityEntry **results = new ActivityEntry *[map.count()];
+        HashIterator i(map);
+        unsigned j = 0;
+        for(i.first();i.isValid();i.next())
+        {
+            IMapping &cur = i.query();
+            results[j] = map.mapToValue(&cur);
+            j++;
+        }
+        qsort(results, j, sizeof(results[0]), sortUsage);
+        StringBuffer activityText;
+        while (j)
+        {
+            j--;
+            unsigned allocatorId = results[j]->allocatorId;
+            unsigned activityId = getRealActivityId(allocatorId, allocatorCache);
+            activityText.clear();
+            if (allocatorId & ACTIVITY_FLAG_ISREGISTERED)
+                activityText.append("ac").append(activityId);
+            else if ((allocatorId & MAX_ACTIVITY_ID) == UNKNOWN_ROWSET_ID)
+                activityText.append("rowset");
+            else
+                activityText.append("ac").append(allocatorId & MAX_ACTIVITY_ID);
+            target.addStatistic(NULL, activityText.str(), "roxiepeakmem", NULL, SMEASURE_MEM_KB, results[j]->usage / 1024, results[j]->allocations, 0, false);
+        }
+        delete [] results;
+
+        target.addStatistic(NULL, NULL, "roxiepeakmem", NULL, SMEASURE_MEM_KB, totalUsed / 1024, 1, 0, false);
     }
 };
 
 //================================================================================
 //
 class CChunkingRowManager;
-class CFixedChunkingHeap;
+class CFixedChunkedHeap;
 class CPackedChunkingHeap;
 
 class CRoxieFixedRowHeapBase : implements IFixedRowHeap, public CInterface
@@ -1603,7 +1772,7 @@ protected:
 class CRoxieDirectFixedRowHeap : public CRoxieFixedRowHeapBase
 {
 public:
-    CRoxieDirectFixedRowHeap(CChunkingRowManager * _rowManager, unsigned _allocatorId, RoxieHeapFlags _flags, CFixedChunkingHeap * _heap)
+    CRoxieDirectFixedRowHeap(CChunkingRowManager * _rowManager, unsigned _allocatorId, RoxieHeapFlags _flags, CFixedChunkedHeap * _heap)
         : CRoxieFixedRowHeapBase(_rowManager, _allocatorId, _flags), heap(_heap)
     {
     }
@@ -1617,7 +1786,7 @@ public:
     }
 
 protected:
-    Owned<CFixedChunkingHeap> heap;
+    Owned<CFixedChunkedHeap> heap;
 };
 
 class CRoxieDirectPackedRowHeap : public CRoxieFixedRowHeapBase
@@ -1665,23 +1834,24 @@ protected:
 //================================================================================
 //
 //Responsible for allocating memory for a chain of chunked blocks
-class CChunkingHeap : public CInterface
+class CHeap : public CInterface
 {
 public:
-    CChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, unsigned _flags)
+    CHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, unsigned _flags)
         : logctx(_logctx), rowManager(_rowManager), allocatorCache(_allocatorCache), active(NULL), flags(_flags)
     {
+        atomic_set(&possibleEmptyPages, 0);
     }
 
-    ~CChunkingHeap()
+    ~CHeap()
     {
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (finger)
         {
             if (memTraceLevel >= 3)
                 logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager d-tor freeing heaplet linked in active list - addr=%p rowMgr=%p",
                         finger, this);
-            BigHeapletBase *next = getNext(finger);
+            Heaplet *next = getNext(finger);
             delete finger;
             finger = next;
         }
@@ -1691,7 +1861,7 @@ public:
     void reportLeaks(unsigned &leaked) const
     {
         SpinBlock c1(crit);
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (leaked && finger)
         {
             if (leaked && memTraceLevel >= 1)
@@ -1703,7 +1873,7 @@ public:
     void checkHeap()
     {
         SpinBlock c1(crit);
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (finger)
         {
             finger->checkHeap();
@@ -1715,7 +1885,7 @@ public:
     {
         unsigned total = 0;
         SpinBlock c1(crit);
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (finger)
         {
             total += finger->queryCount() - 1; // There is one refcount for the page itself on the active q
@@ -1726,17 +1896,31 @@ public:
 
     unsigned releaseEmptyPages(bool forceFreeAll)
     {
+        if (atomic_read(&possibleEmptyPages) == 0)
+            return 0;
+
+        //You will get a false positive if possibleEmptyPages is set while walking the active page list, but that
+        //only mean the list is walked more than it needs to be.
+        //If releaseEmptyPages() is called between the last release on a page (setting count to 1), and this flag
+        //getting set, it won't release the page *this time*.  But that is the same as the release happening
+        //slightly later.
+        atomic_set(&possibleEmptyPages, 0);
         unsigned total = 0;
-        BigHeapletBase *prev = NULL;
+        Heaplet *prev = NULL;
         SpinBlock c1(crit);
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (finger)
         {
-            BigHeapletBase *next = getNext(finger);
+            Heaplet *next = getNext(finger);
             if (finger->queryCount()==1)
             {
-                if (!next && !forceFreeAll)
+                //If this is the only page then only free it if forced to.
+                if (!prev && !next && !forceFreeAll)
+                {
+                    //There is still a potential page to release so reset the flag.
+                    atomic_set(&possibleEmptyPages, 1);
                     break;
+                }
 
                 if (memTraceLevel >= 3)
                     logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::pages() freeing Heaplet linked in active list - addr=%p pages=%u capacity=%"I64F"u rowMgr=%p",
@@ -1745,6 +1929,7 @@ public:
                     setNext(prev, next);
                 else
                     active = next;
+
                 total += finger->sizeInPages();
                 delete finger;
             }
@@ -1758,16 +1943,25 @@ public:
         return total;
     }
 
-    void getPeakActivityUsage(IActivityMemoryUsageMap * usageMap)
+    void getPeakActivityUsage(IActivityMemoryUsageMap * usageMap) const
     {
-        SpinBlock c1(crit);
-        BigHeapletBase *finger = active;
-        while (finger)
+        unsigned numPages = 0;
+        memsize_t numAllocs = 0;
         {
-            if (finger->queryCount()!=1)
-                finger->getPeakActivityUsage(usageMap);
-            finger = getNext(finger);
+            SpinBlock c1(crit);
+            Heaplet *finger = active;
+            while (finger)
+            {
+                unsigned thisCount = finger->queryCount()-1;
+                if (thisCount != 0)
+                    finger->getPeakActivityUsage(usageMap);
+                numAllocs += thisCount;
+                numPages++;
+                finger = getNext(finger);
+            }
         }
+        if (numPages)
+            reportHeapUsage(usageMap, numPages, numAllocs);
     }
 
     inline bool isEmpty() const { return !active; }
@@ -1777,57 +1971,126 @@ public:
         return false;
     }
 
+    void noteEmptyPage() { atomic_set(&possibleEmptyPages, 1); }
+
+    inline void internalLock() { crit.enter(); }
+    inline void internalUnlock() { crit.leave(); }
+
+
 protected:
-    inline BigHeapletBase * getNext(const BigHeapletBase * ptr) const { return ptr->next; }
-    inline void setNext(BigHeapletBase * ptr, BigHeapletBase * next) const { ptr->next = next; }
+    virtual void reportHeapUsage(IActivityMemoryUsageMap * usageMap, unsigned numPages, memsize_t numAllocs) const = 0;
+
+    inline Heaplet * getNext(const Heaplet * ptr) const { return ptr->next; }
+    inline void setNext(Heaplet * ptr, Heaplet * next) const { ptr->next = next; }
+
+    inline void moveHeapletToHead(Heaplet * prev, Heaplet * newHead)
+    {
+        Heaplet * next = getNext(newHead);
+        setNext(prev, next);
+        setNext(newHead, active);
+        active = newHead;
+    }
 
 protected:
     unsigned flags; // before the pointer so it packs better in 64bit.
-    BigHeapletBase *active;
+    Heaplet *active;
     CChunkingRowManager * rowManager;
     const IRowAllocatorCache *allocatorCache;
     const IContextLogger & logctx;
     mutable SpinLock crit;      // MORE: Can probably be a NonReentrantSpinLock if we're careful
+    atomic_t possibleEmptyPages;  // Are there any pages with 0 records.  Primarily here to avoid walking long page chains.
 };
 
-class CHugeChunkingHeap : public CChunkingHeap
+
+//---------------------------------------------------------------------------------------------------------------------
+class HeapCompactState
 {
 public:
-    CHugeChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache)
-        : CChunkingHeap(_rowManager, _logctx, _allocatorCache, 0)
+    inline HeapCompactState() : numPagesEmptied(0), heap(NULL), next(NULL)
     {
     }
 
-    void * doAllocate(memsize_t _size, unsigned allocatorId);
-    void expandHeap(void * original, memsize_t copysize, memsize_t oldcapacity, memsize_t newsize, unsigned activityId, IRowResizeCallback & callback);
+    inline ~HeapCompactState()
+    {
+        if (heap)
+            heap->internalUnlock();
+    }
 
-protected:
-    HugeHeaplet * allocateHeaplet(memsize_t _size, unsigned allocatorId);
+
+    inline void protectHeap(CHeap * _heap)
+    {
+        if (heap != _heap)
+        {
+            if (heap)
+                heap->internalUnlock();
+            heap = _heap;
+            if (_heap)
+                _heap->internalLock();
+            next = NULL;
+        }
+    }
+public:
+    unsigned numPagesEmptied;
+    CHeap * heap;
+    Heaplet * next; // which heaplet to try to compact into next.  Not so good if > 1 heaps in use.
 };
 
-class CNormalChunkingHeap : public CChunkingHeap
+//---------------------------------------------------------------------------------------------------------------------
+
+class CHugeHeap : public CHeap
 {
 public:
-    CNormalChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, unsigned _chunkSize, unsigned _flags)
-        : CChunkingHeap(_rowManager, _logctx, _allocatorCache, _flags), chunkSize(_chunkSize)
+    CHugeHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache)
+        : CHeap(_rowManager, _logctx, _allocatorCache, 0)
     {
     }
 
-    void * doAllocate(unsigned allocatorId);
+    void * doAllocate(memsize_t _size, unsigned allocatorId, unsigned maxSpillCost);
+    bool expandHeap(void * original, memsize_t copysize, memsize_t oldcapacity, memsize_t newsize, unsigned activityId, unsigned maxSpillCost, IRowResizeCallback & callback);
 
 protected:
-    inline void * inlineDoAllocate(unsigned allocatorId);
-    virtual BigHeapletBase * allocateHeaplet() = 0;
+    HugeHeaplet * allocateHeaplet(memsize_t _size, unsigned allocatorId, unsigned maxSpillCost);
+
+    virtual void reportHeapUsage(IActivityMemoryUsageMap * usageMap, unsigned numPages, memsize_t numAllocs) const
+    {
+        //Already processed in HugeHeaplet::getPeakActivityUsage(IActivityMemoryUsageMap *map) const
+    }
+};
+
+class CChunkedHeap : public CHeap
+{
+public:
+    CChunkedHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, unsigned _chunkSize, unsigned _flags)
+        : CHeap(_rowManager, _logctx, _allocatorCache, _flags), chunkSize(_chunkSize)
+    {
+        chunksPerPage  = FixedSizeHeaplet::dataAreaSize() / chunkSize;
+    }
+
+    void * doAllocate(unsigned allocatorId, unsigned maxSpillCost);
+
+    virtual void reportHeapUsage(IActivityMemoryUsageMap * usageMap, unsigned numPages, memsize_t numAllocs) const
+    {
+        usageMap->noteHeapUsage(chunkSize, (RoxieHeapFlags)flags, numPages, chunkSize * numAllocs);
+    }
+
+    const void * compactRow(const void * ptr, HeapCompactState & state);
+
+    inline unsigned maxChunksPerPage() const { return chunksPerPage; }
+
+protected:
+    inline void * inlineDoAllocate(unsigned allocatorId, unsigned maxSpillCost);
+    virtual ChunkedHeaplet * allocateHeaplet() = 0;
 
 protected:
     size32_t chunkSize;
+    unsigned chunksPerPage;
 };
 
-class CFixedChunkingHeap : public CNormalChunkingHeap
+class CFixedChunkedHeap : public CChunkedHeap
 {
 public:
-    CFixedChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, unsigned _flags)
-        : CNormalChunkingHeap(_rowManager, _logctx, _allocatorCache, _chunkSize, _flags)
+    CFixedChunkedHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, unsigned _flags, unsigned _defaultSpillCost)
+        : CChunkedHeap(_rowManager, _logctx, _allocatorCache, _chunkSize, _flags), defaultSpillCost(_defaultSpillCost)
     {
     }
 
@@ -1841,14 +2104,17 @@ public:
     }
 
 protected:
-    virtual BigHeapletBase * allocateHeaplet();
+    virtual ChunkedHeaplet * allocateHeaplet();
+
+protected:
+    unsigned defaultSpillCost;
 };
 
-class CPackedChunkingHeap : public CNormalChunkingHeap
+class CPackedChunkingHeap : public CChunkedHeap
 {
 public:
-    CPackedChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, unsigned _flags, unsigned _allocatorId)
-        : CNormalChunkingHeap(_rowManager, _logctx, _allocatorCache, _chunkSize, _flags), allocatorId(_allocatorId)
+    CPackedChunkingHeap(CChunkingRowManager * _rowManager, const IContextLogger &_logctx, const IRowAllocatorCache *_allocatorCache, size32_t _chunkSize, unsigned _flags, unsigned _allocatorId, unsigned _defaultSpillCost)
+        : CChunkedHeap(_rowManager, _logctx, _allocatorCache, _chunkSize, _flags), allocatorId(_allocatorId), defaultSpillCost(_defaultSpillCost)
     {
     }
 
@@ -1862,24 +2128,92 @@ public:
     }
 
 protected:
-    virtual BigHeapletBase * allocateHeaplet();
+    virtual ChunkedHeaplet * allocateHeaplet();
 
 protected:
     unsigned allocatorId;
+    unsigned defaultSpillCost;
 };
 
 //================================================================================
 //
+
+void noteEmptyPage(CHeap * const heap)
+{
+    heap->noteEmptyPage();
+}
+
+
+char * ChunkedHeaplet::allocateChunk()
+{
+    char *ret;
+    const size32_t size = chunkSize;
+    loop
+    {
+        unsigned old_blocks = atomic_read(&r_blocks);
+        unsigned r_ret = (old_blocks & RBLOCKS_OFFSET_MASK);
+        if (r_ret)
+        {
+            ret = makeAbsolute(r_ret);
+            //may have been allocated by another thread, but still legal to dereference
+            //the cas will fail if the contents are invalid.
+            unsigned next = *(unsigned *)ret;
+
+            //There is a potential ABA problem if other thread(s) allocate two or more items, and free the first
+            //item in the window before the following cas.  r_block would match, but next would be invalid.
+            //To avoid that a tag is stored in the top bits of r_blocks which is modified whenever an item is added
+            //onto the free list.  The offsets in the freelist do not need tags.
+            unsigned new_blocks = (old_blocks & RBLOCKS_CAS_TAG_MASK) | next;
+            if (atomic_cas(&r_blocks, new_blocks, old_blocks))
+                break;
+        }
+        else
+        {
+            unsigned curFreeBase = atomic_read(&freeBase);
+            //There is no ABA issue on freeBase because it is never decremented (and no next chain with it)
+            size32_t bytesFree = dataAreaSize() - curFreeBase;
+            if (bytesFree >= size)
+            {
+                if (atomic_cas(&freeBase, curFreeBase + size, curFreeBase))
+                {
+                    ret = data() + curFreeBase;
+                    break;
+                }
+            }
+            else
+                return NULL;
+        }
+    }
+
+    atomic_inc(&count);
+    return ret;
+}
+
+const void * ChunkedHeaplet::_compactRow(const void * ptr, HeapCompactState & state)
+{
+    //NB: If this already belongs to a full heaplet then leave it where it is..
+    CChunkedHeap * chunkedHeap = static_cast<CChunkedHeap *>(heap);
+    if (numChunks() == chunkedHeap->maxChunksPerPage())
+        return ptr;
+    return chunkedHeap->compactRow(ptr, state);
+}
+
+//================================================================================
 #define ROUNDED(heap, size) (unsigned)((heap) * HEAP_ALIGNMENT_SIZE + (size))
 #define ROUNDEDSIZE(rounded) ((rounded) & ((size32_t)HEAP_ALIGNMENT_SIZE -1))
 #define ROUNDEDHEAP(rounded) ((rounded) / (size32_t)HEAP_ALIGNMENT_SIZE)
 
 class BufferedRowCallbackManager
 {
-    class ReleaseBufferThread : public Thread
+    friend class ReleaseBufferThread;
+
+    class BackgroundReleaseBufferThread : public Thread
     {
     public:
-        ReleaseBufferThread(BufferedRowCallbackManager * _owner) : Thread("ReleaseBufferThread"), owner(_owner) {};
+        BackgroundReleaseBufferThread(BufferedRowCallbackManager * _owner)
+        : Thread("BackgroundReleaseBufferThread"), owner(_owner)
+        {
+        }
 
         virtual int run()
         {
@@ -1891,12 +2225,77 @@ class BufferedRowCallbackManager
         BufferedRowCallbackManager * owner;
     };
 
+    class ReleaseBufferThread : public Thread
+    {
+    public:
+        ReleaseBufferThread(BufferedRowCallbackManager & _owner)
+        : Thread("ReleaseBufferThread"), owner(_owner), abort(false)
+        {
+            args.critical = false;
+            args.result = NULL;
+        }
+
+        virtual int run()
+        {
+            loop
+            {
+                goSem.wait();
+                if (abort)
+                    break;
+                //This class is only used for stress testing => free all we can.
+                args.result = owner.releaseBuffersNow(SpillAllCost, args.critical, false, 0);
+                doneSem.signal();
+            }
+            return 0;
+        }
+
+        bool releaseBuffers(unsigned maxSpillCost, const bool critical)
+        {
+            if (isCurrentThread())
+                return owner.releaseBuffersNow(maxSpillCost, critical, false, 0);
+
+            bool ok;
+            {
+                CriticalBlock block(cs);
+                args.critical = critical;
+                goSem.signal();
+                doneSem.wait();
+                ok = args.result;
+            }
+            return ok;
+        }
+
+        void stop()
+        {
+            //This should not be called while any active heap operations could be occuring
+            CriticalBlock block(cs);
+            abort = true;
+            goSem.signal();
+        }
+
+    private:
+        BufferedRowCallbackManager & owner;
+        CriticalSection cs;
+        Semaphore goSem;
+        Semaphore doneSem;
+        struct
+        {
+            bool critical;
+            bool result;
+        } args;
+        bool abort;
+    };
+
 public:
     BufferedRowCallbackManager(IRowManager * _owner) : owner(_owner)
     {
         atomic_set(&releasingBuffers, 0);
         atomic_set(&releaseSeq, 0);
         abortBufferThread = false;
+        minCallbackThreshold = 1;
+        releaseWhenModifyCallback = false;
+        releaseWhenModifyCallbackCritical = false;
+        backgroundReleaseCost = SpillAllCost;
     }
     ~BufferedRowCallbackManager()
     {
@@ -1909,15 +2308,18 @@ public:
 
     void addRowBuffer(IBufferedRowCallback * callback)
     {
+        if (releaseWhenModifyCallback)
+            releaseBuffers(SpillAllCost, releaseWhenModifyCallbackCritical, false, 0);
+
         CriticalBlock block(callbackCrit);
         //Assuming a small number so perform an insertion sort.
         unsigned max = rowBufferCallbacks.ordinality();
-        unsigned priority = callback->getPriority();
+        unsigned cost = callback->getSpillCost();
         unsigned insertPos = 0;
         for (; insertPos < max; insertPos++)
         {
             IBufferedRowCallback * curCallback = rowBufferCallbacks.item(insertPos);
-            if (curCallback->getPriority() > priority)
+            if (curCallback->getSpillCost() > cost)
                 break;
         }
         rowBufferCallbacks.add(callback, insertPos);
@@ -1926,6 +2328,9 @@ public:
 
     void removeRowBuffer(IBufferedRowCallback * callback)
     {
+        if (releaseWhenModifyCallback)
+            releaseBuffers(SpillAllCost, releaseWhenModifyCallbackCritical, false, 0);
+
         CriticalBlock block(callbackCrit);
         rowBufferCallbacks.zap(callback);
         updateCallbackInfo();
@@ -1934,20 +2339,20 @@ public:
     void updateCallbackInfo()
     {
         //Possibly over the top, but calculate information so we can do a round robin at various
-        //different levels of priority
+        //different levels of cost
         callbackRanges.kill();
         nextCallbacks.kill();
         nextCallbacks.append(0);
-        unsigned prevPriority = 0;
+        unsigned prevCost = 0;
         ForEachItemIn(i, rowBufferCallbacks)
         {
-            unsigned priority = rowBufferCallbacks.item(i)->getPriority();
-            if (i && (priority != prevPriority))
+            unsigned cost = rowBufferCallbacks.item(i)->getSpillCost();
+            if (i && (cost != prevCost))
             {
                 callbackRanges.append(i);
                 nextCallbacks.append(i);
             }
-            prevPriority = priority;
+            prevCost = cost;
         }
         callbackRanges.append(rowBufferCallbacks.ordinality());
     }
@@ -1975,7 +2380,92 @@ public:
         }
     }
 
-    bool doReleaseBuffers(const bool critical, const unsigned minSuccess)
+    //Release buffers will ensure that the rows are attempted to be cleaned up before returning
+    bool releaseBuffers(unsigned maxSpillCost, const bool critical, bool checkSequence, unsigned prevReleaseSeq)
+    {
+        if (!releaseBuffersThread)
+            return releaseBuffersNow(maxSpillCost, critical, checkSequence, prevReleaseSeq);
+        return releaseBuffersThread->releaseBuffers(maxSpillCost, critical);
+    }
+
+    void runReleaseBufferThread()
+    {
+        loop
+        {
+            releaseBuffersSem.wait();
+            if (abortBufferThread)
+                break;
+            releaseBuffersNow(backgroundReleaseCost, false, false, 0);
+            atomic_set(&releasingBuffers, 0);
+        }
+    }
+
+    void releaseBuffersInBackground()
+    {
+        if (atomic_cas(&releasingBuffers, 1, 0))
+        {
+            assertex(backgroundReleaseBuffersThread);
+            releaseBuffersSem.signal();
+        }
+    }
+
+    void startReleaseBufferThread(unsigned maxSpillCost)
+    {
+        backgroundReleaseCost = maxSpillCost;
+        if (!backgroundReleaseBuffersThread)
+        {
+            backgroundReleaseBuffersThread.setown(new BackgroundReleaseBufferThread(this));
+            backgroundReleaseBuffersThread->start();
+        }
+    }
+
+    void stopReleaseBufferThread()
+    {
+        if (backgroundReleaseBuffersThread)
+        {
+            abortBufferThread = true;
+            releaseBuffersSem.signal();
+            backgroundReleaseBuffersThread->join();
+            backgroundReleaseBuffersThread.clear();
+            abortBufferThread = false;
+        }
+    }
+
+    void setCallbackOnThread(bool value)
+    {
+        //May crash if called in parallel with any ongoing memory operations.
+        if (value)
+        {
+            if (!releaseBuffersThread)
+            {
+                releaseBuffersThread.setown(new ReleaseBufferThread(*this));
+                releaseBuffersThread->start();
+            }
+        }
+        else
+        {
+            if (releaseBuffersThread)
+            {
+                releaseBuffersThread->stop();
+                releaseBuffersThread->join();
+                releaseBuffersThread.clear();
+            }
+        }
+    }
+
+    void setMemoryCallbackThreshold(unsigned value)
+    {
+        minCallbackThreshold = value;
+    }
+
+    virtual void setReleaseWhenModifyCallback(bool value, bool critical)
+    {
+        releaseWhenModifyCallback = value;
+        releaseWhenModifyCallbackCritical = critical;
+    }
+
+protected:
+    bool doReleaseBuffers(unsigned maxSpillCost, const bool critical, const unsigned minSuccess)
     {
         const unsigned numCallbacks = rowBufferCallbacks.ordinality();
         if (numCallbacks == 0)
@@ -1983,18 +2473,21 @@ public:
 
         unsigned first = 0;
         unsigned numSuccess = 0;
-        //Loop through each set of different priorities
+        //Loop through each set of different costs
         ForEachItemIn(level, callbackRanges)
         {
+            if (rowBufferCallbacks.item(first)->getSpillCost() > maxSpillCost)
+                break;
+
             unsigned last = callbackRanges.item(level);
             unsigned start = nextCallbacks.item(level);
-            unsigned active = start;
-            assertex(active >= first && active < last);
-            //First perform a round robin on the elements with the same priority
+            unsigned cur = start;
+            assertex(cur >= first && cur < last);
+            //First perform a round robin on the elements with the same cost
             loop
             {
-                IBufferedRowCallback * curCallback = rowBufferCallbacks.item(active);
-                unsigned next = active+1;
+                IBufferedRowCallback * curCallback = rowBufferCallbacks.item(cur);
+                unsigned next = cur+1;
                 if (next == last)
                     next = first;
 
@@ -2008,8 +2501,8 @@ public:
                     }
                 }
 
-                active = next;
-                if (active == start)
+                cur = next;
+                if (cur == start)
                     break;
             }
             first = last;
@@ -2018,8 +2511,9 @@ public:
     }
 
     //Release buffers will ensure that the rows are attempted to be cleaned up before returning
-    bool releaseBuffers(const bool critical, const unsigned minSuccess, bool checkSequence, unsigned prevReleaseSeq)
+    bool releaseBuffersNow(unsigned maxSpillCost, const bool critical, bool checkSequence, unsigned prevReleaseSeq)
     {
+        const unsigned minSuccess = minCallbackThreshold;
         CriticalBlock block(callbackCrit);
         //While we were waiting check if something freed some memory up
         //if so try again otherwise we might end up calling more callbacks than we need to.
@@ -2028,7 +2522,7 @@ public:
 
         //Call non critical first, then critical - if applicable.
         //Should there be more levels of importance than critical/non critical?
-        if (doReleaseBuffers(false, minSuccess) || (critical && doReleaseBuffers(true, minSuccess)))
+        if (doReleaseBuffers(maxSpillCost, false, minSuccess) || (critical && doReleaseBuffers(maxSpillCost, true, minSuccess)))
         {
             //Increment first so that any called knows some rows may have been freed
             atomic_inc(&releaseSeq);
@@ -2046,59 +2540,22 @@ public:
         return false;
     }
 
-    void runReleaseBufferThread()
-    {
-        loop
-        {
-            releaseBuffersSem.wait();
-            if (abortBufferThread)
-                break;
-            releaseBuffers(false, 1, false, 0);
-            atomic_set(&releasingBuffers, 0);
-        }
-    }
-
-    void releaseBuffersInBackground()
-    {
-        if (atomic_cas(&releasingBuffers, 1, 0))
-        {
-            assertex(releaseBuffersThread);
-            releaseBuffersSem.signal();
-        }
-    }
-
-    void startReleaseBufferThread()
-    {
-        if (!releaseBuffersThread)
-        {
-            releaseBuffersThread.setown(new ReleaseBufferThread(this));
-            releaseBuffersThread->start();
-        }
-    }
-
-    void stopReleaseBufferThread()
-    {
-        if (releaseBuffersThread)
-        {
-            abortBufferThread = true;
-            releaseBuffersSem.signal();
-            releaseBuffersThread->join();
-            releaseBuffersThread.clear();
-            abortBufferThread = false;
-        }
-    }
-
 protected:
     CriticalSection callbackCrit;
     Semaphore releaseBuffersSem;
     PointerArrayOf<IBufferedRowCallback> rowBufferCallbacks;
     PointerArrayOf<IBufferedRowCallback> activeCallbacks;
+    Owned<BackgroundReleaseBufferThread> backgroundReleaseBuffersThread;
     Owned<ReleaseBufferThread> releaseBuffersThread;
-    UnsignedArray callbackRanges;  // the maximum index of the callbacks for the nth priority
-    UnsignedArray nextCallbacks;  // the next call back to try and free for the nth priority
+    UnsignedArray callbackRanges;  // the maximum index of the callbacks for the nth cost
+    UnsignedArray nextCallbacks;  // the next call back to try and free for the nth cost
     IRowManager * owner;
     atomic_t releasingBuffers;  // boolean if pre-emptive releasing thread is active
     atomic_t releaseSeq;
+    unsigned minCallbackThreshold;
+    unsigned backgroundReleaseCost;
+    bool releaseWhenModifyCallback;
+    bool releaseWhenModifyCallbackCritical;
     volatile bool abortBufferThread;
 };
 
@@ -2132,14 +2589,16 @@ class CChunkingRowManager : public CInterface, implements IRowManager
 {
     friend class CRoxieFixedRowHeap;
     friend class CRoxieVariableRowHeap;
-    friend class CHugeChunkingHeap;
-    friend class CNormalChunkingHeap;
-    friend class CFixedChunkingHeap;
+    friend class CHugeHeap;
+    friend class CChunkedHeap;
+    friend class CFixedChunkedHeap;
 
-    SpinLock crit;
-    SpinLock fixedCrit;  // Should possibly be a ReadWriteLock - better with high contention, worse with low
-    CIArrayOf<CFixedChunkingHeap> normalHeaps;
-    CHugeChunkingHeap hugeHeap;
+    CriticalSection activeBufferCS; // Potentially slow
+    mutable SpinLock peakSpinLock; // Very small window, low contention so fine to be a spin lock
+    mutable SpinLock fixedSpinLock; // Main potential for contention releasingEmptyHeaps and gathering peak usage.  Shouldn't be likely.
+                                    // Should possibly be a ReadWriteLock - better with high contention, worse with low
+    CIArrayOf<CFixedChunkedHeap> normalHeaps;
+    CHugeHeap hugeHeap;
     ITimeLimiter *timeLimit;
     DataBufferBase *activeBuffs;
     const IContextLogger &logctx;
@@ -2151,14 +2610,16 @@ class CChunkingRowManager : public CInterface, implements IRowManager
     atomic_t possibleGoers;
     atomic_t totalHeapPages;
     BufferedRowCallbackManager callbacks;
-    Owned<IActivityMemoryUsageMap> usageMap;
-    CIArrayOf<CChunkingHeap> fixedHeaps;
+    Owned<IActivityMemoryUsageMap> peakUsageMap;
+    CIArrayOf<CHeap> fixedHeaps;
     CopyCIArrayOf<CRoxieFixedRowHeapBase> fixedRowHeaps;  // These are observed, NOT linked
     const IRowAllocatorCache *allocatorCache;
     unsigned __int64 cyclesChecked;       // When we last checked timelimit
     unsigned __int64 cyclesCheckInterval; // How often we need to check timelimit
     bool ignoreLeaks;
     bool trackMemoryByActivity;
+    bool minimizeFootprint;
+    bool minimizeFootprintCritical;
 
     inline unsigned getActivityId(unsigned rawId) const
     {
@@ -2180,7 +2641,7 @@ public:
             size32_t rounded = roundup(prevSize+1);
             dbgassertex(ROUNDEDHEAP(rounded) == normalHeaps.ordinality());
             size32_t thisSize = ROUNDEDSIZE(rounded);
-            normalHeaps.append(*new CFixedChunkingHeap(this, _logctx, _allocatorCache, thisSize, 0));
+            normalHeaps.append(*new CFixedChunkedHeap(this, _logctx, _allocatorCache, thisSize, RHFvariable, SpillAllCost));
             prevSize = thisSize;
         }
         pageLimit = (unsigned) PAGES(_memLimit, HEAP_ALIGNMENT_SIZE);
@@ -2193,6 +2654,8 @@ public:
         activeBuffs = NULL;
         dataBuffPages = 0;
         ignoreLeaks = _ignoreLeaks;
+        minimizeFootprint = false;
+        minimizeFootprintCritical = false;
 #ifdef _DEBUG
         trackMemoryByActivity = true; 
 #else
@@ -2203,7 +2666,7 @@ public:
         if (timeLimit)
         {
             cyclesChecked = get_cycles_now();
-            cyclesCheckInterval = nanosec_to_cycle(1000000 * TIMEOUT_CHECK_FREQUENCY_MILLISECONDS); // Could perhaps ask timelimit object what a suitable frequency is..
+            cyclesCheckInterval = nanosec_to_cycle(1000000 * timeLimit->checkInterval());
         }
         else
         {
@@ -2226,7 +2689,7 @@ public:
         //Ensure that the rowHeaps release any references to the fixed heaps, and no longer call back when they
         //are destroyed
         {
-            SpinBlock block(fixedCrit);
+            SpinBlock block(fixedSpinLock);
             ForEachItemIn(i, fixedRowHeaps)
                 fixedRowHeaps.item(i).clearRowManager();
         }
@@ -2257,10 +2720,10 @@ public:
         ForEachItemIn(iNormal, normalHeaps)
             normalHeaps.item(iNormal).checkHeap();
 
-        SpinBlock block(fixedCrit); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
+        SpinBlock block(fixedSpinLock); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
         ForEachItemIn(i, fixedHeaps)
         {
-            CChunkingHeap & fixedHeap = fixedHeaps.item(i);
+            CHeap & fixedHeap = fixedHeaps.item(i);
             fixedHeap.checkHeap();
         }
     }
@@ -2277,10 +2740,10 @@ public:
             total += normalHeaps.item(iNormal).allocated();
         total += hugeHeap.allocated();
 
-        SpinBlock block(fixedCrit); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
+        SpinBlock block(fixedSpinLock); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
         ForEachItemIn(i, fixedHeaps)
         {
-            CChunkingHeap & fixedHeap = fixedHeaps.item(i);
+            CHeap & fixedHeap = fixedHeaps.item(i);
             total += fixedHeap.allocated();
         }
 
@@ -2295,12 +2758,12 @@ public:
 
     void removeUnusedHeaps()
     {
-        SpinBlock block(fixedCrit);
+        SpinBlock block(fixedSpinLock);
         unsigned numHeaps = fixedHeaps.ordinality();
         unsigned i = 0;
         while (i < numHeaps)
         {
-            CChunkingHeap & fixedHeap = fixedHeaps.item(i);
+            CHeap & fixedHeap = fixedHeaps.item(i);
             if (fixedHeap.isEmpty() && !fixedHeap.IsShared())
             {
                 fixedHeaps.remove(i);
@@ -2319,10 +2782,10 @@ public:
 
         bool hadUnusedHeap = false;
         {
-            SpinBlock block(fixedCrit); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
+            SpinBlock block(fixedSpinLock); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
             ForEachItemIn(i, fixedHeaps)
             {
-                CChunkingHeap & fixedHeap = fixedHeaps.item(i);
+                CHeap & fixedHeap = fixedHeaps.item(i);
                 total += fixedHeap.releaseEmptyPages(forceFreeAll);
                 //if this heap has no pages, and no external references then it can be removed
                 if (fixedHeap.isEmpty() && !fixedHeap.IsShared())
@@ -2338,22 +2801,12 @@ public:
         return (total != 0);
     }
 
-    virtual void getPeakActivityUsage()
+    void getPeakActivityUsage()
     {
-        Owned<IActivityMemoryUsageMap> map = new CActivityMemoryUsageMap;
-        ForEachItemIn(iNormal, normalHeaps)
-            normalHeaps.item(iNormal).getPeakActivityUsage(map);
-        hugeHeap.getPeakActivityUsage(map);
+        Owned<IActivityMemoryUsageMap> map = getActivityUsage();
 
-        SpinBlock block(fixedCrit); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
-        ForEachItemIn(i, fixedHeaps)
-        {
-            CChunkingHeap & fixedHeap = fixedHeaps.item(i);
-            fixedHeap.getPeakActivityUsage(map);
-        }
-
-        SpinBlock c1(crit);
-        usageMap.setown(map.getClear());
+        SpinBlock block(peakSpinLock);
+        peakUsageMap.setown(map.getClear());
     }
 
     //MORE: inline??
@@ -2433,13 +2886,26 @@ public:
     {
         beforeAllocate(_size, activityId);
         if (_size > FixedSizeHeaplet::maxHeapSize())
-            return hugeHeap.doAllocate(_size, activityId);
+            return hugeHeap.doAllocate(_size, activityId, SpillAllCost);
         size32_t size32 = (size32_t) _size;
 
         size32_t rounded = roundup(size32 + FixedSizeHeaplet::chunkHeaderSize);
         size32_t whichHeap = ROUNDEDHEAP(rounded);
-        CFixedChunkingHeap & normalHeap = normalHeaps.item(whichHeap);
-        return normalHeap.doAllocate(activityId);
+        CFixedChunkedHeap & normalHeap = normalHeaps.item(whichHeap);
+        return normalHeap.doAllocate(activityId, SpillAllCost);
+    }
+
+    virtual void *allocate(memsize_t _size, unsigned activityId, unsigned maxSpillCost)
+    {
+        beforeAllocate(_size, activityId);
+        if (_size > FixedSizeHeaplet::maxHeapSize())
+            return hugeHeap.doAllocate(_size, activityId, maxSpillCost);
+        size32_t size32 = (size32_t) _size;
+
+        size32_t rounded = roundup(size32 + FixedSizeHeaplet::chunkHeaderSize);
+        size32_t whichHeap = ROUNDEDHEAP(rounded);
+        CFixedChunkedHeap & normalHeap = normalHeaps.item(whichHeap);
+        return normalHeap.doAllocate(activityId, maxSpillCost);
     }
 
     virtual const char *cloneVString(size32_t len, const char *str)
@@ -2466,7 +2932,7 @@ public:
             return NULL;
     }
 
-    virtual void setMemoryLimit(memsize_t bytes, memsize_t spillSize)
+    virtual void setMemoryLimit(memsize_t bytes, memsize_t spillSize, unsigned backgroundReleaseCost)
     {
         memsize_t systemMemoryLimit = getTotalMemoryLimit();
         if (bytes > systemMemoryLimit)
@@ -2478,12 +2944,33 @@ public:
 
         //The test allows no limit on memory, but spill above a certain amount.  Not sure if useful...
         if (spillPageLimit && (pageLimit != spillPageLimit))
-            callbacks.startReleaseBufferThread();
+            callbacks.startReleaseBufferThread(backgroundReleaseCost);
         else
             callbacks.stopReleaseBufferThread();
 
         if (memTraceLevel >= 2)
             logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::setMemoryLimit new memlimit=%"I64F"u pageLimit=%u spillLimit=%u rowMgr=%p", (unsigned __int64) bytes, pageLimit, spillPageLimit, this);
+    }
+
+    virtual void setMemoryCallbackThreshold(unsigned value)
+    {
+        callbacks.setMemoryCallbackThreshold(value);
+    }
+
+    virtual void setCallbackOnThread(bool value)
+    {
+        callbacks.setCallbackOnThread(value);
+    }
+
+    virtual void setMinimizeFootprint(bool value, bool critical)
+    {
+        minimizeFootprint = value;
+        minimizeFootprintCritical = critical;
+    }
+
+    virtual void setReleaseWhenModifyCallback(bool value, bool critical)
+    {
+        callbacks.setReleaseWhenModifyCallback(value, critical);
     }
 
     virtual void resizeRow(memsize_t &capacity, void * & ptr, memsize_t copysize, memsize_t newsize, unsigned activityId)
@@ -2501,7 +2988,7 @@ public:
         if (curCapacity > FixedSizeHeaplet::maxHeapSize())
         {
             CVariableRowResizeCallback callback(capacity, ptr);
-            hugeHeap.expandHeap(original, copysize, curCapacity, newsize, activityId, callback);
+            hugeHeap.expandHeap(original, copysize, curCapacity, newsize, activityId, SpillAllCost, callback);
             return;
         }
 
@@ -2511,10 +2998,9 @@ public:
         HeapletBase::release(original);
         capacity = newCapacity;
         ptr = ret;
-        return;
     }
 
-    virtual void resizeRow(void * original, memsize_t copysize, memsize_t newsize, unsigned activityId, IRowResizeCallback & callback)
+    virtual bool resizeRow(void * original, memsize_t copysize, memsize_t newsize, unsigned activityId, unsigned maxSpillCost, IRowResizeCallback & callback)
     {
         assertex(newsize);
         assertex(!HeapletBase::isShared(original));
@@ -2522,20 +3008,19 @@ public:
         if (newsize <= curCapacity)
         {
             //resizeRow never shrinks memory
-            return;
+            return true;
         }
         if (curCapacity > FixedSizeHeaplet::maxHeapSize())
-        {
-            hugeHeap.expandHeap(original, copysize, curCapacity, newsize, activityId, callback);
-            return;
-        }
+            return hugeHeap.expandHeap(original, copysize, curCapacity, newsize, activityId, maxSpillCost, callback);
 
-        void *ret = allocate(newsize, activityId);
+        void *ret = allocate(newsize, activityId, maxSpillCost);
+        if (!ret)
+            return false;
         memcpy(ret, original, copysize);
         memsize_t newCapacity = HeapletBase::capacity(ret);
         callback.atomicUpdate(newCapacity, ret);
         HeapletBase::release(original);
-        return;
+        return true;
     }
 
     virtual void *finalizeRow(void * original, memsize_t initialSize, memsize_t finalSize, unsigned activityId)
@@ -2553,8 +3038,13 @@ public:
 
     virtual unsigned getMemoryUsage()
     {
-        if (usageMap)
-            usageMap->report(logctx, allocatorCache);
+        Owned<IActivityMemoryUsageMap> map;
+        {
+            SpinBlock block(peakSpinLock);
+            map.set(peakUsageMap);
+        }
+        if (map)
+            map->report(logctx, allocatorCache);
         return peakPages;
     }
 
@@ -2568,7 +3058,7 @@ public:
         DataBufferBase *last = NULL;
         bool needCheck;
         {
-            SpinBlock b(crit);
+            CriticalBlock b(activeBufferCS);
             DataBufferBase *finger = activeBuffs;
             while (finger && atomic_read(&possibleGoers))
             {
@@ -2602,7 +3092,10 @@ public:
             dataBuffPages = ndataBuffPages;
         }
         if (needCheck)
-            checkLimit(0);
+        {
+            const unsigned maxSpillCost = 0;
+            checkLimit(0, maxSpillCost);
+        }
         return true;
     }
     
@@ -2614,11 +3107,11 @@ public:
                     dataBuffs, dataBuffPages, atomic_read(&possibleGoers), dataBuff, this);
     }
 
-    virtual IFixedRowHeap * createFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags)
+    virtual IFixedRowHeap * createFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags, unsigned maxSpillCost)
     {
-        CRoxieFixedRowHeapBase * rowHeap = doCreateFixedRowHeap(fixedSize, activityId, roxieHeapFlags);
+        CRoxieFixedRowHeapBase * rowHeap = doCreateFixedRowHeap(fixedSize, activityId, roxieHeapFlags, maxSpillCost);
 
-        SpinBlock block(fixedCrit);
+        SpinBlock block(fixedSpinLock);
         //The Row heaps are not linked by the row manager so it can determine when they are released.
         fixedRowHeaps.append(*rowHeap);
         return rowHeap;
@@ -2626,7 +3119,7 @@ public:
 
     void noteReleasedHeap(CRoxieFixedRowHeapBase * rowHeap)
     {
-        SpinBlock block(fixedCrit);
+        SpinBlock block(fixedSpinLock);
         fixedRowHeaps.zap(*rowHeap);
     }
 
@@ -2636,10 +3129,13 @@ public:
         return new CRoxieVariableRowHeap(this, activityId, (RoxieHeapFlags)roxieHeapFlags);
     }
 
-    void checkLimit(unsigned numRequested)
+    bool checkLimit(unsigned numRequested, unsigned maxSpillCost)
     {
         unsigned totalPages;
         releaseEmptyPages(false);
+        if (minimizeFootprint)
+            callbacks.releaseBuffers(SpillAllCost, minimizeFootprintCritical, false, 0);
+
         loop
         {
             unsigned lastReleaseSeq = callbacks.getReleaseSeq();
@@ -2670,7 +3166,7 @@ public:
             //The following reduces the nubmer of times the callback is called, but I'm not sure how this affects
             //performance.  I think better if a single free is likely to free up some memory, and worse if not.
             const bool skipReleaseIfAnotherThreadReleases = true;
-            if (!callbacks.releaseBuffers(true, 1, skipReleaseIfAnotherThreadReleases, lastReleaseSeq))
+            if (!callbacks.releaseBuffers(maxSpillCost, true, skipReleaseIfAnotherThreadReleases, lastReleaseSeq))
             {
                 //Check if a background thread has freed up some memory.  That can be checked by a comparing value of a counter
                 //which is incremented each time releaseBuffers is successful.
@@ -2681,7 +3177,11 @@ public:
                     releaseEmptyPages(true);
                     if (numHeapPages == atomic_read(&totalHeapPages))
                     {
+                        if (maxSpillCost != SpillAllCost)
+                            return false;
+
                         logctx.CTXLOG("RoxieMemMgr: Memory limit exceeded - current %u, requested %u, limit %u", pageCount, numRequested, pageLimit);
+                        reportMemoryUsage(false);
                         PrintStackReport();
                         throw MakeStringException(ROXIEMM_MEMORY_LIMIT_EXCEEDED, "memory limit exceeded");
                     }
@@ -2700,6 +3200,19 @@ public:
                 getPeakActivityUsage();
             peakPages = totalPages;
         }
+        return true;
+    }
+
+    virtual void reportPeakStatistics(IStatisticTarget & target, unsigned detail)
+    {
+        Owned<IActivityMemoryUsageMap> map;
+        {
+            SpinBlock block(peakSpinLock);
+            map.set(peakUsageMap);
+        }
+        if (map)
+            map->reportStatistics(target, detail, allocatorCache);
+        target.addStatistic(NULL, NULL, "roxiehwm", NULL, SMEASURE_MEM_KB, peakPages * (HEAP_ALIGNMENT_SIZE / 1024), 1, 0, false);
     }
 
     void restoreLimit(unsigned numRequested)
@@ -2707,13 +3220,13 @@ public:
         atomic_add(&totalHeapPages, -(int)numRequested);
     }
 
-    bool releaseCallbackMemory(bool critical)
+    bool releaseCallbackMemory(unsigned maxSpillCost, bool critical)
     {
-        return callbacks.releaseBuffers(critical, 1, false, 0);
+        return callbacks.releaseBuffers(maxSpillCost, critical, false, 0);
     }
 
 protected:
-    CRoxieFixedRowHeapBase * doCreateFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags)
+    CRoxieFixedRowHeapBase * doCreateFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags, unsigned maxSpillCost)
     {
         if ((roxieHeapFlags & RHFoldfixed) || (fixedSize > FixedSizeHeaplet::maxHeapSize()))
             return new CRoxieFixedRowHeap(this, activityId, (RoxieHeapFlags)roxieHeapFlags, fixedSize);
@@ -2721,21 +3234,21 @@ protected:
         unsigned heapFlags = roxieHeapFlags & (RHFunique|RHFpacked);
         if (heapFlags & RHFpacked)
         {
-            CPackedChunkingHeap * heap = createPackedHeap(fixedSize, activityId, heapFlags);
+            CPackedChunkingHeap * heap = createPackedHeap(fixedSize, activityId, heapFlags, maxSpillCost);
             return new CRoxieDirectPackedRowHeap(this, activityId, (RoxieHeapFlags)roxieHeapFlags, heap);
         }
         else
         {
-            CFixedChunkingHeap * heap = createFixedHeap(fixedSize, activityId, heapFlags);
+            CFixedChunkedHeap * heap = createFixedHeap(fixedSize, activityId, heapFlags, maxSpillCost);
             return new CRoxieDirectFixedRowHeap(this, activityId, (RoxieHeapFlags)roxieHeapFlags, heap);
         }
     }
 
-    CChunkingHeap * getExistingHeap(size32_t chunkSize, unsigned activityId, unsigned flags)
+    CHeap * getExistingHeap(size32_t chunkSize, unsigned activityId, unsigned flags)
     {
         ForEachItemIn(i, fixedHeaps)
         {
-            CChunkingHeap & heap = fixedHeaps.item(i);
+            CHeap & heap = fixedHeaps.item(i);
             if (heap.matches(chunkSize, activityId, flags))
             {
                 heap.Link();
@@ -2746,7 +3259,23 @@ protected:
         return NULL;
     }
 
-    CFixedChunkingHeap * createFixedHeap(size32_t size, unsigned activityId, unsigned flags)
+    IActivityMemoryUsageMap * getActivityUsage() const
+    {
+        Owned<IActivityMemoryUsageMap> map = new CActivityMemoryUsageMap;
+        ForEachItemIn(iNormal, normalHeaps)
+            normalHeaps.item(iNormal).getPeakActivityUsage(map);
+        hugeHeap.getPeakActivityUsage(map);
+
+        SpinBlock block(fixedSpinLock); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
+        ForEachItemIn(i, fixedHeaps)
+        {
+            CHeap & fixedHeap = fixedHeaps.item(i);
+            fixedHeap.getPeakActivityUsage(map);
+        }
+        return map.getClear();
+    }
+
+    CFixedChunkedHeap * createFixedHeap(size32_t size, unsigned activityId, unsigned flags, unsigned maxSpillCost)
     {
         dbgassertex(!(flags & RHFpacked));
         size32_t rounded = roundup(size + FixedSizeHeaplet::chunkHeaderSize);
@@ -2762,20 +3291,20 @@ protected:
 
         size32_t chunkSize = ROUNDEDSIZE(rounded);
         //Not time critical, so don't worry about the scope of the spinblock around the new
-        SpinBlock block(fixedCrit);
+        SpinBlock block(fixedSpinLock);
         if (!(flags & RHFunique))
         {
-            CChunkingHeap * match = getExistingHeap(chunkSize, activityId, flags);
+            CHeap * match = getExistingHeap(chunkSize, activityId, flags);
             if (match)
-                return static_cast<CFixedChunkingHeap *>(match);
+                return static_cast<CFixedChunkedHeap *>(match);
         }
 
-        CFixedChunkingHeap * heap = new CFixedChunkingHeap(this, logctx, allocatorCache, chunkSize, flags);
+        CFixedChunkedHeap * heap = new CFixedChunkedHeap(this, logctx, allocatorCache, chunkSize, flags, maxSpillCost);
         fixedHeaps.append(*LINK(heap));
         return heap;
     }
 
-    CPackedChunkingHeap * createPackedHeap(size32_t size, unsigned activityId, unsigned flags)
+    CPackedChunkingHeap * createPackedHeap(size32_t size, unsigned activityId, unsigned flags, unsigned maxSpillCost)
     {
         dbgassertex(flags & RHFpacked);
         //Must be 4 byte aligned otherwise the atomic increments on the counts may not be atomic
@@ -2783,15 +3312,15 @@ protected:
         size32_t chunkSize = align_pow2(size + PackedFixedSizeHeaplet::chunkHeaderSize, PACKED_ALIGNMENT);
 
         //Not time critical, so don't worry about the scope of the spinblock around the new
-        SpinBlock block(fixedCrit);
+        SpinBlock block(fixedSpinLock);
         if (!(flags & RHFunique))
         {
-            CChunkingHeap * match = getExistingHeap(chunkSize, activityId, flags);
+            CHeap * match = getExistingHeap(chunkSize, activityId, flags);
             if (match)
                 return static_cast<CPackedChunkingHeap *>(match);
         }
 
-        CPackedChunkingHeap * heap = new CPackedChunkingHeap(this, logctx, allocatorCache, chunkSize, flags, activityId);
+        CPackedChunkingHeap * heap = new CPackedChunkingHeap(this, logctx, allocatorCache, chunkSize, flags, activityId, maxSpillCost);
         fixedHeaps.append(*LINK(heap));
         return heap;
     }
@@ -2810,12 +3339,12 @@ protected:
         ForEachItemIn(iNormal, normalHeaps)
             normalHeaps.item(iNormal).reportLeaks(leaked);
         hugeHeap.reportLeaks(leaked);
-        SpinBlock block(fixedCrit); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
+        SpinBlock block(fixedSpinLock); //Spinblock needed if we can add/remove fixed heaps while allocations are occuring
         ForEachItemIn(i, fixedHeaps)
         {
             if (leaked == 0)
                 break;
-            CChunkingHeap & fixedHeap = fixedHeaps.item(i);
+            CHeap & fixedHeap = fixedHeaps.item(i);
             fixedHeap.reportLeaks(leaked);
         }
     }
@@ -2828,6 +3357,43 @@ protected:
     virtual void removeRowBuffer(IBufferedRowCallback * callback)
     {
         callbacks.removeRowBuffer(callback);
+    }
+
+    virtual bool compactRows(memsize_t count, const void * * rows)
+    {
+        HeapCompactState state;
+        bool memoryAvailable = false;
+        for (memsize_t i = 0; i < count; i++)
+        {
+            const void * row = rows[i];
+            if (row)
+            {
+                const void * packed = HeapletBase::compactRow(row, state);
+                rows[i] = packed;  // better to always assign
+            }
+        }
+        return (state.numPagesEmptied != 0);
+    }
+
+    virtual void reportMemoryUsage(bool peak) const
+    {
+        if (peak)
+        {
+            Owned<IActivityMemoryUsageMap> map;
+            {
+                SpinBlock block(peakSpinLock);
+                map.set(peakUsageMap);
+            }
+            if (map)
+                map->report(logctx, allocatorCache);
+        }
+        else
+        {
+            logctx.CTXLOG("RoxieMemMgr: pageLimit=%u peakPages=%u dataBuffs=%u dataBuffPages=%u possibleGoers=%u rowMgr=%p",
+                          pageLimit, peakPages, dataBuffs, dataBuffPages, atomic_read(&possibleGoers), this);
+            Owned<IActivityMemoryUsageMap> map = getActivityUsage();
+            map->report(logctx, allocatorCache);
+        }
     }
 
     virtual memsize_t getExpectedCapacity(memsize_t size, unsigned heapFlags)
@@ -2920,28 +3486,42 @@ void * CRoxieVariableRowHeap::finalizeRow(void *final, memsize_t originalSize, m
 //================================================================================
 
 //MORE: Make this a nested class??
-HugeHeaplet * CHugeChunkingHeap::allocateHeaplet(memsize_t _size, unsigned allocatorId)
+HugeHeaplet * CHugeHeap::allocateHeaplet(memsize_t _size, unsigned allocatorId, unsigned maxSpillCost)
 {
     unsigned numPages = PAGES(_size + HugeHeaplet::dataOffset(), HEAP_ALIGNMENT_SIZE);
 
     loop
     {
-        rowManager->checkLimit(numPages);
-        //If the allocation fails, then try and free some memory by calling the callbacks
+        if (!rowManager->checkLimit(numPages, maxSpillCost))
+            return NULL;
 
+        //If the allocation fails, then try and free some memory by calling the callbacks
         void * memory = suballoc_aligned(numPages, true);
         if (memory)
-            return new (memory) HugeHeaplet(allocatorCache, _size, allocatorId);
+            return new (memory) HugeHeaplet(this, allocatorCache, _size, allocatorId);
 
         rowManager->restoreLimit(numPages);
-        if (!rowManager->releaseCallbackMemory(true))
-            throwHeapExhausted(numPages);
+        if (!rowManager->releaseCallbackMemory(maxSpillCost, true))
+        {
+            if (maxSpillCost == SpillAllCost)
+                throwHeapExhausted(numPages);
+            return NULL;
+        }
     }
 }
 
-void * CHugeChunkingHeap::doAllocate(memsize_t _size, unsigned allocatorId)
+void * CHugeHeap::doAllocate(memsize_t _size, unsigned allocatorId, unsigned maxSpillCost)
 {
-    HugeHeaplet *head = allocateHeaplet(_size, allocatorId);
+    HugeHeaplet *head = allocateHeaplet(_size, allocatorId, maxSpillCost);
+    if (!head)
+    {
+        if (memTraceLevel >= 2)
+        {
+            logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::allocate(size %"I64F"u) failed to allocate a block - pageLimit=%u peakPages=%u rowMgr=%p",
+                (unsigned __int64) _size, rowManager->pageLimit, rowManager->peakPages, this);
+        }
+        return NULL;
+    }
 
     if (memTraceLevel >= 2 || (memTraceSizeLimit && _size >= memTraceSizeLimit))
     {
@@ -2956,7 +3536,7 @@ void * CHugeChunkingHeap::doAllocate(memsize_t _size, unsigned allocatorId)
     return head->allocateHuge(_size);
 }
 
-void CHugeChunkingHeap::expandHeap(void * original, memsize_t copysize, memsize_t oldcapacity, memsize_t newsize, unsigned activityId, IRowResizeCallback & callback)
+bool CHugeHeap::expandHeap(void * original, memsize_t copysize, memsize_t oldcapacity, memsize_t newsize, unsigned activityId, unsigned maxSpillCost, IRowResizeCallback & callback)
 {
     unsigned newPages = PAGES(newsize + HugeHeaplet::dataOffset(), HEAP_ALIGNMENT_SIZE);
     unsigned oldPages = PAGES(oldcapacity + HugeHeaplet::dataOffset(), HEAP_ALIGNMENT_SIZE);
@@ -2968,7 +3548,8 @@ void CHugeChunkingHeap::expandHeap(void * original, memsize_t copysize, memsize_
         // NOTE: we request permission only for the difference between the old
         // and new sizes, even though we may temporarily hold both. This not only
         // simplifies the code considerably, it's probably desirable
-        rowManager->checkLimit(numPages);
+        if (!rowManager->checkLimit(numPages, maxSpillCost))
+            return false;
 
         bool release = false;
         void *realloced = subrealloc_aligned(oldbase, oldPages, newPages);
@@ -2987,14 +3568,16 @@ void CHugeChunkingHeap::expandHeap(void * original, memsize_t copysize, memsize_
                 {
                     SpinBlock b(crit);
                     if (active==oldhead)
+                    {
                         active = getNext(oldhead);
+                    }
                     else
                     {
-                        BigHeapletBase *finger = active;
+                        Heaplet *finger = active;
                         // Remove old pointer from the chain
                         while (finger)
                         {
-                            BigHeapletBase *next = getNext(finger);
+                            Heaplet *next = getNext(finger);
                             if (next == oldhead)
                             {
                                 setNext(finger, getNext(oldhead));
@@ -3042,103 +3625,160 @@ void CHugeChunkingHeap::expandHeap(void * original, memsize_t copysize, memsize_
                 }
             }
 
-            return;
+            return true;
         }
 
         //If the allocation fails, then try and free some memory by calling the callbacks
 
         rowManager->restoreLimit(numPages);
-        if (!rowManager->releaseCallbackMemory(true))
-            throwHeapExhausted(numPages);
+        if (!rowManager->releaseCallbackMemory(maxSpillCost, true))
+        {
+            if (maxSpillCost == SpillAllCost)
+                throwHeapExhausted(numPages);
+            return false;
+        }
     }
 }
 
 
 //An inline function used to common up the allocation code for fixed and non fixed sizes.
-void * CNormalChunkingHeap::inlineDoAllocate(unsigned allocatorId)
+void * CChunkedHeap::inlineDoAllocate(unsigned allocatorId, unsigned maxSpillCost)
 {
     //Only hold the spinblock while walking the list - so subsequent calls to checkLimit don't deadlock.
+    //NB: The allocation is split into two - finger->allocateChunk, and finger->initializeChunk().
+    //The latter is done outside the spinblock, to reduce the window for contention.
+    ChunkedHeaplet * donorHeaplet;
+    char * chunk;
     {
-        BigHeapletBase *prev = NULL;
+        Heaplet *prev = NULL;
         SpinBlock b(crit);
-        BigHeapletBase *finger = active;
+        Heaplet *finger = active;
         while (finger)
         {
-            void *ret = finger->allocate(allocatorId);
-            if (ret)
+            //This cast is safe because we are within a member of CChunkedHeap
+            donorHeaplet = static_cast<ChunkedHeaplet *>(finger);
+            chunk = donorHeaplet->allocateChunk();
+            if (chunk)
             {
                 if (prev)
-                {
-                    BigHeapletBase * next = getNext(finger);
-                    setNext(prev, next);
-                    setNext(finger, active);
-                    active = finger;
-                }
-                return ret;
+                    moveHeapletToHead(prev, finger);
+
+                //The code at the end of this function needs to be executed outside of the spinblock.
+                //Just occasionally gotos are the best way of expressing something
+                goto gotChunk;
             }
             prev = finger;
             finger = getNext(finger);
         }
     }
 
-    BigHeapletBase * head;
     loop
     {
-        rowManager->checkLimit(1);
-        head = allocateHeaplet();
-        if (head)
+        if (!rowManager->checkLimit(1, maxSpillCost))
+            return NULL;
+
+        donorHeaplet = allocateHeaplet();
+        if (donorHeaplet)
             break;
         rowManager->restoreLimit(1);
-        if (!rowManager->releaseCallbackMemory(true))
-            throwHeapExhausted(1);
+        if (!rowManager->releaseCallbackMemory(maxSpillCost, true))
+        {
+            if (maxSpillCost == SpillAllCost)
+                throwHeapExhausted(1);
+            return NULL;
+        }
     }
 
     if (memTraceLevel >= 5 || (memTraceLevel >= 3 && chunkSize > 32000))
         logctx.CTXLOG("RoxieMemMgr: CChunkingRowManager::allocate(size %u) allocated new FixedSizeHeaplet size %u - addr=%p pageLimit=%u peakPages=%u rowMgr=%p",
-                chunkSize, chunkSize, head, rowManager->pageLimit, rowManager->peakPages, this);
+                chunkSize, chunkSize, donorHeaplet, rowManager->pageLimit, rowManager->peakPages, this);
 
-    SpinBlock b(crit);
-    setNext(head, active);
-    active = head;
-    //If no protecting spinblock there would be a race e.g., if another thread allocates all the rows!
-    return head->allocate(allocatorId);
+    {
+        SpinBlock b(crit);
+        setNext(donorHeaplet, active);
+        active = donorHeaplet;
+        //If no protecting spinblock there would be a race e.g., if another thread allocates all the rows!
+        chunk = donorHeaplet->allocateChunk();
+        dbgassertex(chunk);
+    }
+    
+gotChunk:
+    //since a chunk has been allocated from donorHeaplet it cannot be released at this point.
+    return donorHeaplet->initChunk(chunk, allocatorId);
 }
 
-
-void * CNormalChunkingHeap::doAllocate(unsigned activityId)
+const void * CChunkedHeap::compactRow(const void * ptr, HeapCompactState & state)
 {
-    return inlineDoAllocate(activityId);
+    Heaplet *prev = NULL;
+
+    //Use protect heap instead of a lock, so that multiple compacts on the same heap (very likely) avoid
+    //re-entering the critical sections.
+    state.protectHeap(this);
+    Heaplet *finger = state.next;
+    if (!finger)
+        finger = active;
+    while (finger)
+    {
+       //This cast is safe because we are within a member of CChunkedHeap
+        ChunkedHeaplet * chunkedFinger = static_cast<ChunkedHeaplet *>(finger);
+        const void *ret = chunkedFinger->moveRow(ptr);
+        if (ret)
+        {
+            //Instead of moving this block to the head of the list, save away the next block to try to put a block into
+            //since we know what all blocks before this must be filled.
+            state.next = finger;
+            //if (prev)
+            //    moveHeapletToHead(prev, finger);
+
+            HeapletBase *srcBase = HeapletBase::findBase(ptr);
+            if (srcBase->isEmpty())
+            {
+                state.numPagesEmptied++;
+                //could call releaseEmptyPages(false) at this point since already in the crit section.
+            }
+            return ret;
+        }
+        prev = finger;
+        dbgassertex(((ChunkedHeaplet*)finger)->numChunks() == maxChunksPerPage());
+        finger = getNext(finger);
+    }
+    return ptr;
+}
+
+void * CChunkedHeap::doAllocate(unsigned activityId, unsigned maxSpillCost)
+{
+    return inlineDoAllocate(activityId, maxSpillCost);
 }
 
 //================================================================================
 
-BigHeapletBase * CFixedChunkingHeap::allocateHeaplet()
+ChunkedHeaplet * CFixedChunkedHeap::allocateHeaplet()
 {
     void * memory = suballoc_aligned(1, true);
     if (!memory)
         return NULL;
-    return new (memory) FixedSizeHeaplet(allocatorCache, chunkSize);
+    return new (memory) FixedSizeHeaplet(this, allocatorCache, chunkSize);
 }
 
-void * CFixedChunkingHeap::allocate(unsigned activityId)
+void * CFixedChunkedHeap::allocate(unsigned activityId)
 {
     rowManager->beforeAllocate(chunkSize-FixedSizeHeaplet::chunkHeaderSize, activityId);
-    return inlineDoAllocate(activityId);
+    return inlineDoAllocate(activityId, defaultSpillCost);
 }
 
 
-BigHeapletBase * CPackedChunkingHeap::allocateHeaplet()
+ChunkedHeaplet * CPackedChunkingHeap::allocateHeaplet()
 {
     void * memory = suballoc_aligned(1, true);
     if (!memory)
         return NULL;
-    return new (memory) PackedFixedSizeHeaplet(allocatorCache, chunkSize, allocatorId);
+    return new (memory) PackedFixedSizeHeaplet(this, allocatorCache, chunkSize, allocatorId);
 }
 
 void * CPackedChunkingHeap::allocate()
 {
     rowManager->beforeAllocate(chunkSize-PackedFixedSizeHeaplet::chunkHeaderSize, allocatorId);
-    return inlineDoAllocate(allocatorId);
+    return inlineDoAllocate(allocatorId, defaultSpillCost);
 }
 
 
@@ -3538,12 +4178,12 @@ namespace roxiemem {
 class SimpleRowBuffer : implements IBufferedRowCallback
 {
 public:
-    SimpleRowBuffer(IRowManager * rowManager, unsigned _priority) : priority(_priority), rows(rowManager, 0, 1)
+    SimpleRowBuffer(IRowManager * rowManager, unsigned _cost) : cost(_cost), rows(rowManager, 0, 1, UNKNOWN_ROWSET_ID)
     {
     }
 
 //interface IBufferedRowCallback
-    virtual unsigned getPriority() const { return priority; }
+    virtual unsigned getSpillCost() const { return cost; }
     virtual bool freeBufferedRows(bool critical)
     {
         RoxieOutputRowArrayLock block(rows);
@@ -3584,14 +4224,14 @@ public:
 
 protected:
     DynamicRoxieOutputRowArray rows;
-    unsigned priority;
+    unsigned cost;
 };
 
 //A buffered row class - used for testing
 class CallbackBlockAllocator : implements IBufferedRowCallback
 {
 public:
-    CallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _priority) : priority(_priority), rowManager(_rowManager), size(_size)
+    CallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _cost) : cost(_cost), rowManager(_rowManager), size(_size)
     {
         rowManager->addRowBuffer(this);
     }
@@ -3601,18 +4241,25 @@ public:
     }
 
 //interface IBufferedRowCallback
-    virtual unsigned getPriority() const { return priority; }
+    virtual unsigned getSpillCost() const { return cost; }
 
     void allocate()
     {
         row.setown(rowManager->allocate(size, 0));
     }
 
+    void costAllocate(unsigned allocCost)
+    {
+        row.setown(rowManager->allocate(size, 0, allocCost));
+    }
+
+    inline bool hasRow() const { return row != NULL; }
+
 protected:
     OwnedRoxieRow row;
     IRowManager * rowManager;
     unsigned size;
-    unsigned priority;
+    unsigned cost;
 };
 
 
@@ -3620,8 +4267,8 @@ protected:
 class SimpleCallbackBlockAllocator : public CallbackBlockAllocator
 {
 public:
-    SimpleCallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _priority)
-        : CallbackBlockAllocator(_rowManager, _size, _priority)
+    SimpleCallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _cost)
+        : CallbackBlockAllocator(_rowManager, _size, _cost)
     {
     }
 
@@ -3638,8 +4285,8 @@ public:
 class NastyCallbackBlockAllocator : public CallbackBlockAllocator
 {
 public:
-    NastyCallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _priority)
-        : CallbackBlockAllocator(_rowManager, _size, _priority)
+    NastyCallbackBlockAllocator(IRowManager * _rowManager, unsigned _size, unsigned _cost)
+        : CallbackBlockAllocator(_rowManager, _size, _cost)
     {
     }
 
@@ -3655,6 +4302,10 @@ public:
 };
 
 
+const static bool useLargeMemory = false;   // Set to true to test compacting and other test on significant sized memory
+const static unsigned smallMemory = 300;
+const static unsigned largeMemory = 10100;
+
 class IStdException : extends std::exception
 {
     Owned<IException> jException;
@@ -3667,6 +4318,7 @@ class RoxieMemTests : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE( RoxieMemTests );
         CPPUNIT_TEST(testSetup);
+        CPPUNIT_TEST(testCostCallbacks);
         CPPUNIT_TEST(testRoundup);
         CPPUNIT_TEST(testBitmapThreading);
         CPPUNIT_TEST(testAllocSize);
@@ -3678,6 +4330,7 @@ class RoxieMemTests : public CppUnit::TestFixture
         CPPUNIT_TEST(testDatamanagerThreading);
         CPPUNIT_TEST(testCallbacks);
         CPPUNIT_TEST(testRecursiveCallbacks);
+        CPPUNIT_TEST(testCompacting);
         CPPUNIT_TEST(testCleanup);
     CPPUNIT_TEST_SUITE_END();
     const IContextLogger &logctx;
@@ -3694,7 +4347,18 @@ public:
 protected:
     void testSetup()
     {
-        initializeHeap(false, 300, 0, NULL);
+        printf("Heaplet: cacheline(%u) base(%u) fixedbase(%u) fixed(%u) packed(%u) huge(%u)\n",
+                CACHE_LINE_SIZE, (size32_t)sizeof(Heaplet), (size32_t)sizeof(ChunkedHeaplet), (size32_t)sizeof(FixedSizeHeaplet), (size32_t)sizeof(PackedFixedSizeHeaplet), (size32_t)sizeof(HugeHeaplet));
+        printf("Heap: fixed(%u) packed(%u) huge(%u)\n",
+                (size32_t)sizeof(CFixedChunkedHeap), (size32_t)sizeof(CPackedChunkingHeap), (size32_t)sizeof(CHugeHeap));
+        printf("IHeap: fixed(%u) directfixed(%u) packed(%u) variable(%u)\n",
+                (size32_t)sizeof(CRoxieFixedRowHeap), (size32_t)sizeof(CRoxieDirectFixedRowHeap), (size32_t)sizeof(CRoxieDirectPackedRowHeap), (size32_t)sizeof(CRoxieVariableRowHeap));
+
+        ASSERT(FixedSizeHeaplet::dataOffset() >= sizeof(FixedSizeHeaplet));
+        ASSERT(PackedFixedSizeHeaplet::dataOffset() >= sizeof(PackedFixedSizeHeaplet));
+        ASSERT(HugeHeaplet::dataOffset() >= sizeof(HugeHeaplet));
+
+        initializeHeap(false, useLargeMemory ? largeMemory : smallMemory, 0, NULL);
     }
 
     void testCleanup()
@@ -3973,6 +4637,7 @@ protected:
 #ifdef __64BIT__
     enum { numBitmapThreads = 20, maxBitmapSize = (unsigned)(I64C(0xFFFFFFFFFF) / HEAP_ALIGNMENT_SIZE / UNSIGNED_BITS) };      // Test larger range - in case we ever reduce the granularity
 #else
+    // Restrict heap sizes on 32-bit systems
     enum { numBitmapThreads = 20, maxBitmapSize = (unsigned)(I64C(0xFFFFFFFF) / HEAP_ALIGNMENT_SIZE / UNSIGNED_BITS) };      // 4Gb
 #endif
     class BitmapAllocatorThread : public Thread
@@ -4058,7 +4723,7 @@ protected:
 
     void testSizes()
     {
-        ASSERT(FixedSizeHeapletBase::dataOffset() == CACHE_LINE_SIZE);
+        ASSERT(ChunkedHeaplet::dataOffset() == CACHE_LINE_SIZE);
         ASSERT(HugeHeaplet::dataOffset() == CACHE_LINE_SIZE);
         ASSERT(FixedSizeHeaplet::chunkHeaderSize == 8);
         ASSERT(PackedFixedSizeHeaplet::chunkHeaderSize == 4);  // NOTE - this is NOT 8 byte aligned, so can't safely be used to allocate ptr arrays
@@ -4357,7 +5022,10 @@ protected:
         virtual unsigned getActivityId(unsigned cacheId) const { return 0; }
         virtual StringBuffer &getActivityDescriptor(unsigned cacheId, StringBuffer &out) const { return out.append(cacheId); }
         virtual void onDestroy(unsigned cacheId, void *row) const { atomic_inc(&counter); }
+        virtual void onClone(unsigned cacheId, void *row) const { atomic_dec(&counter); }
         virtual void checkValid(unsigned cacheId, const void *row) const { }
+
+        void clear() { atomic_set(&counter, 0); }
 
         mutable atomic_t counter;
     };
@@ -4365,18 +5033,18 @@ protected:
     class CasAllocatorThread : public Thread
     {
     public:
-        CasAllocatorThread(Semaphore & _sem, IRowManager * _rm) : Thread("AllocatorThread"), sem(_sem), rm(_rm), priority(0)
+        CasAllocatorThread(Semaphore & _sem, IRowManager * _rm) : Thread("AllocatorThread"), sem(_sem), rm(_rm), cost(0)
         {
         }
 
         virtual void * allocate() = 0;
         virtual void * finalize(void * ptr) = 0;
 
-        void setPriority(unsigned _priority) { priority = _priority; }
+        void setCost(unsigned _cost) { cost = _cost; }
 
         int run()
         {
-            SimpleRowBuffer saved(rm, priority);
+            SimpleRowBuffer saved(rm, cost);
             if (rm)
                 rm->addRowBuffer(&saved);
             sem.wait();
@@ -4413,7 +5081,7 @@ protected:
     protected:
         Semaphore & sem;
         IRowManager * rm;
-        unsigned priority;
+        unsigned cost;
     };
     void runCasTest(const char * title, Semaphore & sem, CasAllocatorThread * threads[])
     {
@@ -4447,10 +5115,16 @@ protected:
     };
     void testHeapletCas()
     {
+        memsize_t maxMemory = numCasThreads * numCasIter * numCasAlloc * 32;
+        //Because this is allocating from a single heaplet check if it can overflow the memory
+        if (maxMemory > FixedSizeHeaplet::dataAreaSize())
+            return;
+
         Owned<IRowManager> rowManager = createRowManager(0, NULL, logctx, NULL);
         CountingRowAllocatorCache rowCache;
         void * memory = suballoc_aligned(1, true);
-        FixedSizeHeaplet * heaplet = new (memory) FixedSizeHeaplet(&rowCache, 32);
+        CFixedChunkedHeap dummyHeap((CChunkingRowManager*)rowManager.get(), logctx, &rowCache, 32, 0, SpillAllCost);
+        FixedSizeHeaplet * heaplet = new (memory) FixedSizeHeaplet(&dummyHeap, &rowCache, 32);
         Semaphore sem;
         CasAllocatorThread * threads[numCasThreads];
         for (unsigned i1 = 0; i1 < numCasThreads; i1++)
@@ -4699,6 +5373,10 @@ protected:
         CountingRowAllocatorCache rowCache;
         Owned<IRowManager> rowManager = createRowManager(0, NULL, logctx, &rowCache);
         rowManager->setMemoryLimit(pages * numCasThreads * HEAP_ALIGNMENT_SIZE, spillPages * numCasThreads * HEAP_ALIGNMENT_SIZE);
+        rowManager->setMemoryCallbackThreshold((unsigned)-1);
+        rowManager->setCallbackOnThread(true);
+        rowManager->setMinimizeFootprint(true, true);
+        rowManager->setReleaseWhenModifyCallback(true, true);
 
         Semaphore sem;
         CasAllocatorThread * threads[numCasThreads];
@@ -4707,31 +5385,105 @@ protected:
         {
             Owned<IFixedRowHeap> rowHeap = rowManager->createFixedRowHeap(allocSize, ACTIVITY_FLAG_ISREGISTERED|0, RHFhasdestructor|flags);
             FixedCasAllocatorThread * cur = new FixedCasAllocatorThread(rowHeap, sem, rowManager);
-            cur->setPriority((unsigned)(i1*scale)+1);
+            cur->setCost((unsigned)(i1*scale)+1);
             threads[i1] = cur;
         }
         VStringBuffer title("callback(%u,%u,%u,%f,%x)", numPerPage,pages, spillPages, scale, flags);
         runCasTest(title.str(), sem, threads);
-        ASSERT(atomic_read(&rowCache.counter) == 2 * numCasThreads * numCasIter * numCasAlloc);
+        //This test can very occasionally fail if each thread has 1 single row from a different page buffered, and a buffer allocated from a different page
+        CPPUNIT_ASSERT_EQUAL(2 * numCasThreads * numCasIter * numCasAlloc, (int)atomic_read(&rowCache.counter));
     }
     void testCallbacks()
     {
         testCallback(16, 2, 0, 0, 0);
         testCallback(16, 2, 1, 1, 0);
-        testCallback(16, 10, 5, 1, 0); // 1 at each priority level - can cause exhaustion since rows tend to get left in highest priority.
-        testCallback(16, 10, 5, 0, 0); // all at the same priority level
-        testCallback(16, 10, 5, 0.25, 0);  // 4 at each priority level
-        testCallback(16, 10, 5, 0.25, RHFunique);  // 4 at each priority level
-        testCallback(128, 10, 5, 0.25, RHFunique);  // 4 at each priority level
-        testCallback(1024, 10, 5, 0.25, RHFunique);  // 4 at each priority level
+        testCallback(16, 10, 5, 1, 0); // 1 at each cost level - can cause exhaustion since rows tend to get left in highest cost.
+        testCallback(16, 10, 5, 0, 0); // all at the same cost level
+        testCallback(16, 10, 5, 0.25, 0);  // 4 at each cost level
+        testCallback(16, 10, 5, 0.25, RHFunique);  // 4 at each cost level
+        testCallback(128, 10, 5, 0.25, RHFunique);  // 4 at each cost level
+        testCallback(1024, 10, 5, 0.25, RHFunique);  // 4 at each cost level
+    }
+    const static size32_t compactingAllocSize = 32;
+    void testCompacting(IRowManager * rowManager, IFixedRowHeap * rowHeap, unsigned numRows, unsigned milliFraction)
+    {
+        const void * * rows = new const void * [numRows];
+        for (unsigned i1 = 0; i1 < numRows; i1++)
+            rows[i1] = rowHeap->allocate();
+
+        unsigned numPagesFull = rowManager->numPagesAfterCleanup(true);
+        unsigned numRowsLeft = 0;
+        for (unsigned i2 = 0; i2 < numRows; i2++)
+        {
+            if ((i2 * 7) % 1000 >= milliFraction)
+                ReleaseClearRoxieRow(rows[i2]);
+            else
+                numRowsLeft++;
+        }
+
+        //NOTE: The efficiency of the packing does depend on the row order, so ideally this would test multiple orderings
+        //of the array
+        unsigned rowsPerPage = (HEAP_ALIGNMENT_SIZE - sizeof(FixedSizeHeaplet)) / compactingAllocSize;
+        unsigned numPagesBefore = rowManager->numPagesAfterCleanup(false);
+        unsigned expectedPages = (numRowsLeft + rowsPerPage-1)/rowsPerPage;
+        ASSERT(numPagesFull == numPagesBefore);
+        unsigned startTime = msTick();
+        bool compacted = rowManager->compactRows(numRows, rows);
+        unsigned endTime = msTick();
+        unsigned numPagesAfter = rowManager->numPagesAfterCleanup(false);
+        if (compacted != (numPagesBefore != numPagesAfter))
+            DBGLOG("Compacted not returned correctly");
+        ASSERT(compacted == (numPagesBefore != numPagesAfter));
+        DBGLOG("Compacting %d[%d] (%d->%d cf %d) Before: Time taken %d", numRows, milliFraction, numPagesBefore, numPagesAfter, expectedPages, endTime-startTime);
+        ASSERT(numPagesAfter == expectedPages);
+
+        for (unsigned i3 = 0; i3 < numRows; i3++)
+        {
+            ReleaseClearRoxieRow(rows[i3]);
+        }
+
+        delete [] rows;
+    }
+
+    void testCompacting()
+    {
+        Owned<IRowManager> rowManager = createRowManager(0, NULL, logctx, NULL);
+
+        Owned<IFixedRowHeap> rowHeap1 = rowManager->createFixedRowHeap(compactingAllocSize-FixedSizeHeaplet::chunkHeaderSize, 0, 0);
+        Owned<IFixedRowHeap> rowHeap2 = rowManager->createFixedRowHeap(compactingAllocSize-PackedFixedSizeHeaplet::chunkHeaderSize, 0, RHFpacked);
+
+        unsigned rowsPerPage = (HEAP_ALIGNMENT_SIZE - sizeof(FixedSizeHeaplet)) / compactingAllocSize;
+        memsize_t maxRows = (useLargeMemory ? largeMemory : smallMemory) * rowsPerPage;
+        testCompacting(rowManager, rowHeap1, maxRows, 50);
+        testCompacting(rowManager, rowHeap1, maxRows, 800);
+        testCompacting(rowManager, rowHeap1, maxRows, 960);
+        testCompacting(rowManager, rowHeap1, maxRows, 999);
+        unsigned rowCount = maxRows/10;
+        testCompacting(rowManager, rowHeap1, rowCount, 5);
+        testCompacting(rowManager, rowHeap2, rowCount, 5);
+        for (unsigned percent = 10; percent <= 90; percent += 20)
+        {
+            testCompacting(rowManager, rowHeap1, rowCount, percent*10);
+            testCompacting(rowManager, rowHeap2, rowCount, percent*10);
+        }
+
+        //Where the rows occupy a small fraction of the memory the time is approximately O(n)
+        for (unsigned rowCount1 = 10000; rowCount1 <= maxRows; rowCount1 *= 2)
+            testCompacting(rowManager, rowHeap1, rowCount1, 50);
+
+        //Where the rows occupy the main fraction of the memory the time is approximately O(n^2)
+        //This needs more investigation - it could become a problem once > 10Gb of memory in use.
+        //I suspect it the traversal of the heaplet list - save pointer to filled blocks somehow?
+        for (unsigned rowCount2 = 10000; rowCount2 <= maxRows; rowCount2 *= 2)
+            testCompacting(rowManager, rowHeap1, rowCount2, 800);
     }
     void testRecursiveCallbacks1()
     {
         const size32_t bigRowSize = HEAP_ALIGNMENT_SIZE * 2 / 3;
         Owned<IRowManager> rowManager = createRowManager(2 * HEAP_ALIGNMENT_SIZE, NULL, logctx, NULL);
 
-        //The lower priority allocator allocates an extra row when it is called to free all its rows.
-        //this will only succeed if the higher priority allocator is then called to free its data.
+        //The lower cost allocator allocates an extra row when it is called to free all its rows.
+        //this will only succeed if the higher cost allocator is then called to free its data.
         NastyCallbackBlockAllocator alloc1(rowManager, bigRowSize, 10);
         SimpleCallbackBlockAllocator alloc2(rowManager, bigRowSize, 20);
 
@@ -4767,6 +5519,47 @@ protected:
     {
         testRecursiveCallbacks1();
         testRecursiveCallbacks2();
+    }
+    void testCostCallbacks1()
+    {
+        //Test with a limit set on the memory manager
+        const size32_t bigRowSize = HEAP_ALIGNMENT_SIZE * 2 / 3;
+        Owned<IRowManager> rowManager = createRowManager(1, NULL, logctx, NULL);
+
+        SimpleCallbackBlockAllocator alloc1(rowManager, bigRowSize, 20);
+        SimpleCallbackBlockAllocator alloc2(rowManager, bigRowSize, 10);
+
+        alloc1.allocate();
+        ASSERT(alloc1.hasRow());
+        alloc2.costAllocate(10);
+        ASSERT(alloc1.hasRow());
+        ASSERT(!alloc2.hasRow());
+        alloc2.costAllocate(20);
+        ASSERT(!alloc1.hasRow());
+        ASSERT(alloc2.hasRow());
+    }
+    void testCostCallbacks2()
+    {
+        //Test with no limit set on the memory manager
+        Owned<IRowManager> rowManager = createRowManager(0, NULL, logctx, NULL);
+
+        const memsize_t bigRowSize = HEAP_ALIGNMENT_SIZE * (heapTotalPages * 2 / 3);
+        SimpleCallbackBlockAllocator alloc1(rowManager, bigRowSize, 20);
+        SimpleCallbackBlockAllocator alloc2(rowManager, bigRowSize, 10);
+
+        alloc1.allocate();
+        ASSERT(alloc1.hasRow());
+        alloc2.costAllocate(10);
+        ASSERT(alloc1.hasRow());
+        ASSERT(!alloc2.hasRow());
+        alloc2.costAllocate(20);
+        ASSERT(!alloc1.hasRow());
+        ASSERT(alloc2.hasRow());
+    }
+    void testCostCallbacks()
+    {
+        testCostCallbacks1();
+        testCostCallbacks2();
     }
 };
 
@@ -4921,7 +5714,7 @@ protected:
                 memsize_t nextSize = (memsize_t)(requestSize*1.25);
                 memsize_t curSize = RoxieRowCapacity(prev);
                 CSimpleRowResizeCallback callback(curSize, prev);
-                rowManager->resizeRow(prev, requestSize, nextSize, 1, callback);
+                rowManager->resizeRow(prev, requestSize, nextSize, 1, SpillAllCost, callback);
                 ASSERT(curSize >= nextSize);
                 requestSize = nextSize;
             }
@@ -4955,9 +5748,9 @@ protected:
                 memsize_t newSize2 = RoxieRowCapacity(prev2);
                 CSimpleRowResizeCallback callback1(newSize1, prev1);
                 CSimpleRowResizeCallback callback2(newSize2, prev2);
-                rowManager->resizeRow(prev1, requestSize, nextSize, 1, callback1);
+                rowManager->resizeRow(prev1, requestSize, nextSize, 1, SpillAllCost, callback1);
                 ASSERT(newSize1 >= nextSize);
-                rowManager->resizeRow(prev2, requestSize, nextSize, 1, callback2);
+                rowManager->resizeRow(prev2, requestSize, nextSize, 1, SpillAllCost, callback2);
                 ASSERT(newSize2 >= nextSize);
                 requestSize = nextSize;
             }

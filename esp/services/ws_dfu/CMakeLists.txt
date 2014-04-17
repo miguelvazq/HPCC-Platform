@@ -30,12 +30,17 @@ set (    SRCS
          ../../../dali/dfu/dfuutil.cpp 
          ${ESPSCM_GENERATED_DIR}/ws_dfu_esp.cpp 
          ${ESPSCM_GENERATED_DIR}/ws_dfuXref_esp.cpp 
+         ${HPCC_SOURCE_DIR}/esp/scm/ws_dfu.ecm
+         ${HPCC_SOURCE_DIR}/esp/scm/ws_dfuXref.ecm
+         ${HPCC_SOURCE_DIR}/esp/clients/roxiecontrol.cpp
          ws_dfuPlugin.cpp 
          ws_dfuService.cpp 
          ws_dfuXRefService.cpp 
     )
 
 include_directories ( 
+         ${CMAKE_BINARY_DIR}
+         ${CMAKE_BINARY_DIR}/oss
          ./../../../dali/dfu 
          ./../../../system/mp 
          ./../../platform 
@@ -62,6 +67,7 @@ include_directories (
          ./../../smc/SMCLib 
          ./../../../common/fileview2 
          ./../../bindings/SOAP/xpp 
+         ${HPCC_SOURCE_DIR}/esp/clients
     )
 
 ADD_DEFINITIONS( -D_USRDLL -DWS_DFU_EXPORTS )

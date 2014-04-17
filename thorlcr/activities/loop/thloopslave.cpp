@@ -286,7 +286,7 @@ public:
             }
         };
         ActPrintLog("maxIterations = %d", maxIterations);
-        dataLinkStart("LOOP", container.queryId());
+        dataLinkStart();
         nextRowFeeder.setown(new CNextRowFeeder(this, new CWrapper(*this)));
     }
     void doStop()
@@ -309,14 +309,7 @@ public:
                     {
                         ret.setown(curInput->nextRow()); // more cope with groups somehow....
                         if (!ret)
-                        {
-                            if (finishedLooping)
-                            {
-                                eof = true;
-                                return NULL;
-                            }
                             break;
-                        }
                     }
 
                     if (finishedLooping || 
@@ -335,15 +328,14 @@ public:
                 {
                 case TAKloopdataset:
                     assertex(flags & IHThorLoopArg::LFnewloopagain);
+                    // NB: finishedLooping set at end of loop, based on loopAgain result
                     break;
                 case TAKlooprow:
                     if (0 == loopPendingCount)
-                    {
-                        sendEndLooping();
-                        finishedLooping = true;
-                        eof = true;
-                        return NULL;
-                    }
+                        finishedLooping = true; // This slave has finished
+                    break;
+                case TAKloopcount:
+                    // NB: finishedLooping set at end of loop, so that last getNextRow() iteration spits out final rows
                     break;
                 }
 
@@ -364,8 +356,23 @@ public:
                     }
                 }
 
-                if (!sendLoopingCount(loopCounter, emptyIterations)) // only if global
+                if (global)
+                {
+                    // 0 signals this slave has finished, but don't stop until all have
+                    if (!sendLoopingCount(finishedLooping ? 0 : loopCounter, finishedLooping ? 0 : emptyIterations))
+                    {
+                        sentEndLooping = true; // prevent sendEndLooping() sending end again
+                        eof = true;
+                        return NULL;
+                    }
+                    finishedLooping = false; // reset because global and execute may feed rows back to this node
+                }
+                else if (finishedLooping)
+                {
+                    eof = true;
                     return NULL;
+                }
+
                 loopPending->flush();
 
                 IThorBoundLoopGraph *boundGraph = queryContainer().queryLoopGraph();
@@ -401,15 +408,13 @@ public:
                     assertex(row);
                     //Result is a row which contains a single boolean field.
                     if (!((const bool *)row.get())[0])
-                        finishedLooping = true;
+                        finishedLooping = true; // NB: will finish when loopPending has been consumed
                 }
                 loopPending.setown(createOverflowableBuffer(*this, this, false, true));
                 loopPendingCount = 0;
                 ++loopCounter;
                 if ((container.getKind() == TAKloopcount) && (loopCounter > maxIterations))
-                    finishedLooping = true;
-                if (finishedLooping)
-                    sendEndLooping();
+                    finishedLooping = true; // NB: will finish when loopPending has been consumed
             }
         }
         return NULL;
@@ -455,7 +460,7 @@ public:
         loopResults.setown(queryGraph().createThorGraphResults(0));
         helper->createParentExtract(extractBuilder);
         ActPrintLog("maxIterations = %d", maxIterations);
-        dataLinkStart("GRAPHLOOP", container.queryId());
+        dataLinkStart();
     }
     CATCH_NEXTROW()
     {
@@ -543,7 +548,7 @@ public:
         Owned<CGraphBase> graph = queryJob().getGraph(resultGraphId);
         Owned<IThorResult> result = graph->getResult(helper->querySequence(), queryGraph().isLocalChild());
         resultStream.setown(result->getRowStream());
-        dataLinkStart("LOCALRESULTREAD", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -622,7 +627,7 @@ public:
         IThorResult *result = graph->createResult(*this, helper->querySequence(), this, !queryGraph().isLocalChild());  // NB graph owns result
         resultWriter.setown(result->getWriter());
         startInput(inputs.item(0));
-        dataLinkStart("LOCALRESULTSPILL", container.queryId());
+        dataLinkStart();
     }
     CATCH_NEXTROW()
     {
@@ -820,7 +825,7 @@ public:
         selectedInput = container.whichBranch>=inputs.ordinality() ? NULL : inputs.item(container.whichBranch);
         if (selectedInput)
             startInput(selectedInput);
-        dataLinkStart(container.getKind(), container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -886,7 +891,7 @@ public:
         started = false;
         eos = false;
         ok = false;
-        dataLinkStart("CHILDNORMALIZE", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -959,7 +964,7 @@ public:
     {
         ActivityTimer s(totalCycles, timeActivities, NULL);
         eos = false;
-        dataLinkStart("CHILDAGGREGATE", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -1016,7 +1021,7 @@ public:
         aggregated.clear();
         aggregated.setown(new CThorRowAggregator(*this, *helper, *helper));
         aggregated->start(queryRowAllocator());
-        dataLinkStart("CHILDGROUPAGGREGATE", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -1091,7 +1096,7 @@ public:
         lastInput.clear();
         nextOutput.clear();
         startInput(inputs.item(0));
-        dataLinkStart("CHILDTHROUGHNORMALIZE", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -1189,7 +1194,7 @@ public:
         }
         else
             abortSoon = true;
-        dataLinkStart("GRAPHLOOPRESULTREAD", container.queryId());
+        dataLinkStart();
     }
     virtual bool isGrouped() { return false; }
     CATCH_NEXTROW()

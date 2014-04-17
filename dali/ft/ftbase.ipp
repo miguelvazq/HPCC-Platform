@@ -64,10 +64,12 @@ public:
     void reset();
     void set(const OutputProgress & other);
 
-    MemoryBuffer & deserialize(MemoryBuffer & in);
+    MemoryBuffer & deserializeCore(MemoryBuffer & in);
+    MemoryBuffer & deserializeExtra(MemoryBuffer & in, unsigned version);
     void restore(IPropertyTree * tree);
     void save(IPropertyTree * tree);
-    MemoryBuffer & serialize(MemoryBuffer & out);
+    MemoryBuffer & serializeCore(MemoryBuffer & out);
+    MemoryBuffer & serializeExtra(MemoryBuffer & out, unsigned version);
     void trace();
 
 public:
@@ -80,6 +82,8 @@ public:
     CDateTime       resultTime;
     byte            status;
     bool            hasInputCRC;
+    bool            hasCompressed;
+    offset_t        compressedPartSize;
 
 //Not saved/serialized - should probably be in a Sprayer-only class that contains an outputProgress.
     Owned<IPropertyTree> tree;

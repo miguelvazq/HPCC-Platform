@@ -521,6 +521,8 @@ void CLdapSecManager::init(const char *serviceName, IPropertyTree* cfg)
         pp = new CIPlanetAciProcessor(cfg);
     else if(ldap_client->getServerType() == OPEN_LDAP)
         pp = new COpenLdapAciProcessor(cfg);
+    else
+        throwUnexpected();
 
     ldap_client->init(pp);
     pp->setLdapClient(ldap_client);
@@ -1234,14 +1236,18 @@ bool CLdapSecManager::createUserScopes()
 {
     Owned<ISecUserIterator> it = getAllUsers();
     it->first();
+    bool rc = true;
     while(it->isValid())
     {
         ISecUser &user = it->get();
         if (!m_ldap_client->createUserScope(user))
+        {
             PROGLOG("Error creating scope for user '%s'", user.getName());
+            rc = false;
+        }
         it->next();
     }
-    return true;
+    return rc;
 }
 
 
@@ -1271,6 +1277,13 @@ bool CLdapSecManager::clearPermissionsCache(ISecUser& user)
         }
         m_permissionsCache.flush();
     }
+    return true;
+}
+bool CLdapSecManager::authenticateUser(ISecUser & user, bool &superUser)
+{
+    if (!authenticate(&user))
+        return false;
+    superUser = isSuperUser(&user);
     return true;
 }
 

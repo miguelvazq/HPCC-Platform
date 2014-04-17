@@ -98,9 +98,14 @@ public:
     virtual void notify(SubscriptionId subid, const char *xpath, SDSNotifyFlags flags, unsigned valueLen, const void *valueData)
     {
         Linked<CDaliPackageWatcher> me = this;  // Ensure that I am not released by the notify call (which would then access freed memory to release the critsec)
-        CriticalBlock b(crit);
-        if (notifier)
-            notifier->notify(subid, xpath, flags, valueLen, valueData);
+        Linked<ISDSSubscription> myNotifier;
+        {
+            CriticalBlock b(crit);
+            myNotifier.set(notifier);
+            // allow crit to be released, allowing this to be unsubscribed, to avoid deadlocking when other threads via notify call unsubscribe
+        }
+        if (myNotifier)
+            myNotifier->notify(subid, xpath, flags, valueLen, valueData);
     }
 };
 
@@ -288,11 +293,7 @@ private:
         dstfdesc->setPartMask(dstpartmask.str());
         unsigned np = srcfdesc->numParts();
         dstfdesc->setNumParts(srcfdesc->numParts());
-        DFD_OS os = (getPathSepChar(srcfdesc->queryDefaultDir())=='\\')?DFD_OSwindows:DFD_OSunix;
-        StringBuffer dir;
-        StringBuffer dstdir;
-        makePhysicalPartName(dstlfn.get(),0,0,dstdir,false,os,NULL);
-        dstfdesc->setDefaultDir(dstdir.str());
+        dstfdesc->setDefaultDir(srcfdesc->queryProperties().queryProp("@cloneFromDir"));
 
         for (unsigned pn=0;pn<srcfdesc->numParts();pn++) {
             offset_t sz = srcfdesc->queryPart(pn)->queryProperties().getPropInt64("@size",-1);
@@ -309,17 +310,39 @@ private:
         {
             IPropertyTree &elem = groups->query();
             const char *groupName = elem.queryProp("@groupName");
+            StringBuffer dir;
             StringBuffer foreignGroup("foreign::");
             foreignGroup.append(cloneFrom).append("::").append(groupName);
-            Owned<IGroup> group = queryNamedGroupStore().lookup(foreignGroup);  // NOTE - this is cached by the named group store
+            GroupType groupType;
+            queryNamedGroupStore().setRemoteTimeout(2000);
+            Owned<IGroup> group = queryNamedGroupStore().lookup(foreignGroup, dir, groupType);
             ClusterPartDiskMapSpec dmSpec;
             dmSpec.fromProp(&elem);
+            if (!dmSpec.defaultBaseDir.length())
+            {
+                if (dir.length())
+                {
+                    dmSpec.setDefaultBaseDir(dir);
+                }
+                else
+                {
+                    // Due to the really weird code in dadfs, this MUST be set to match the leading portion of cloneFromDir
+                    // in order to properly handle remote systems with different default directory locations
+                    StringBuffer tail;
+                    DFD_OS os = (getPathSepChar(srcfdesc->queryDefaultDir())=='\\')?DFD_OSwindows:DFD_OSunix;
+                    makePhysicalPartName(dstlfn.get(),0,0,tail,0,os,PATHSEPSTR);  // if lfn is a::b::c, tail will be /a/b/
+                    assertex(tail.length() > 1);
+                    tail.setLength(tail.length()-1);   // strip off the trailing /
+                    StringBuffer head(srcfdesc->queryProperties().queryProp("@cloneFromDir")); // Will end with /a/b
+                    assertex(streq(head.str() + head.length() - tail.length(), tail.str()));
+                    head.setLength(head.length() - tail.length()); // So strip off the end...
+                    dmSpec.setDefaultBaseDir(head.str());
+                }
+            }
             dstfdesc->addCluster(groupName, group, dmSpec);
         }
-
         return dstfdesc.getClear();
     }
-
 
 public:
 
@@ -327,8 +350,8 @@ public:
     CRoxieDaliHelper() : connectWatcher(this), serverStatus(NULL)
     {
         userdesc.setown(createUserDescriptor());
-        const char *roxieUser;
-        const char *roxiePassword;
+        const char *roxieUser = NULL;
+        const char *roxiePassword = NULL;
         if (topology)
         {
             roxieUser = topology->queryProp("@ldapUser");
@@ -396,33 +419,44 @@ public:
         // NOTE - we rely on the fact that  queryNamedGroupStore().lookup caches results,to avoid excessive load on remote dali
         if (_lfn && !strnicmp(_lfn, "foreign", 7)) //if need to support dali hopping should add each remote location
             return NULL;
-        if (!fdesc || !fdesc->queryProperties().hasProp("@cloneFrom"))
+        if (!fdesc)
             return NULL;
-        if (fdesc->queryProperties().hasProp("cloneFromGroup"))
+        const char *cloneFrom = fdesc->queryProperties().queryProp("@cloneFrom");
+        if (!cloneFrom)
+            return NULL;
+        StringBuffer foreignLfn("foreign::");
+        foreignLfn.append(cloneFrom);
+        if (!connected())
+            return resolveCachedLFN(foreignLfn);  // Note - cache only used when no dali connection available
+        try
         {
-            return recreateCloneSource(fdesc, _lfn);
-        }
-        else // Legacy mode - recently cloned files should have the extra info
-        {
-            SocketEndpoint cloneFrom;
-            cloneFrom.set(fdesc->queryProperties().queryProp("@cloneFrom"));
-            if (cloneFrom.isNull())
-                return NULL;
-            CDfsLogicalFileName lfn;
-            lfn.set(_lfn);
-            lfn.setForeign(cloneFrom, false);
-            if (!connected())
-                return resolveCachedLFN(lfn.get());
-            Owned<IDistributedFile> cloneFile = resolveLFN(lfn.get(), cacheIt, false);
-            if (cloneFile)
+            if (fdesc->queryProperties().hasProp("cloneFromGroup") && fdesc->queryProperties().hasProp("@cloneFromDir"))
             {
-                Owned<IFileDescriptor> cloneFDesc = cloneFile->getFileDescriptor();
-                if (cloneFDesc->numParts()==fdesc->numParts())
-                    return cloneFDesc.getClear();
-
-                StringBuffer s;
-                DBGLOG(ROXIE_MISMATCH, "File %s cloneFrom(%s) mismatch", _lfn, cloneFrom.getIpText(s).str());
+                Owned<IFileDescriptor> ret = recreateCloneSource(fdesc, _lfn);
+                if (cacheIt)
+                    cacheFileDescriptor(foreignLfn, ret);
+                return ret.getClear();
             }
+            else // Legacy mode - recently cloned files should have the extra info
+            {
+                if (traceLevel > 1)
+                    DBGLOG("checkClonedFromRemote: Resolving %s in legacy mode", _lfn);
+                Owned<IDistributedFile> cloneFile = resolveLFN(foreignLfn, cacheIt, false);
+                if (cloneFile)
+                {
+                    Owned<IFileDescriptor> cloneFDesc = cloneFile->getFileDescriptor();
+                    if (cloneFDesc->numParts()==fdesc->numParts())
+                        return cloneFDesc.getClear();
+
+                    DBGLOG(ROXIE_MISMATCH, "File %s cloneFrom(%s) mismatch", _lfn, cloneFrom);
+                }
+            }
+        }
+        catch (IException *E)
+        {
+            if (traceLevel > 3)
+                EXCLOG(E);
+            E->Release();  // Any failure means act as if no remote info
         }
         return NULL;
     }
@@ -431,8 +465,7 @@ public:
     {
         if (isConnected)
         {
-            if (traceLevel > 1)
-                DBGLOG("Dali lookup %s", logicalName);
+            unsigned start = msTick();
             CDfsLogicalFileName lfn;
             lfn.set(logicalName);
             Owned<IDistributedFile> dfsFile = queryDistributedFileDirectory().lookup(lfn, userdesc.get(), writeAccess, cacheIt);
@@ -443,20 +476,9 @@ public:
                     dfsFile.clear();
             }
             if (cacheIt)
-            {
-                Owned<IFileDescriptor> fd;
-                Owned<IPropertyTree> pt;
-                if (dfsFile)
-                {
-                    fd.setown(dfsFile->getFileDescriptor());
-                    if (fd)
-                        pt.setown(fd->getFileTree());
-                }
-                StringBuffer xpath("Files/");
-                StringBuffer lcname;
-                xpath.append(lcname.append(logicalName).toLowerCase());
-                writeCache(xpath.str(), xpath.str(), pt);
-            }
+                cacheDistributedFile(logicalName, dfsFile);
+            if (traceLevel > 1)
+                DBGLOG("Dali lookup %s returned %s in %u ms", logicalName, dfsFile != NULL ? "match" : "NO match", msTick()-start);
             return dfsFile.getClear();
         }
         else
@@ -678,7 +700,27 @@ public:
             }
         }
     }
+protected:
+    void cacheDistributedFile(const char *logicalName, IDistributedFile *dfsFile)
+    {
+        assertex(isConnected);
+        Owned<IFileDescriptor> fd;
+        if (dfsFile)
+            fd.setown(dfsFile->getFileDescriptor());
+        cacheFileDescriptor(logicalName, fd);
+    }
 
+    void cacheFileDescriptor(const char *logicalName, IFileDescriptor *fd)
+    {
+        assertex(isConnected);
+        Owned<IPropertyTree> pt;
+        if (fd)
+            pt.setown(fd->getFileTree());
+        StringBuffer xpath("Files/");
+        StringBuffer lcname;
+        xpath.append(lcname.append(logicalName).toLowerCase());
+        writeCache(xpath.str(), xpath.str(), pt);
+    }
 };
 
 class CRoxieDllServer : public CInterface, implements IDllServer

@@ -28,7 +28,7 @@ public:
     unsigned numStreamedInputs() const  { return streamedCount; }
     unsigned totalInputs() const        { return inputMapper.numParameters(); }
     unsigned getInterfaceHash() const;
-    unsigned queryOutputIndex(_ATOM name) const;
+    unsigned queryOutputIndex(IAtom * name) const;
     IHqlExpression * queryParameter(unsigned i) { return &inputMapper.queryRealParameters().item(i); }
 
 protected:
@@ -43,7 +43,6 @@ public:
     unsigned streamedCount;
     LibraryInputMapper inputMapper;
     HqlExprArray outputs;                       // Only the names and types are significant, not the values
-    bool allowStreamingInputs;
 };
 
 
@@ -91,7 +90,7 @@ public:
         libraryInstance.set(_libraryInstance);
     }
 
-    void noteOutputUsed(_ATOM name);
+    void noteOutputUsed(IAtom * name);
 
 public:
     Linked<IPropertyTree> graphNode;

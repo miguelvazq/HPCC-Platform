@@ -35,12 +35,12 @@ public:
     {
         appendOutputLinked(this);
     }
-    void start(const char *act)
+    void start()
     {   
         input = inputs.item(0);
         anyThisGroup = false;
         startInput(input);
-        dataLinkStart(act, container.queryId());
+        dataLinkStart();
     }
     void stop()
     {
@@ -80,7 +80,7 @@ public:
         ActivityTimer s(totalCycles, timeActivities, NULL);
         matched = 0;
         abortSoon = !helper->canMatchAny();
-        CFilterSlaveActivityBase::start("FILTER");
+        CFilterSlaveActivityBase::start();
     }
     CATCH_NEXTROW()
     {
@@ -189,7 +189,7 @@ public:
         ActivityTimer s(totalCycles, timeActivities, NULL);
         abortSoon = !helper->canMatchAny();
         recordCount = 0;
-        CFilterSlaveActivityBase::start("FILTERPROJECT");
+        CFilterSlaveActivityBase::start();
     }
     CATCH_NEXTROW()
     {
@@ -248,7 +248,7 @@ public:
 
     CFilterGroupSlaveActivity(CGraphElementBase *container) : CFilterSlaveActivityBase(container), CThorSteppable(this)
     {
-        groupLoader.setown(createThorRowLoader(*this, NULL, false, rc_allMem));
+        groupLoader.setown(createThorRowLoader(*this, NULL, stableSort_none, rc_allMem));
     }
     void init(MemoryBuffer &data, MemoryBuffer &slaveData)
     {
@@ -259,7 +259,7 @@ public:
     {   
         ActivityTimer s(totalCycles, timeActivities, NULL);
         abortSoon = !helper->canMatchAny();
-        CFilterSlaveActivityBase::start("FILTERGROUP");
+        CFilterSlaveActivityBase::start();
     }
     CATCH_NEXTROW()
     {
@@ -278,7 +278,7 @@ public:
                 return NULL;
             }
             CThorExpandingRowArray rows(*this, this);
-            groupLoader->loadGroup(input, abortSoon, &rows);
+            Owned<IRowStream> rowStream = groupLoader->loadGroup(input, abortSoon, &rows);
             if (rows.ordinality())
             {
                 // JCSMORE - if isValid would take a stream, group wouldn't need to be in mem.
@@ -312,7 +312,7 @@ public:
             {
                 OwnedConstThorRow row = groupStream->nextRow();
                 if (!row)
-                break;
+                    break;
                 if (stepCompare->docompare(row, seek, numFields) >= 0)
                 {
                     dataLinkIncrement();

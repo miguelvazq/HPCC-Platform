@@ -42,6 +42,7 @@ public:
     virtual bool generateDll(ICppCompiler * _compiler) = 0;
     virtual bool generateExe(ICppCompiler * _compiler) = 0;
     virtual bool generatePackage(const char * packageName) = 0;
+    virtual offset_t getGeneratedSize() const = 0;
     virtual bool processQuery(OwnedHqlExpr & parsedQuery, EclGenerateTarget generateTarget) = 0;
     virtual void setMaxCompileThreads(unsigned max) = 0;
     virtual void addManifest(const char *filename) = 0;
@@ -50,7 +51,7 @@ public:
     virtual void setSaveGeneratedFiles(bool value) = 0;
 };
 
-extern HQLCPP_API IHqlExprDllGenerator * createDllGenerator(IErrorReceiver * errs, const char *wuname, const char * targetdir, IWorkUnit *wu, const char * template_dir, ClusterType targetClusterType, ICodegenContextCallback * ctxCallback, bool checkForLocalFileUploads);
+extern HQLCPP_API IHqlExprDllGenerator * createDllGenerator(IErrorReceiver * errs, const char *wuname, const char * targetdir, IWorkUnit *wu, const char * template_dir, ClusterType targetClusterType, ICodegenContextCallback * ctxCallback, bool checkForLocalFileUploads, bool okToAbort);
 
 
 //Extract a single level of external libraries.

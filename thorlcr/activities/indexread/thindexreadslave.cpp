@@ -46,19 +46,14 @@ static IKeyManager *getKeyManager(IKeyIndex *keyIndex, IHThorIndexReadBaseArg *h
 
 static IKeyIndex *openKeyPart(CActivityBase *activity, const char *logicalFilename, IPartDescriptor &partDesc)
 {
-    unsigned location;
+    RemoteFilename rfn;
+    partDesc.getFilename(0, rfn);
     StringBuffer filePath;
-    OwnedIFile ifile;
-    if (!(globals->getPropBool("@autoCopyBackup", true)?ensurePrimary(activity, partDesc, ifile, location, filePath):getBestFilePart(activity, partDesc, ifile, location, filePath, activity)))
-    {
-        StringBuffer locations;
-        IException *e = MakeActivityException(activity, TE_FileNotFound, "No physical file part for logical key file %s, found at given locations: %s (Error = %d)", logicalFilename, getFilePartLocations(partDesc, locations).str(), GetLastError());
-        EXCLOG(e, NULL);
-        throw e;
-    }
+    rfn.getPath(filePath);
     unsigned crc=0;
     partDesc.getCrc(crc);
-    return createKeyIndex(filePath.str(), crc, false, false);
+    Owned<IDelayedFile> lfile = queryThor().queryFileCache().lookup(*activity, partDesc);
+    return createKeyIndex(filePath.str(), crc, *lfile, false, false);
 }
 
 
@@ -356,36 +351,27 @@ class CIndexReadSlaveActivity : public CIndexReadSlaveBase, public CThorDataLink
             klManager->finishSegmentMonitors();
             klManager->reset();
             activity.setManager(klManager);
+            activity.resetLastStats();
         }
         rowcount_t getCount(const rowcount_t &keyedLimit)
         {
-            unsigned __int64 count;
-            if (merger)
+            unsigned __int64 count = 0;
+            // Note - don't use merger's count - it doesn't work
+            ForEachItemIn(p, activity.partDescs)
             {
-                count = klManager->checkCount(keyedLimit);
-                activity.noteStats(klManager->querySeeks(), klManager->queryScans());
-                klManager->reset();
-                activity.resetLastStats();
-            }
-            else
-            {
-                count = 0;
-                ForEachItemIn(p, activity.partDescs)
-                {
-                    activity.callback.clearManager();
-                    klManager->releaseSegmentMonitors();
-                    Owned<IKeyIndex> keyIndex = openKeyPart(&activity, activity.logicalFilename.get(), activity.partDescs.item(p));
-                    klManager.setown(getKeyManager(keyIndex, activity.helper, activity.fixedDiskRecordSize));
-                    activity.setManager(klManager);
-                    count += klManager->checkCount(keyedLimit);
-                    activity.noteStats(klManager->querySeeks(), klManager->queryScans());
-                    if (count > keyedLimit)
-                        break;
-                }
                 activity.callback.clearManager();
                 klManager->releaseSegmentMonitors();
-                init();
+                Owned<IKeyIndex> keyIndex = openKeyPart(&activity, activity.logicalFilename.get(), activity.partDescs.item(p));
+                klManager.setown(getKeyManager(keyIndex, activity.helper, activity.fixedDiskRecordSize));
+                activity.setManager(klManager);
+                count += klManager->checkCount(keyedLimit-count); // part max, is total limit [keyedLimit] minus total so far [count]
+                activity.noteStats(klManager->querySeeks(), klManager->queryScans());
+                if (count > keyedLimit)
+                    break;
             }
+            activity.callback.clearManager();
+            klManager->releaseSegmentMonitors();
+            init();
             return (rowcount_t)count;
         }
         const void *nextKey()
@@ -662,7 +648,7 @@ public:
             keyedLimitCount = 0;            
         else
             eoi = true; // otherwise delayed until calc. in nextRow()
-        dataLinkStart("INDEXREAD", container.queryId());
+        dataLinkStart();
     }
     virtual void getMetaInfo(ThorDataLinkMetaInfo &info)
     {
@@ -816,7 +802,7 @@ public:
         localAggTable.setown(new CThorRowAggregator(*this, *helper, *helper));
         localAggTable->start(queryRowAllocator());
         gathered = eoi = false;
-        dataLinkStart("INDEXGROUPAGGREGATE", container.queryId());
+        dataLinkStart();
     }
 // IRowStream
     virtual void stop()
@@ -921,7 +907,7 @@ public:
             totalCountKnown = true;
             preknownTotalCount = 0;
         }
-        dataLinkStart("INDEXCOUNT", container.queryId());
+        dataLinkStart();
     }
 
 // IRowStream
@@ -1106,7 +1092,7 @@ public:
         }
         else
             eoi = true;
-        dataLinkStart("INDEXNORMALIZE", container.queryId());
+        dataLinkStart();
     }
 
 // IRowStream
@@ -1268,7 +1254,7 @@ public:
         ActivityTimer s(totalCycles, timeActivities, NULL);
         eoi = hadElement = false;
         partn = 0;
-        dataLinkStart("INDEXAGGREGATE", container.queryId());
+        dataLinkStart();
     }
 
 // IRowStream

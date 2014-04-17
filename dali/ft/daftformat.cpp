@@ -44,6 +44,7 @@
   NB: It assumes records cannot be split between parts!
 */
 
+const static unsigned maxNumberOfBufferOverrun = 100;
 const offset_t noSizeLimit = I64C(0x7fffffffffffffff);
 
 CPartitioner::CPartitioner()
@@ -161,6 +162,17 @@ void CPartitioner::setTarget(IOutputProcessor * _target)
     target.set(_target);
 }
 
+void CPartitioner::setRecordStructurePresent(bool _recordStructurePresent)
+{
+
+}
+
+void CPartitioner::getRecordStructure(StringBuffer & _recordStructure)
+{
+    _recordStructure.clear();
+}
+
+
 //----------------------------------------------------------------------------
 
 
@@ -227,14 +239,35 @@ void CInputBasePartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor
     offset_t nextInputOffset = cursor.nextInputOffset;
     const byte *buffer = bufferBase();
 
+    offset_t logStepOffset;
+    if( (splitOffset-inputOffset) < 1000000000 )
+    {
+        logStepOffset = splitOffset / 4;  // 25% step to display progress for files < ~1G split
+    }
+    else
+    {
+        logStepOffset = splitOffset / 100;  // 1% step to display progress for files > ~1G split
+    }
+    offset_t oldInputOffset = nextInputOffset;
+
     while (nextInputOffset < splitOffset)
     {
+        if( nextInputOffset > oldInputOffset + logStepOffset)
+        {
+            // Display progress
+            oldInputOffset = nextInputOffset;
+            LOG(MCdebugProgressDetail, unknownJob, "findSplitPoint(splitOffset:%"I64F"d) progress: %3.0f%% done.", splitOffset, (double)100.0*(double)nextInputOffset/(double)splitOffset);
+        }
 
         inputOffset = nextInputOffset;
 
         ensureBuffered(headerSize);
         assertex((headerSize ==0) || (numInBuffer != bufferOffset));
-        unsigned size = getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset);
+
+        bool processFullBuffer =  (nextInputOffset + blockSize) < splitOffset;
+
+        unsigned size = getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, processFullBuffer);
+
         if (size==0)
             throwError1(DFTERR_PartitioningZeroSizedRowLink,((offset_t)(buffer+bufferOffset)));
         ensureBuffered(size); 
@@ -265,6 +298,7 @@ void CInputBasePartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor
 
     cursor.inputOffset = inputOffset;
     cursor.nextInputOffset = nextInputOffset;
+    LOG(MCdebugProgressDetail, unknownJob, "findSplitPoint(splitOffset:%"I64F"d) progress: %3.0f%% done.", splitOffset, 100.0);
 }
 
 
@@ -272,8 +306,8 @@ void CInputBasePartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor
 CInputBasePartitioner::CInputBasePartitioner(unsigned _headerSize, unsigned expectedRecordSize)
 {
     headerSize = _headerSize;
-    blockSize = 0x10000;
-    bufferSize = 2 * blockSize + expectedRecordSize;
+    blockSize = 0x40000;
+    bufferSize = 4 * blockSize + expectedRecordSize;
     doInputCRC = false;
     CriticalBlock block(openfilecachesect);
     if (!openfilecache) 
@@ -281,6 +315,7 @@ CInputBasePartitioner::CInputBasePartitioner(unsigned _headerSize, unsigned expe
     else
         openfilecache->Link();
 
+    clearBufferOverrun();
 }
 
 IFileIOCache *CInputBasePartitioner::openfilecache = NULL;
@@ -381,7 +416,7 @@ CFixedPartitioner::CFixedPartitioner(size32_t _recordSize) : CInputBasePartition
     recordSize = _recordSize;
 }
 
-size32_t CFixedPartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead)
+size32_t CFixedPartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer)
 {
     return recordSize;
 }
@@ -424,7 +459,7 @@ size32_t CVariablePartitioner::getRecordSize(const byte * record, unsigned maxTo
 }
 
 
-size32_t CVariablePartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead)
+size32_t CVariablePartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer)
 {
     return getRecordSize(record, maxToRead);
 }
@@ -460,7 +495,7 @@ size32_t CRECFMvbPartitioner::getRecordSize(const byte * record, unsigned maxToR
 }
 
 
-size32_t CRECFMvbPartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead)
+size32_t CRECFMvbPartitioner::getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer)
 {
     return getRecordSize(record, maxToRead);
 }
@@ -544,17 +579,83 @@ CCsvPartitioner::CCsvPartitioner(const FileFormat & _format) : CInputBasePartiti
     addActionList(matcher, format.separate.get() ? format.separate.get() : "\\,", SEPARATOR, &maxElementLength);
     addActionList(matcher, format.quote.get() ? format.quote.get() : "'", QUOTE, &maxElementLength);
     addActionList(matcher, format.terminate.get() ? format.terminate.get() : "\\n,\\r\\n", TERMINATOR, &maxElementLength);
+    const char * escape = format.escape.get();
+    if (escape && *escape)
+        addActionList(matcher,  escape, ESCAPE, &maxElementLength);
+
     matcher.queryAddEntry(1, " ", WHITESPACE);
     matcher.queryAddEntry(1, "\t", WHITESPACE);
+    recordStructure.append("RECORD\n");
+    isRecordStructurePresent = false;
+    fieldCount = 0;
+    isFirstRow = true;
+    fields.setown(new KeptAtomTable);
 }
 
-size32_t CCsvPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead, bool ateof)
+void CCsvPartitioner::storeFieldName(const char * start, unsigned len)
+{
+    ++fieldCount;
+    recordStructure.append("    STRING ");
+    // If record structure present in the first row and we have at least one character
+    // long string then it will be this field name.
+    // Otherwise we use "fieldx" (where x is the number of this field) as name.
+    // This prevents to generate wrong record structure if field name(s) missing:
+    // e.g: first row -> fieldA,fieldB,,fieldC,\n
+
+    // Check the field name
+    StringBuffer fieldName;
+    fieldName.append(start, 0, len);
+    fieldName.trim();
+
+    if (isRecordStructurePresent && (0 < fieldName.length() ))
+    {
+        // Check discovered field name validity
+        char act = fieldName.charAt(0);
+        if ( !(isalpha(act) || act == '_') )
+        {
+            fieldName.setCharAt(0, '_');
+        }
+
+        for ( int i = 1; i < fieldName.length(); i++)
+        {
+            act = fieldName.charAt(i);
+            if ( !(isalnum(act) || act == '_' || act == '$') )
+            {
+                fieldName.setCharAt(i, '_');
+            }
+        }
+    }
+    else
+    {
+        fieldName.append("field").append(fieldCount);
+    }
+
+    // Check discovered field name uniqueness
+    const char * fn = fieldName.toCharArray();
+    if ( fields->find(fn) != NULL )
+    {
+        time_t t;
+        time(&t);
+        fieldName.append('_').append(fieldCount).append('_').append((unsigned)t);
+    }
+
+    recordStructure.append(fieldName);
+    recordStructure.append(";\n");
+
+    fields->addAtom(fieldName.toCharArray());
+}
+
+size32_t CCsvPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead, bool processFullBuffer, bool ateof)
 {
     //more complicated processing of quotes etc....
     unsigned quote = 0;
+    unsigned quoteToStrip = 0;
     const byte * cur = start;
     const byte * end = start + maxToRead;
-    const byte * startOfColumn = cur;
+    const byte * firstGood = start;
+    const byte * lastGood = start;
+    const byte * last = start;
+    bool lastEscape = false;
 
     while (cur != end)
     {
@@ -564,47 +665,134 @@ size32_t CCsvPartitioner::getSplitRecordSize(const byte * start, unsigned maxToR
         {
         case NONE:
             cur++;          // matchLen == 0;
+            lastGood = cur;
             break;
         case WHITESPACE:
             //Skip leading whitepace
-            if (!quote&&(cur == startOfColumn))
+            if (quote)
+                lastGood = cur+matchLen;
+            else if (cur == firstGood)
             {
-                startOfColumn = cur+matchLen;
+                firstGood = cur+matchLen;
+                lastGood = cur+matchLen;
             }
             break;
         case SEPARATOR:
+            // Quoted separator
             if (quote == 0)
             {
-                startOfColumn = cur + matchLen;     // NB: Can write one past end.
+                if (isFirstRow)
+                {
+                    storeFieldName((const char*)firstGood, lastGood-firstGood);
+                }
+
+                lastEscape = false;
+                quoteToStrip = 0;
+                firstGood = cur + matchLen;
             }
+            lastGood = cur+matchLen;
             break;
         case TERMINATOR:
-            if (quote == 0)
+            if (quote == 0) // Is this a good idea? Means a mismatched quote is not fixed by EOL
             {
-                return cur + matchLen - start;
+               if (isFirstRow)
+               {
+                   // TODO For further improvement we can use second
+                   // row to check discovered record structure (field count).
+                   isFirstRow = false;
+
+                   // Process last field
+                   storeFieldName((const char*)firstGood, lastGood-firstGood);
+                   recordStructure.append("END;");
+               }
+
+               if (processFullBuffer)
+               {
+                   last = cur + matchLen;
+                   // Reset to process a new record
+                   lastEscape = false;
+                   quoteToStrip = 0;
+                   firstGood = cur + matchLen;
+               }
+               else
+               {
+                   clearBufferOverrun();
+                   return (size32_t)(cur + matchLen - start);
+               }
             }
+            lastGood = cur+matchLen;
             break;
         case QUOTE:
+            // Quoted quote
             if (quote == 0)
             {
-                if (cur == startOfColumn)
+                if (cur == firstGood)
                 {
                     quote = match;
-                    startOfColumn = cur+matchLen;
+                    firstGood = cur+matchLen;
                 }
+                lastGood = cur+matchLen;
             }
             else
             {
                 if (quote == match)
-                    quote = 0;
+                {
+                    const byte * next = cur + matchLen;
+                    //Check for double quotes
+                    if ((next != end))
+                    {
+                        unsigned nextMatchLen;
+                        unsigned nextMatch = matcher.getMatch((size32_t)(end-next), (const char *)next, nextMatchLen);
+                        if (nextMatch == quote)
+                        {
+                            quoteToStrip = quote;
+                            matchLen += nextMatchLen;
+                            lastGood = cur+matchLen;
+                        }
+                        else
+                            quote = 0;
+                    }
+                    else
+                        quote = 0;
+                }
+                else
+                    lastGood = cur+matchLen;
             }
             break;
+        case ESCAPE:
+            lastEscape = true;
+            lastGood = cur+matchLen;
+            // If this escape is at the end, proceed to field range
+            if (lastGood == end)
+                break;
+
+            // Skip escape and ignore the next match
+            cur += matchLen;
+            match = matcher.getMatch((size32_t)(end-cur), (const char *)cur, matchLen);
+            if ((match & 255) == NONE)
+                matchLen = 1;
+            lastGood += matchLen;
+            break;
+
         }
         cur += matchLen;
     }
+
+    if (processFullBuffer && (last != start))
+    {
+        return last - start;
+    }
+
     if (!ateof)
         throwError(DFTERR_EndOfRecordNotFound);
+
+    numOfProcessedBytes += (unsigned)(end - start);
+
     LOG(MCdebugProgress, unknownJob, "CSV splitRecordSize(%d) at end of file", (unsigned) (end - start));
+
+    if (++numOfBufferOverrun > maxNumberOfBufferOverrun)
+        throwError1(DFTERR_EndOfCsvRecordNotFound, numOfProcessedBytes);
+
     return end - start;
 }
 
@@ -625,77 +813,85 @@ void CCsvPartitioner::setTarget(IOutputProcessor * _target)
 
 void CCsvQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor & cursor)
 {
-    if (isquoted) {
-        CCsvPartitioner::findSplitPoint(splitOffset,cursor);
-        if (noTranslation)
-            cursor.outputOffset = cursor.inputOffset - thisOffset;
-    }
-    else {
-        const byte *buffer = bufferBase();
-        numInBuffer = bufferOffset = 0;
-        if (splitOffset != 0)
-        {
-            seekInput(splitOffset-thisOffset+thisHeaderSize);
+    const byte *buffer = bufferBase();
+    numInBuffer = bufferOffset = 0;
+    if (splitOffset != 0)
+    {
+        seekInput(splitOffset-thisOffset+thisHeaderSize);
 
-            bool eof;
-            if (format.maxRecordSize + maxElementLength > blockSize)
-                eof = !ensureBuffered(blockSize);
-            else
-                eof = !ensureBuffered(format.maxRecordSize + maxElementLength);
-            //Could be end of file - if no elements read.
+        bool eof;
+        if (format.maxRecordSize + maxElementLength > blockSize)
+            eof = !ensureBuffered(blockSize);
+        else
+            eof = !ensureBuffered(format.maxRecordSize + maxElementLength);
+        bool fullBuffer = false;
+        //Could be end of file - if no elements read.
+        if (numInBuffer != bufferOffset)
+        {
+            //Throw away the first match, incase we hit the \n of a \r\n or something similar.
+            if (maxElementLength > 1)
+            {
+                unsigned matchLen;
+                unsigned match = matcher.getMatch(numInBuffer - bufferOffset, (const char *)buffer+bufferOffset, matchLen);
+                if ((match & 255) == NONE)
+                    bufferOffset++;
+                else
+                    bufferOffset += matchLen;
+            }
+
+            //Could have been single \n at the end of the file....
             if (numInBuffer != bufferOffset)
             {
-                //Throw away the first match, incase we hit the \n of a \r\n or something similar.
-                if (maxElementLength > 1)
+                if (format.maxRecordSize <= blockSize)
+                    bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, fullBuffer, eof);
+                else
                 {
-                    unsigned matchLen;
-                    unsigned match = matcher.getMatch(numInBuffer - bufferOffset, (const char *)buffer+bufferOffset, matchLen);
-                    if ((match & 255) == NONE)
-                        bufferOffset++;
-                    else
-                        bufferOffset += matchLen;
-                }
-
-                //Could have been single \n at the end of the file....
-                if (numInBuffer != bufferOffset)
-                {
-                    if (format.maxRecordSize <= blockSize)
-                        bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, eof);
-                    else
+                    //For large
+                    size32_t ensureSize = numInBuffer-bufferOffset;
+                    loop
                     {
-                        //For large 
-                        size32_t ensureSize = numInBuffer-bufferOffset;
-                        loop
+                        try
                         {
-                            try
-                            {
-                                //There is still going to be enough buffered for a whole record.
-                                eof = !ensureBuffered(ensureSize);
-                                bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, eof);
-                                break;
-                            }
-                            catch (IException * e)
-                            {
-                                if (ensureSize == format.maxRecordSize)
-                                    throw;
-                                e->Release();
-                                LOG(MCdebugProgress, unknownJob, "Failed to find split after reading %d", ensureSize);
-                                ensureSize += blockSize;
-                                if (ensureSize > format.maxRecordSize)
-                                    ensureSize = format.maxRecordSize;
-                            }
+                            //There is still going to be enough buffered for a whole record.
+                            eof = !ensureBuffered(ensureSize);
+                            bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, fullBuffer, eof);
+                            break;
                         }
-                        LOG(MCdebugProgress, unknownJob, "Found split after reading %d", ensureSize);
+                        catch (IException * e)
+                        {
+                            if (ensureSize == format.maxRecordSize)
+                                throw;
+                            e->Release();
+                            LOG(MCdebugProgress, unknownJob, "Failed to find split after reading %d", ensureSize);
+                            ensureSize += blockSize;
+                            if (ensureSize > format.maxRecordSize)
+                                ensureSize = format.maxRecordSize;
+                        }
                     }
+                    LOG(MCdebugProgress, unknownJob, "Found split after reading %d", ensureSize);
                 }
             }
-            else if (splitOffset - thisOffset < thisSize)
-                throwError2(DFTERR_UnexpectedReadFailure, fullPath.get(), splitOffset-thisOffset+thisHeaderSize);
         }
-        cursor.inputOffset = splitOffset + bufferOffset;
-        if (noTranslation)
-            cursor.outputOffset = cursor.inputOffset - thisOffset;
+        else if (splitOffset - thisOffset < thisSize)
+            throwError2(DFTERR_UnexpectedReadFailure, fullPath.get(), splitOffset-thisOffset+thisHeaderSize);
     }
+    else
+    {
+        // We are in the first part of the file
+        bool eof;
+        if (format.maxRecordSize + maxElementLength > blockSize)
+            eof = !ensureBuffered(blockSize);
+        else
+            eof = !ensureBuffered(format.maxRecordSize + maxElementLength);
+        bool fullBuffer = false;
+
+        // Discover record structure in the first record/row
+        getSplitRecordSize(buffer, numInBuffer, fullBuffer, eof);
+    }
+
+    cursor.inputOffset = splitOffset + bufferOffset;
+    if (noTranslation)
+        cursor.outputOffset = cursor.inputOffset - thisOffset;
 }
 
 
@@ -713,13 +909,83 @@ CUtfPartitioner::CUtfPartitioner(const FileFormat & _format) : CInputBasePartiti
     addUtfActionList(matcher, " ", WHITESPACE, NULL, utfFormat);
     addUtfActionList(matcher, "\t", WHITESPACE, NULL, utfFormat);
     unitSize = format.getUnitSize();
+
+    recordStructure.append("RECORD\n");
+    isRecordStructurePresent = false;
+    fieldCount = 0;
+    isFirstRow = true;
+    fields.setown(new KeptAtomTable);
 }
 
-size32_t CUtfPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead, bool ateof)
+void CUtfPartitioner::storeFieldName(const char * start, unsigned len)
+{
+    ++fieldCount;
+    recordStructure.append("    UTF8 ");
+    // If record structure present in the first row and we have at least one character
+    // long string then it will be this field name.
+    // Otherwise we use "fieldx" (where x is the number of this field) as name.
+    // This prevents to generate wrong record structure if field name(s) missing:
+    // e.g: first row -> fieldA,fieldB,,fieldC,\n
+
+    // Check the field name
+    StringBuffer fieldName;
+    MemoryBuffer temp;
+    if (convertUtf(temp, UtfReader::Utf8, len, start, utfFormat))
+    {
+        fieldName.append(temp.length(), temp.toByteArray());
+        fieldName.trim();
+    }
+
+    if (isRecordStructurePresent && (0 < fieldName.length() ))
+    {
+        // Check discovered field name validity
+        char act = fieldName.charAt(0);
+        if ( !(isalpha(act) || act == '_') )
+        {
+            fieldName.setCharAt(0, '_');
+        }
+
+        for ( int i = 1; i < fieldName.length(); i++)
+        {
+            act = fieldName.charAt(i);
+            if ( !(isalnum(act) || act == '_' || act == '$') )
+            {
+                fieldName.setCharAt(i, '_');
+            }
+        }
+    }
+    else
+    {
+        fieldName.append("field").append(fieldCount);
+    }
+
+    // Check discovered field name uniqueness
+    const char * fn = fieldName.toCharArray();
+    if ( fields->find(fn) != NULL )
+    {
+        time_t t;
+        time(&t);
+        fieldName.append('_').append(fieldCount).append('_').append((unsigned)t);
+    }
+
+    recordStructure.append(fieldName);
+    recordStructure.append(";\n");
+
+    fields->addAtom(fieldName.toCharArray());
+}
+
+size32_t CUtfPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead, bool processFullBuffer, bool ateof)
 {
     //If we need more complicated processing...
+
+    unsigned quote = 0;
+    unsigned quoteToStrip = 0;
     const byte * cur = start;
     const byte * end = start + maxToRead;
+    const byte * firstGood = start;
+    const byte * lastGood = start;
+    const byte * last = start;
+    bool lastEscape = false;
 
     while (cur != end)
     {
@@ -729,16 +995,133 @@ size32_t CUtfPartitioner::getSplitRecordSize(const byte * start, unsigned maxToR
         {
         case NONE:
             cur += unitSize;            // matchLen == 0;
+            lastGood = cur;
+            break;
+        case WHITESPACE:
+            //Skip leading whitepace
+            if (quote)
+                lastGood = cur+matchLen;
+            else if (cur == firstGood)
+            {
+                firstGood = cur+matchLen;
+                lastGood = cur+matchLen;
+            }
+            break;
+        case SEPARATOR:
+            // Quoted separator
+            if (quote == 0)
+            {
+                if (isFirstRow)
+                {
+                    storeFieldName((const char*)firstGood, lastGood-firstGood);
+                }
+
+                lastEscape = false;
+                quoteToStrip = 0;
+                firstGood = cur + matchLen;
+            }
+            lastGood = cur+matchLen;
             break;
         case TERMINATOR:
-            return cur + matchLen - start;
+            if (quote == 0) // Is this a good idea? Means a mismatched quote is not fixed by EOL
+            {
+               if (isFirstRow)
+               {
+                   // TODO For further improvement we can use second
+                   // row to check discovered record structure (field count).
+                   isFirstRow = false;
+
+                   // Process last field
+                   storeFieldName((const char*)firstGood, lastGood-firstGood);
+                   recordStructure.append("END;");
+               }
+
+               if (processFullBuffer)
+               {
+                   last = cur + matchLen;
+                   // Reset to process a new record
+                   lastEscape = false;
+                   quoteToStrip = 0;
+                   firstGood = cur + matchLen;
+               }
+               else
+               {
+                   clearBufferOverrun();
+                   return (size32_t)(cur + matchLen - start);
+               }
+            }
+            lastGood = cur+matchLen;
+            break;
+        case QUOTE:
+            // Quoted quote
+            if (quote == 0)
+            {
+                if (cur == firstGood)
+                {
+                    quote = match;
+                    firstGood = cur+matchLen;
+                }
+                lastGood = cur+matchLen;
+            }
+            else
+            {
+                if (quote == match)
+                {
+                    const byte * next = cur + matchLen;
+                    //Check for double quotes
+                    if ((next != end))
+                    {
+                        unsigned nextMatchLen;
+                        unsigned nextMatch = matcher.getMatch((size32_t)(end-next), (const char *)next, nextMatchLen);
+                        if (nextMatch == quote)
+                        {
+                            quoteToStrip = quote;
+                            matchLen += nextMatchLen;
+                            lastGood = cur+matchLen;
+                        }
+                        else
+                            quote = 0;
+                    }
+                    else
+                        quote = 0;
+                }
+                else
+                    lastGood = cur+matchLen;
+            }
+            break;
+        case ESCAPE:
+            lastEscape = true;
+            lastGood = cur+matchLen;
+            // If this escape is at the end, proceed to field range
+            if (lastGood == end)
+                break;
+
+            // Skip escape and ignore the next match
+            cur += matchLen;
+            match = matcher.getMatch((size32_t)(end-cur), (const char *)cur, matchLen);
+            if ((match & 255) == NONE)
+                matchLen = unitSize;
+            lastGood += matchLen;
+            break;
         }
         cur += matchLen;
     }
 
+    if (processFullBuffer && (last != start))
+    {
+        return last - start;
+    }
+
+
     if (!ateof)
         throwError(DFTERR_EndOfRecordNotFound);
+
+    numOfProcessedBytes += (unsigned)(end - start);
+
     LOG(MCdebugProgress, unknownJob, "UTF splitRecordSize(%d) at end of file", (unsigned) (end - start));
+
+    if (++numOfBufferOverrun > maxNumberOfBufferOverrun)
+        throwError1(DFTERR_EndOfUtfRecordNotFound, numOfProcessedBytes);
 
     return end - start;
 }
@@ -769,6 +1152,7 @@ void CUtfQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
             eof = !ensureBuffered(blockSize);
         else
             eof = !ensureBuffered(format.maxRecordSize + maxElementLength);
+        bool fullBuffer = false;
         //Could be end of file - if no elements read.
         if (numInBuffer != bufferOffset)
         {
@@ -787,7 +1171,7 @@ void CUtfQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
             if (numInBuffer != bufferOffset)
             {
                 if (format.maxRecordSize <= blockSize)
-                    bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, eof);
+                    bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, fullBuffer, eof);
                 else
                 {
                     //For large 
@@ -798,7 +1182,7 @@ void CUtfQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
                         {
                             //There is still going to be enough buffered for a whole record.
                             eof = !ensureBuffered(ensureSize);
-                            bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, eof);
+                            bufferOffset += getSplitRecordSize(buffer+bufferOffset, numInBuffer-bufferOffset, fullBuffer, eof);
                             break;
                         }
                         catch (IException * e)
@@ -818,6 +1202,19 @@ void CUtfQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
         }
         else if (splitOffset - thisOffset < thisSize)
             throwError2(DFTERR_UnexpectedReadFailure, fullPath.get(), splitOffset-thisOffset+thisHeaderSize);
+    }
+    else
+    {
+        // We are in the first part of the file
+        bool eof;
+        if (format.maxRecordSize + maxElementLength > blockSize)
+            eof = !ensureBuffered(blockSize);
+        else
+            eof = !ensureBuffered(format.maxRecordSize + maxElementLength);
+        bool fullBuffer = false;
+
+        // Discover record structure in the first record/row
+        getSplitRecordSize(buffer, numInBuffer, fullBuffer, eof);
     }
     cursor.inputOffset = splitOffset + bufferOffset;
     if (noTranslation)
@@ -1095,7 +1492,7 @@ CXmlPartitioner::CXmlPartitioner(const FileFormat & _format) : CInputBasePartiti
     utfFormat = getUtfFormatType(format.type);
 }
 
-size32_t CXmlPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead)
+size32_t CXmlPartitioner::getSplitRecordSize(const byte * start, unsigned maxToRead, bool processFullBuffer)
 {
     return splitter.getRecordSize(start, maxToRead, true);
 }
@@ -1125,6 +1522,7 @@ void CXmlQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
     numInBuffer = bufferOffset = 0;
     if (splitOffset != 0)
     {
+        LOG(MCdebugProgressDetail, unknownJob, "CXmlQuickPartitioner::findSplitPoint(splitOffset:%"I64F"d)", splitOffset);
         unsigned delta = (unsigned)(splitOffset & (unitSize-1));
         if (delta)
             splitOffset += (unitSize - delta);
@@ -1149,7 +1547,10 @@ void CXmlQuickPartitioner::findSplitPoint(offset_t splitOffset, PartitionCursor 
                     break;
                 }
                 if (sizeAvailable >= format.maxRecordSize)
-                    throwError(DFTERR_EndOfRecordNotFound);
+                {
+                    LOG(MCdebugProgressDetail, unknownJob, "CXmlQuickPartitioner::findSplitPoint: record size (>%d bytes) is larger than expected maxRecordSize (%d bytes) [and blockSize (%d bytes)]", sizeRecord, format.maxRecordSize, blockSize);
+                    throwError3(DFTERR_EndOfXmlRecordNotFound, splitOffset+bufferOffset, sizeRecord, format.maxRecordSize);
+                }
                 LOG(MCdebugProgress, unknownJob, "Failed to find split after reading %d", ensureSize);
                 ensureSize += blockSize;
                 if (ensureSize > format.maxRecordSize)
@@ -1298,6 +1699,16 @@ void CRemotePartitioner::setSource(unsigned _whichInput, const RemoteFilename & 
     passwordProvider.addPasswordForFilename(fullPath);
     compressedInput = _compressedInput;
     decryptKey.set(_decryptKey);
+}
+
+void CRemotePartitioner::setRecordStructurePresent(bool _recordStructurePresent)
+{
+
+}
+
+void CRemotePartitioner::getRecordStructure(StringBuffer & _recordStructure)
+{
+    _recordStructure.clear();
 }
 
 
@@ -1670,12 +2081,21 @@ IFormatPartitioner * createFormatPartitioner(const SocketEndpoint & ep, const Fi
         case FFTblocked:
             return new CSimpleBlockedPartitioner(sameFormats);
         case FFTcsv:
-            return new CCsvQuickPartitioner(srcFormat, sameFormats);
+            if (srcFormat.hasQuote())
+                return new CCsvPartitioner(srcFormat);
+            else
+                return new CCsvQuickPartitioner(srcFormat, sameFormats);
+            break;
         case FFTutf: case FFTutf8: case FFTutf8n: case FFTutf16: case FFTutf16be: case FFTutf16le: case FFTutf32: case FFTutf32be: case FFTutf32le:
             if (srcFormat.rowTag)
                 return new CXmlQuickPartitioner(srcFormat, sameFormats);
             else
-                return new CUtfQuickPartitioner(srcFormat, sameFormats);
+            {
+                if (srcFormat.hasQuote())
+                    return new CUtfPartitioner(srcFormat);
+                else
+                    return new CUtfQuickPartitioner(srcFormat, sameFormats);
+            }
         }
     }
     if (!calcOutput)
@@ -1712,4 +2132,3 @@ IFormatPartitioner * createFormatPartitioner(const SocketEndpoint & ep, const Fi
 
     return new CRemotePartitioner(ep, srcFormat, tgtFormat, slave, wuid);
 }
-

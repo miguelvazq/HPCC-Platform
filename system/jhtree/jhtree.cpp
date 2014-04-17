@@ -114,7 +114,7 @@ void SegMonitorList::checkSize(size32_t keyedSize, char const * keyname)
     {
         StringBuffer err;
         err.appendf("Key size mismatch on key %s - size was %u, expected %u", keyname, getSize(), keyedSize);
-        IException *e = MakeStringException(1000, "%s", err.str());
+        IException *e = MakeStringExceptionDirect(1000, err.str());
         EXCLOG(e, err.str());
         throw e;
     }
@@ -605,7 +605,7 @@ public:
             {
                 StringBuffer err;
                 err.appendf("Key size mismatch - key file (%s) indicates record size should be %d, but ECL declaration was %d", keyName.get(), keySize, eclKeySize);
-                IException *e = MakeStringException(1000, "%s", err.str());
+                IException *e = MakeStringExceptionDirect(1000, err.str());
                 EXCLOG(e, err.str());
                 throw e;
             }
@@ -940,7 +940,7 @@ public:
                 StringBuffer err;
                 err.append("Could not translate index read filters during layout translation of index ").append(keyName.get()).append(": ");
                 layoutTrans->queryFailure().getDetail(err);
-                throw MakeStringException(0, "%s", err.str());
+                throw MakeStringExceptionDirect(0, err.str());
             }
         }
         segs.finish();
@@ -2764,6 +2764,8 @@ public:
 
     virtual unsigned __int64 getCount()
     {
+        assertex (!sortFieldOffset);  // we should have avoided using a stepping merger for precheck of limits, both for efficiency and because this code won't work
+                                      // as the sequence numbers are not in sequence
         unsigned __int64 ret = 0;
         if (resetPending)
             resetSort(NULL, 0, 0); // This is slightly suboptimal
@@ -2779,6 +2781,8 @@ public:
 
     virtual unsigned __int64 checkCount(unsigned __int64 max)
     {
+        assertex (!sortFieldOffset);  // we should have avoided using a stepping merger for precheck of limits, both for efficiency and because this code won't work
+                                      // as the sequence numbers are not in sequence
         unsigned __int64 ret = 0;
         if (resetPending)
             resetSort(NULL, 0, 0); // this is a little suboptimal as we will not bail out early
@@ -2787,13 +2791,11 @@ public:
             unsigned key = mergeheap[i];
             keyBuffer = buffers[key];
             keyCursor = cursors[key];
-            ret += CKeyLevelManager::checkCount(max);
-            if (max)
-            {
-                if (ret > max)
-                    return ret;
-                max -= ret;
-            }
+            unsigned __int64 thisKeyCount = CKeyLevelManager::checkCount(max);
+            ret += thisKeyCount;
+            if (thisKeyCount > max)
+                return ret;
+            max -= thisKeyCount;
         }
         return ret;
     }

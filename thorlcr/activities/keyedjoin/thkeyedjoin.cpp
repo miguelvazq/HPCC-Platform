@@ -27,7 +27,6 @@ class CKeyedJoinMaster : public CMasterActivity
 {
     IHThorKeyedJoinArg *helper;
     Owned<CSlavePartMapping> dataFileMapping;
-    Owned<IDistributedFile> indexFile, dataFile;
     MemoryBuffer offsetMapMb, initMb;
     bool localKey;
     unsigned numTags;
@@ -66,10 +65,12 @@ public:
             if (TAG_NULL != tags[i])
                 container.queryJob().freeMPTag(tags[i]);
     }
-    void init()
+    virtual void init()
     {
+        CMasterActivity::init();
         OwnedRoxieString indexFileName(helper->getIndexFileName());
-        indexFile.setown(queryThorFileManager().lookup(container.queryJob(), indexFileName, false, 0 != (helper->getJoinFlags() & JFindexoptional), true));
+        Owned<IDistributedFile> dataFile;
+        Owned<IDistributedFile> indexFile = queryThorFileManager().lookup(container.queryJob(), indexFileName, false, 0 != (helper->getJoinFlags() & JFindexoptional), true);
 
         unsigned keyReadWidth = (unsigned)container.queryJob().getWorkUnitValueInt("KJKRR", 0);
         if (!keyReadWidth || keyReadWidth>container.queryJob().querySlaves())
@@ -229,7 +230,6 @@ public:
                             Owned<IGroup> grp = container.queryJob().querySlaveGroup().subset((unsigned)0, dataReadWidth);
                             dataFileMapping.setown(getFileSlaveMaps(dataFile->queryLogicalName(), *dataFileDesc, container.queryJob().queryUserDescriptor(), *grp, false, false, NULL));
                             dataFileMapping->serializeFileOffsetMap(offsetMapMb.clear());
-                            queryThorFileManager().noteFileRead(container.queryJob(), dataFile);
                         }
                         else
                             indexFile.clear();
@@ -240,15 +240,21 @@ public:
                 indexFile.clear();
         }
         if (indexFile)
-            queryThorFileManager().noteFileRead(container.queryJob(), indexFile);
+        {
+            addReadFile(indexFile);
+            if (dataFile)
+                addReadFile(dataFile);
+        }
         else
             initMb.append((unsigned)0);
     }
-    void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
+    virtual void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
     {
         dst.append(initMb);
+        IDistributedFile *indexFile = queryReadFile(0); // 0 == indexFile, 1 == dataFile
         if (indexFile && helper->diskAccessRequired())
         {
+            IDistributedFile *dataFile = queryReadFile(1);
             if (dataFile)
             {
                 dataFileMapping->serializeMap(slave, dst);
@@ -261,7 +267,7 @@ public:
             }
         }
     }
-    void deserializeStats(unsigned node, MemoryBuffer &mb)
+    virtual void deserializeStats(unsigned node, MemoryBuffer &mb)
     {
         CMasterActivity::deserializeStats(node, mb);
         ForEachItemIn(p, progressLabels)
@@ -271,7 +277,7 @@ public:
             progressInfoArr.item(p).set(node, st);
         }
     }
-    void getXGMML(unsigned idx, IPropertyTree *edge)
+    virtual void getXGMML(unsigned idx, IPropertyTree *edge)
     {
         CMasterActivity::getXGMML(idx, edge);
         assertex(0 == idx);
@@ -283,12 +289,6 @@ public:
             attr.append(progressLabels.item(p));
             edge->setPropInt64(attr.str(), progress.queryTotal());
         }
-    }
-    void kill()
-    {
-        CMasterActivity::kill();
-        indexFile.clear();
-        dataFile.clear();
     }
 };
 

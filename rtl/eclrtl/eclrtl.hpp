@@ -41,6 +41,11 @@
 #define ECLRTL_API
 #endif
 
+#ifdef _MSC_VER
+#undef __attribute__ // in case platform.h has been included
+#define __attribute__(param) /* do nothing */
+#endif
+
 #ifndef I64C
 #ifdef _WIN32
 #define I64C(n) n##i64
@@ -91,7 +96,6 @@ interface ICompiledUStrRegExpr
 };
 
 //-----------------------------------------------------------------------------
-
 ECLRTL_API void * rtlMalloc(size32_t size);
 ECLRTL_API void rtlFree(void * x);
 ECLRTL_API void * rtlRealloc(void * _ptr, size32_t size);
@@ -192,6 +196,7 @@ ECLRTL_API void rtlConcatVStr(char * * tgt, ...);
 ECLRTL_API void rtlConcatUnicode(unsigned & tlen, UChar * * tgt, ...);
 ECLRTL_API void rtlConcatVUnicode(UChar * * tgt, ...);
 ECLRTL_API void rtlConcatExtend(unsigned & tlen, char * & tgt, unsigned slen, const char * src);
+ECLRTL_API void rtlConcatUnicodeExtend(size32_t & tlen, UChar * & tgt, size32_t slen, const UChar * src);
 
 ECLRTL_API void rtlConcatStrF(unsigned tlen, void * tgt, int fill, ...);
 ECLRTL_API void rtlConcatVStrF(unsigned tlen, char * tgt, ...);
@@ -250,7 +255,9 @@ ECLRTL_API void rtlKeyUnicodeStrengthX(unsigned & tlen, void * & tgt, unsigned s
 ECLRTL_API bool rtlGetNormalizedUnicodeLocaleName(unsigned len, char const * in, char * out);
 
 ECLRTL_API int rtlPrefixDiffStr(unsigned l1, const char * p1, unsigned l2, const char * p2);
+ECLRTL_API int rtlPrefixDiffStrEx(unsigned l1, const char * p1, unsigned l2, const char * p2, unsigned origin);
 ECLRTL_API int rtlPrefixDiffUnicode(unsigned l1, const UChar * p1, unsigned l2, const UChar * p2, const char * locale);
+ECLRTL_API int rtlPrefixDiffUnicodeEx(unsigned l1, const UChar * p1, unsigned l2, const UChar * p2, const char * locale, unsigned origin);
 
 ECLRTL_API void rtlTrimRight(unsigned &tlen, char * &tgt, unsigned slen, const char * src); // YMA
 ECLRTL_API void rtlTrimUnicodeRight(unsigned &tlen, UChar * &tgt, unsigned slen, UChar const * src);
@@ -315,6 +322,8 @@ ECLRTL_API void rtlCodepageToVUnicode(unsigned outlen, UChar * out, unsigned inl
 ECLRTL_API void rtlVCodepageToUnicode(unsigned outlen, UChar * out, char const * in, char const * codepage);
 ECLRTL_API void rtlVCodepageToVUnicode(unsigned outlen, UChar * out, char const * in, char const * codepage);
 ECLRTL_API void rtlCodepageToUnicodeUnescape(unsigned outlen, UChar * out, unsigned inlen, char const * in, char const * codepage);
+ECLRTL_API void rtlCodepageToUtf8XUnescape(unsigned & outlen, char * & out, unsigned inlen, char const * in, char const * codepage);
+
 ECLRTL_API void rtlUnicodeToCodepage(unsigned outlen, char * out, unsigned inlen, UChar const * in, char const * codepage);
 ECLRTL_API void rtlUnicodeToData(unsigned outlen, void * out, unsigned inlen, UChar const * in);
 ECLRTL_API void rtlUnicodeToVCodepage(unsigned outlen, char * out, unsigned inlen, UChar const * in, char const * codepage);
@@ -336,7 +345,6 @@ ECLRTL_API void rtlUnicodeToStr(unsigned outlen, char * out, unsigned inlen, UCh
 ECLRTL_API void rtlStrToUnicodeX(unsigned & outlen, UChar * & out, unsigned inlen, char const * in);
 ECLRTL_API void rtlUnicodeToStrX(unsigned & outlen, char * & out, unsigned inlen, UChar const * in);
 ECLRTL_API void rtlUnicodeToEscapedStrX(unsigned & outlen, char * & out, unsigned inlen, UChar const * in);
-ECLRTL_API void rtlUnicodeToQuotedUTF8X(unsigned & outlen, char * & out, unsigned inlen, UChar const * in);
 ECLRTL_API bool rtlCodepageToCodepage(unsigned outlen, char * out, unsigned inlen, char const * in, char const * outcodepage, char const * incodepage); //returns success, false probably means illegal input or overflow
 ECLRTL_API int rtlSingleUtf8ToCodepage(char * out, unsigned inlen, char const * in, char const * outcodepage); //returns number of trailbytes on character in UTF8 if valid, -1 error (illegal input or overflow (this routine assumes output is single character, which can break if outcodepage uses multibyte sequences, so don't do that))
 
@@ -378,11 +386,12 @@ ECLRTL_API unsigned rtlCrcVUnicode(UChar const * k, unsigned initval);
 
 ECLRTL_API unsigned rtlRandom();
 ECLRTL_API void rtlSeedRandom(unsigned value);
-ECLRTL_API void rtlFail(int code, const char *msg);
-ECLRTL_API void rtlSysFail(int code, const char *msg);
-ECLRTL_API void rtlFailUnexpected();
-ECLRTL_API void rtlFailOnAssert();
-ECLRTL_API void rtlFailDivideByZero();
+ECLRTL_API void rtlFail(int code, const char *msg) __attribute__((noreturn));
+ECLRTL_API void rtlSysFail(int code, const char *msg) __attribute__((noreturn));
+ECLRTL_API void rtlFailUnexpected() __attribute__((noreturn));
+ECLRTL_API void rtlFailOnAssert() __attribute__((noreturn));
+ECLRTL_API void rtlFailDivideByZero() __attribute__((noreturn));
+ECLRTL_API void rtlThrowOutOfMemory(int code, const char *msg) __attribute__((noreturn));
 
 ECLRTL_API void rtlReportFieldOverflow(unsigned size, unsigned max, const char * name);
 ECLRTL_API void rtlReportRowOverflow(unsigned size, unsigned max);
@@ -443,10 +452,15 @@ ECLRTL_API unsigned __int64 rtlReadSwapUInt7(const void * data);
 ECLRTL_API unsigned __int64 rtlReadSwapUInt8(const void * data);
 ECLRTL_API unsigned __int64 rtlReadSwapUInt(const void * data, unsigned length);
 
+inline void rtlWriteSwapInt1(void * data, unsigned value) { *(unsigned char *)data = value; }
+ECLRTL_API void rtlWriteSwapInt2(void * data, unsigned value);
 ECLRTL_API void rtlWriteSwapInt3(void * data, unsigned value);
+ECLRTL_API void rtlWriteSwapInt4(void * data, unsigned value);
 ECLRTL_API void rtlWriteSwapInt5(void * data, unsigned __int64 value);
 ECLRTL_API void rtlWriteSwapInt6(void * data, unsigned __int64 value);
 ECLRTL_API void rtlWriteSwapInt7(void * data, unsigned __int64 value);
+ECLRTL_API void rtlWriteSwapInt8(void * data, unsigned __int64 value);
+ECLRTL_API void rtlWriteSwapInt(void * self, __int64 val, unsigned length);
 
 ECLRTL_API short rtlRevInt2(const void * data);
 ECLRTL_API int rtlRevInt3(const void * data);
@@ -721,6 +735,31 @@ ECLRTL_API void rtlFreeException(IException * e);
 
 ECLRTL_API IAtom * rtlCreateFieldNameAtom(const char * name);
 
+/**
+ * Wrapper function to encode input binary data with base 64 code.
+ *
+ * @param tlen          Encoded string length
+ * @param tgt           Pointer to encoded string
+ * @param slen          Input binary data length
+ * @param src           Pointer to input binary data
+ * @see                 void JBASE64_Encode(const void *data, long length, StringBuffer &out, bool addLineBreaks=true)
+ *                      function in jutil library
+ */
+ECLRTL_API void rtlBase64Encode(size32_t & tlen, char * & tgt, size32_t slen, const void * src);
+
+/**
+ * Wrapper function to decode base 64 encoded string.
+ * It handles when the decoder fails to decode string.
+ *
+ * @param tlen          Decoded data length
+ * @param tgt           Pointer to decoded data
+ * @param slen          Input string length
+ * @param src           Pointer to input string
+ * @see                 bool JBASE64_Decode(const char *in, long length, StringBuffer &out) function
+ *                      in jutil library.
+ */
+ECLRTL_API void rtlBase64Decode(size32_t & tlen, void * & tgt, size32_t slen, const char * src);
+
 //Test functions:
 ECLRTL_API void rtlTestGetPrimes(size32_t & len, void * & data);
 ECLRTL_API void rtlTestFibList(bool & outAll, size32_t & outSize, void * & outData, bool inAll, size32_t inSize, const void * inData);
@@ -729,8 +768,16 @@ ECLRTL_API unsigned rtlDelayReturn(unsigned value, unsigned sleepTime);
 
 ECLRTL_API bool rtlGPF();
 
+
+interface IRowStream;
+
 //-----------------------------------------------------------------------------
 
+ECLRTL_API IRowStream * createRowStream(size32_t count, byte * * rowset);
+
+//-----------------------------------------------------------------------------
+struct RtlTypeInfo;
+class ARowBuilder;
 interface IEmbedFunctionContext : extends IInterface
 {
     virtual void bindBooleanParam(const char *name, bool val) = 0;
@@ -758,6 +805,12 @@ interface IEmbedFunctionContext : extends IInterface
     virtual void importFunction(size32_t len, const char *function) = 0;
     virtual void compileEmbeddedScript(size32_t len, const char *script) = 0;
     virtual void callFunction() = 0;
+
+    virtual IRowStream *getDatasetResult(IEngineRowAllocator * _resultAllocator) = 0;
+    virtual byte * getRowResult(IEngineRowAllocator * _resultAllocator) = 0;
+    virtual size32_t getTransformResult(ARowBuilder & builder) = 0;
+    virtual void bindRowParam(const char *name, IOutputMetaData & metaVal, byte *val) = 0;
+    virtual void bindDatasetParam(const char *name, IOutputMetaData & metaVal, IRowStream * val) = 0;
 };
 
 interface IEmbedContext : extends IInterface

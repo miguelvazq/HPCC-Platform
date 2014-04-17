@@ -40,7 +40,7 @@ public:
     ~BaseChooseSetsActivity()
     {
         if (tallies)
-            free(tallies);
+            delete [] tallies;
     }
     virtual void init(MemoryBuffer & data, MemoryBuffer &slaveData)
     {
@@ -52,7 +52,7 @@ public:
     {
         numSets = helper->getNumSets();
         if (tallies)
-            free(tallies);
+            delete [] tallies;
         tallies = new unsigned[numSets];
 
         memset(tallies, 0, sizeof(unsigned)*numSets);
@@ -73,7 +73,7 @@ public:
         ActPrintLog("CHOOSESETS: Is Local");
         input.set(inputs.item(0));
         startInput(input);
-        dataLinkStart("CHOOSESETS", container.queryId());
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -166,7 +166,7 @@ public:
         done = false;
         input.setown(createDataLinkSmartBuffer(this, inputs.item(0),CHOOSESETS_SMART_BUFFER_SIZE,isSmartBufferSpillNeeded(this),false,RCUNBOUND,NULL,false,&container.queryJob().queryIDiskUsage())); // only allow spill if input can stall
         startInput(input);
-        dataLinkStart("CHOOSESETS", container.queryId());       
+        dataLinkStart();
     }
     virtual void stop()
     {
@@ -320,7 +320,7 @@ public:
         first = true;
         input.setown(createDataLinkSmartBuffer(this, inputCounter,CHOOSESETSPLUS_SMART_BUFFER_SIZE,true,false,RCUNBOUND,this,false,&container.queryJob().queryIDiskUsage())); // read all input
         startInput(input);
-        dataLinkStart("CHOOSESETS", container.queryId());       
+        dataLinkStart();
     }
     virtual void stop()
     {

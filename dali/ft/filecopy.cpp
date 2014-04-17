@@ -46,6 +46,7 @@
 #define PARTITION_RECOVERY_LIMIT 1000
 #define EXPECTED_RESPONSE_TIME          (60 * 1000)
 #define RESPONSE_TIME_TIMEOUT           (60 * 60 * 1000)
+#define DEFAULT_MAX_XML_RECORD_SIZE 0x100000
 
 //#define CLEANUP_RECOVERY
 
@@ -350,7 +351,7 @@ bool FileTransferThread::performTransfer()
 
         msg.append(progress.ordinality());
         ForEachItemIn(i, progress)
-            progress.item(i).serialize(msg);
+            progress.item(i).serializeCore(msg);
 
         msg.append(sprayer.throttleNicSpeed);
         msg.append(sprayer.compressedInput);
@@ -363,6 +364,10 @@ bool FileTransferThread::performTransfer()
         sprayer.srcFormat.serializeExtra(msg, 1);
         sprayer.tgtFormat.serializeExtra(msg, 1);
 
+        ForEachItemIn(i2, progress)
+            progress.item(i2).serializeExtra(msg, 1);
+
+        //NB: Any extra data must be appended at the end...
         if (!catchWriteBuffer(socket, msg))
             throwError1(RFSERR_TimeoutWaitConnect, url.str());
 
@@ -379,7 +384,8 @@ bool FileTransferThread::performTransfer()
                 break;
 
             OutputProgress newProgress;
-            newProgress.deserialize(msg);
+            newProgress.deserializeCore(msg);
+            newProgress.deserializeExtra(msg, 1);
             sprayer.updateProgress(newProgress);
 
             LOG(MCdebugProgress(10000), job, "Update %s: %d %"I64F"d->%"I64F"d", url.str(), newProgress.whichPartition, newProgress.inputLength, newProgress.outputLength);
@@ -1130,6 +1136,11 @@ void FileSprayer::calculateSprayPartition()
         const SocketEndpoint & ep = cur.filename.queryEndpoint();
         IFormatPartitioner * partitioner = createFormatPartitioner(ep, srcFormat, tgtFormat, calcOutput, queryFixedSlave(), wuid);
 
+
+        // CSV record structure discovery of every source
+        bool isRecordStructurePresent = options->getPropBool("@recordStructurePresent", false);
+        partitioner->setRecordStructurePresent(isRecordStructurePresent);
+
         RemoteFilename name;
         name.set(cur.filename);
         setCanAccessDirectly(name);
@@ -1159,6 +1170,16 @@ void FileSprayer::calculateSprayPartition()
 
     ForEachItemIn(idx2, partitioners)
         partitioners.item(idx2).getResults(partition);
+
+    if (partitioners.ordinality() > 0)
+    {
+        // Store discovered CSV record structure into target logical file.
+        StringBuffer recStru;
+        partitioners.item(0).getRecordStructure(recStru);
+        IDistributedFile * target = distributedTarget.get();
+        target->setECL(recStru.str());
+    }
+
 }
 
 void FileSprayer::calculateOutputOffsets()
@@ -1241,6 +1262,18 @@ void FileSprayer::checkFormats()
             }
             break;
         }
+    }
+    switch (srcType)
+    {
+        case FFTutf: case FFTutf8: case FFTutf8n: case FFTutf16: case FFTutf16be: case FFTutf16le: case FFTutf32: case FFTutf32be: case FFTutf32le:
+            if (srcFormat.rowTag)
+            {
+                srcFormat.maxRecordSize = srcFormat.maxRecordSize > DEFAULT_MAX_XML_RECORD_SIZE ? srcFormat.maxRecordSize : DEFAULT_MAX_XML_RECORD_SIZE;
+            }
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -2309,7 +2342,7 @@ void FileSprayer::setSource(IDistributedFile * source)
             next.mirrorFilename.set(curPart->getFilename(rfn,1));
         // don't set the following here - force to check disk
         //next.size = curPart->getFileSize(true,false);
-        //next.psize = curPart->getDiskSize();
+        //next.psize = curPart->getDiskSize(true,false);
         sources.append(next);
     }
 
@@ -2654,6 +2687,11 @@ void FileSprayer::spray()
     if (!allowSplit() && querySplitPrefix())
         throwError(DFTERR_SplitNoSplitClash);
 
+    aindex_t sourceSize = sources.ordinality();
+    bool failIfNoSourceFile = options->getPropBool("@failIfNoSourceFile");
+
+    if ((sourceSize == 0) && failIfNoSourceFile)
+        throwError(DFTERR_NoFilesMatchWildcard);
 
     LocalAbortHandler localHandler(daftAbortHandler);
 
@@ -2723,7 +2761,8 @@ void FileSprayer::spray()
     addEmptyFilesToPartition();
     
     derivePartitionExtra();
-    displayPartition();
+    if (partition.ordinality() < 1000)
+        displayPartition();
     if (isRecovering)
         displayProgress(progress);
 
@@ -2814,6 +2853,10 @@ void FileSprayer::updateTargetProperties()
 
 
                 curProps.setPropInt64(FAsize, partLength);
+
+                if (compressOutput)
+                    curProps.setPropInt64(FAcompressedSize, curProgress.compressedPartSize);
+
                 TargetLocation & curTarget = targets.item(cur.whichOutput);
                 if (!curTarget.modifiedTime.isNull())
                 {

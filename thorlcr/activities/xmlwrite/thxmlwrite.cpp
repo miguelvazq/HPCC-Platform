@@ -33,10 +33,10 @@ public:
     {
         helper = (IHThorXmlWriteArg *)queryHelper();
     }
-    void init()
+    virtual void init()
     {
-        assertex(!(helper->getFlags() & TDWextend));
         CWriteMasterBase::init();
+        assertex(!(helper->getFlags() & TDWextend));
 
         IPropertyTree &props = fileDesc->queryProperties();
         StringBuffer rowTag;
@@ -52,6 +52,7 @@ public:
         }
         props.setProp("@rowTag", rowTag.str());
         props.setProp("@format", "utf8n");
+        props.setProp("@kind", "xml");
     }
 };
 

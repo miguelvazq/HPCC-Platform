@@ -44,7 +44,6 @@ private:
     IPropertyTree* getSoftwareNode(const char* compType, const char* compName);
     bool addRoxieServers(const char* xmlStr);
     bool checkComputerUse(/*IPropertyTree* pComputerNode*/ const char* szComputer, IPropertyTree* pParentNode) const;
-    bool makePlatformSpecificAbsolutePath(const char* computer, StringBuffer& path);
     IPropertyTree* addLegacyServer(const char* name, IPropertyTree* pServer, IPropertyTree*pFarm, const char* roxieClusterName);
     void setComputerState(IPropertyTree* pNode, COMPUTER_STATE state);
     void setAttribute(IPropertyTree* pNode, const char* szName, const char* szValue);
@@ -61,15 +60,10 @@ private:
     void deleteFarm(IPropertyTree* pRoxieCluster, const char* pszFarm);
     void deleteServer(IPropertyTree* pRoxieCluster, const char* pszFarm, const char* pszServer);
     bool deleteRoxieServers(const char* xmlArg);
+    bool deleteRoxiePorts(const char* xmlArg);
     bool EnsureInRange(const char* psz, UINT low, UINT high, const char* caption);
     bool handleRoxieSlaveConfig(const char* params);
     bool handleReplaceRoxieServer(const char* xmlArg);
-    void addReplicateConfig(IPropertyTree* pSlaveNode, int channel, const char* drive, const char* netAddress, IPropertyTree* pRoxie);
-    bool GenerateCyclicRedConfig(IPropertyTree* pRoxie, IPropertyTreePtrArray& computers, const char* copies, const char* pszOffset,
-                                                             const char* dir1, const char* dir2, const char* dir3);
-    bool GenerateOverloadedConfig(IPropertyTree* pRoxie, IPropertyTreePtrArray& computers, const char* copies,
-                                                                const char* dir1, const char* dir2, const char* dir3);
-    bool GenerateFullRedConfig(IPropertyTree* pRoxie, int copies, IPropertyTreePtrArray& computers, const char* dir1);
     void RemoveSlaves(IPropertyTree* pRoxie, bool bLegacySlaves/*=false*/);
     void RenameThorInstances(IPropertyTree* pThor);
     void UpdateThorAttributes(IPropertyTree* pParentNode);

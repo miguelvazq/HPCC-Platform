@@ -234,8 +234,6 @@ class CSubscriberContainerList;
 class CRemoteTreeBase : public PTree
 {
 public:
-    IMPLEMENT_IINTERFACE;
-
     CRemoteTreeBase(MemoryBuffer &mb, CPState _state=CPS_Unchanged);
     CRemoteTreeBase(const char *name=NULL, IPTArrayValue *value=NULL, ChildMap *children=NULL, CPState _state=CPS_Unchanged);
     void reset(unsigned state, bool sub=false);
@@ -450,6 +448,8 @@ public:
                 return out.append("Dirty client cache members used");
             case SDSExcpt_LockHeld:
                 return out.append("Lock held");
+            case SDSExcpt_SubscriptionParseError:
+                return out.append("Subscription parse error");
             default:
                 return out.append("INTERNAL ERROR");
         }

@@ -23,7 +23,7 @@
 #include "dautils.hpp"
 
 enum RoxieFileStatus { FileSizeMismatch, FileDateMismatch, FileCRCMismatch, FileIsValid, FileNotFound };
-enum RoxieFileType { ROXIE_KEY, ROXIE_FILE };
+enum RoxieFileType { ROXIE_KEY, ROXIE_FILE, ROXIE_PATCH, ROXIE_BASEINDEX };
 interface IFileIOArray;
 interface IRoxieFileCache;
 
@@ -54,11 +54,10 @@ interface ILazyFileIO : extends IFileIO
     virtual void removeCache(const IRoxieFileCache *) = 0;
 };
 
-extern ILazyFileIO *createDynamicFile(const char *id, IPartDescriptor *pdesc, RoxieFileType fileType, int numParts, SocketEndpoint &cloneFrom);
-
 interface IRoxieFileCache : extends IInterface
 {
-    virtual ILazyFileIO *lookupFile(const char *lfn, RoxieFileType fileType, IPartDescriptor *pdesc, unsigned numParts, const StringArray &deployedLocationInfo, bool startFileCopy) = 0;
+    virtual ILazyFileIO *lookupFile(const char *lfn, RoxieFileType fileType, IPartDescriptor *pdesc, unsigned numParts,
+                                      unsigned replicationLevel, const StringArray &deployedLocationInfo, bool startFileCopy) = 0;
     virtual RoxieFileStatus fileUpToDate(IFile *f, offset_t size, const CDateTime &modified, unsigned crc, bool isCompressed) = 0;
     virtual int numFilesToCopy() = 0;
     virtual void closeExpired(bool remote) = 0;
@@ -86,7 +85,7 @@ interface IDefRecordMeta;
 interface IFilePartMap;
 class TranslatorArray;
 interface IInMemoryIndexManager ;
-interface IRoxiePackage;
+interface IResolvedFileCache;
 
 interface IResolvedFile : extends ISimpleSuperFileEnquiry
 {
@@ -103,7 +102,7 @@ interface IResolvedFile : extends ISimpleSuperFileEnquiry
 
     virtual const char *queryPhysicalName() const = 0; // Returns NULL unless in local file mode.
     virtual const char *queryFileName() const = 0;
-    virtual void setCache(const IRoxiePackage *cache) = 0;
+    virtual void setCache(IResolvedFileCache *cache) = 0;
     virtual bool isAlive() const = 0;
     virtual const IPropertyTree *queryProperties() const = 0;
 
@@ -119,7 +118,7 @@ interface IResolvedFileCreator : extends IResolvedFile
     virtual void addSubFile(IFileDescriptor *sub, IFileDescriptor *remoteSub) = 0;
 };
 
-extern IResolvedFileCreator *createResolvedFile(const char *lfn, const char *physical);
+extern IResolvedFileCreator *createResolvedFile(const char *lfn, const char *physical, bool isSuperFile);
 extern IResolvedFile *createResolvedFile(const char *lfn, const char *physical, IDistributedFile *dFile, IRoxieDaliHelper *daliHelper, bool cacheIt, bool writeAccess);
 
 interface IRoxiePublishCallback

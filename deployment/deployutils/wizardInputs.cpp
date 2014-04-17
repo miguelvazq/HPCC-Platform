@@ -24,12 +24,11 @@
 #include "XMLTags.h"
 #include "jencrypt.hpp"
 #include "buildset.hpp"
+#include "confighelper.hpp"
 #include "build-config.h"
 
 #define STANDARD_CONFIGXMLDIR COMPONENTFILES_DIR"/configxml/"
-#define STANDARD_CONFIG_BUILDSETFILE "buildset.xml"
 #define STANDARD_CONFIG_DIR CONFIG_DIR
-#define STANDARD_CONFIG_ALGORITHMFILE "genenvrules.conf"
 
 //---------------------------------------------------------------------------
 //  CWizardInputs
@@ -125,13 +124,21 @@ void CWizardInputs::setEnvironment()
      Owned<IProperties> pEnvParams = createProperties(pEnvConfFile);
      StringBuffer sb, fileName;
      
-     fileName.append((pEnvParams->queryProp("path")!= NULL ? (sb.clear().append(pEnvParams->queryProp("path")).append("/componentfiles/configxml/")) : STANDARD_CONFIGXMLDIR));
-     fileName.append((pParams->queryProp("buildset") != NULL ? (sb.clear().append(pParams->queryProp("buildset"))) : STANDARD_CONFIG_BUILDSETFILE));
+     CConfigHelper *pConfigHelper = CConfigHelper::getInstance(m_cfg, m_service.str());
 
-     if(fileName.length() && checkFileExists(fileName.str()))
-       m_buildSetTree.setown(createPTreeFromXMLFile(fileName.str()));
-     else
-       throw MakeStringException( -1 , "The buildSetFile %s does not exists", fileName.str());
+     if (pConfigHelper == NULL)
+     {
+         throw MakeStringException( -1 , "Error loading buildset from configuration");
+     }
+
+     IPropertyTree* pBuildSet = pConfigHelper->getBuildSetTree();
+
+     if (strlen(pConfigHelper->getBuildSetFileName()) == 0 || pBuildSet == NULL)
+     {
+         throw MakeStringException( -1 , "The buildset file %s/%s does not exist", pConfigHelper->getBuildSetFilePath(), pConfigHelper->getBuildSetFileName());
+     }
+
+     m_buildSetTree.setown(pBuildSet);
      
      fileName.clear().append((pEnvParams->queryProp("configs") != NULL ? (sb.clear().append(pEnvParams->queryProp("configs")).append("/")): STANDARD_CONFIG_DIR));
      fileName.append((pParams->queryProp("wizardalgorithm") != NULL ? (sb.clear().append(pParams->queryProp("wizardalgorithm"))) : STANDARD_CONFIG_ALGORITHMFILE));
@@ -154,6 +161,7 @@ void CWizardInputs::setWizardRules()
 
    if(m_algProp)
    {
+     CConfigHelper::getInstance()->addPluginsToGenEnvRules(m_algProp.get());
      Owned<IPropertyIterator> iter = m_algProp->getIterator();
      StringBuffer prop;
      ForEach(*iter)
@@ -215,7 +223,7 @@ void CWizardInputs::setWizardRules()
             continue;
 
           if (type > 0 && type < 5)
-            m_roxieAgentRedType.clear().append(roxieRedTypes[type]);
+            m_roxieAgentRedType.clear().append(roxieRedTypes[type-1]);
           else
             continue;
 
@@ -795,7 +803,7 @@ unsigned CWizardInputs::getCntForAlreadyAssignedIPS(const char* buildSetName)
 
 void CWizardInputs::addRoxieThorClusterToEnv(IPropertyTree* pNewEnvTree, CInstDetails* pInstDetails, const char* buildSetName, bool genRoxieOnDemand)
 {
-  StringBuffer xmlForRoxieServer, xmlForRoxieSlave, xpath, compName, computerName, msg;
+  StringBuffer xmlForRoxiePorts, xmlForRoxieServers, xpath, compName, computerName, msg;
     
   if(!strcmp(buildSetName, "roxie"))
   {
@@ -803,39 +811,37 @@ void CWizardInputs::addRoxieThorClusterToEnv(IPropertyTree* pNewEnvTree, CInstDe
     xpath.clear().appendf("./%s/%s/%s", XML_TAG_SOFTWARE, XML_TAG_ROXIECLUSTER, XML_ATTR_NAME);
     compName.clear().append(pNewEnvTree->queryProp(xpath.str()));
     
-    xmlForRoxieServer.clear().appendf("<RoxieData type=\"RoxieFarm\" parentName=\"\" roxieName=\"%s\" ", compName.str());
+    xmlForRoxiePorts.clear().appendf("<RoxieData type=\"RoxieFarm\" parentName=\"\" roxieName=\"%s\" ", compName.str());
 
     if (genRoxieOnDemand)
-      xmlForRoxieServer.append("port=\"0\" >");
+      xmlForRoxiePorts.append("port=\"0\" >");
     else
-      xmlForRoxieServer.append(">");
+      xmlForRoxiePorts.append(">");
 
-    if (m_roxieNodes == 1)
-      xmlForRoxieSlave.clear().appendf("<RoxieData type=\"None\" val1=\"undefined\" val2=\"undefined\" roxieName=\"%s\" >", compName.str());
-    else
-      xmlForRoxieSlave.clear().appendf("<RoxieData type=\"%s\" val1=\"%d\" val2=\"%d\" roxieName=\"%s\" >", 
-                                        m_roxieAgentRedType.str(), 
-                                        m_roxieAgentRedChannels, m_roxieAgentRedOffset, compName.str());
+    if (m_roxieNodes >= 1)
+      xmlForRoxieServers.clear().appendf("<RoxieData type=\"None\" roxieName=\"%s\" >", compName.str());
 
     if(pInstDetails)
     {
       StringArray& ipAssignedToComp = pInstDetails->getIpAssigned();
 
+      xmlForRoxieServers.append("<Instances>");
       ForEachItemIn(i, ipAssignedToComp)
       {
         xpath.clear().appendf("./%s/%s/[%s=\"%s\"]", XML_TAG_HARDWARE, XML_TAG_COMPUTER, XML_ATTR_NETADDRESS, ipAssignedToComp.item(i));
         IPropertyTree* pHardTemp = pNewEnvTree->queryPropTree(xpath.str());
         if(pHardTemp){
-         xmlForRoxieServer.appendf("<Component name=\"%s\" />", pHardTemp->queryProp("./@name"));
-         xmlForRoxieSlave.appendf("<Computer name=\"%s\" />", pHardTemp->queryProp("./@name"));
+         xmlForRoxiePorts.appendf("<Component name=\"%s\" />", pHardTemp->queryProp("./@name"));
+         xmlForRoxieServers.appendf("<Instance name=\"%s\"/>", pHardTemp->queryProp("./@name"));
         }
       }
-      xmlForRoxieServer.append("</RoxieData>");
-      xmlForRoxieSlave.append("</RoxieData>");
-      handleRoxieOperation(pNewEnvTree, "AddRoxieFarm", xmlForRoxieServer.str());
+      xmlForRoxieServers.append("</Instances>");
+      xmlForRoxiePorts.append("</RoxieData>");
+      xmlForRoxieServers.append("</RoxieData>");
+      handleRoxieOperation(pNewEnvTree, "AddRoxieFarm", xmlForRoxiePorts.str());
 
       if (!genRoxieOnDemand)
-        handleRoxieOperation(pNewEnvTree, "RoxieSlaveConfig" ,xmlForRoxieSlave.str());
+        handleRoxieOperation(pNewEnvTree, "RoxieSlaveConfig" ,xmlForRoxieServers.str());
     }
     xpath.clear().appendf("./%s/%s[%s=\"%s\"]/%s[%s=\"\"]", XML_TAG_SOFTWARE, XML_TAG_ROXIECLUSTER, XML_ATTR_NAME, compName.str(), XML_TAG_ROXIE_SERVER, XML_ATTR_NETADDRESS);
     pNewEnvTree->removeProp(xpath.str());

@@ -65,6 +65,7 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_OVERWRITE_ENV NULL
 
 #define ECLOPT_DONT_COPY_FILES "--no-files"
+#define ECLOPT_ALLOW_FOREIGN "--allow-foreign"
 
 #define ECLOPT_ACTIVE "--active"
 #define ECLOPT_ALL "--all"
@@ -74,6 +75,16 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_ACTIVATE_S "-A"
 #define ECLOPT_ACTIVATE_INI "activateDefault"
 #define ECLOPT_ACTIVATE_ENV NULL
+#define ECLOPT_SUSPEND_PREVIOUS "--suspend-prev"
+#define ECLOPT_SUSPEND_PREVIOUS_S "-sp"
+#define ECLOPT_SUSPEND_PREVIOUS_INI "suspendPrevDefault"
+#define ECLOPT_SUSPEND_PREVIOUS_ENV "ACTIVATE_SUSPEND_PREVIOUS"
+#define ECLOPT_DELETE_PREVIOUS "--delete-prev"
+#define ECLOPT_DELETE_PREVIOUS_S "-dp"
+#define ECLOPT_DELETE_PREVIOUS_INI "deletePrevDefault"
+#define ECLOPT_DELETE_PREVIOUS_ENV "ACTIVATE_DELETE_PREVIOUS"
+#define ECLOPT_CHECK_DFS "--check-dfs"
+#define ECLOPT_GLOBAL_SCOPE "--global-scope"
 
 #define ECLOPT_MAIN "--main"
 #define ECLOPT_MAIN_S "-main"  //eclcc compatible format
@@ -90,6 +101,8 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_WARN_TIME_LIMIT "--warnTimeLimit"
 #define ECLOPT_PRIORITY "--priority"
 #define ECLOPT_COMMENT "--comment"
+
+#define ECLOPT_CHECK_PACKAGEMAPS "--check-packagemaps"
 
 #define ECLOPT_RESULT_LIMIT "--limit"
 #define ECLOPT_RESULT_LIMIT_INI "resultLimit"
@@ -116,15 +129,19 @@ typedef IEclCommand *(*EclCommandFactory)(const char *cmdname);
 #define ECLOPT_PMID_S "-pm"
 #define ECLOPT_QUERYID "--queryid"
 
-
 #define ECLOPT_DALIIP "--daliip"
 #define ECLOPT_PROCESS "--process"
 #define ECLOPT_PROCESS_S "-p"
+#define ECLOPT_SOURCE_PROCESS "--source-process"
+
+
 
 #define ECLOPT_LIB_PATH_S "-L"
 #define ECLOPT_IMP_PATH_S "-I"
 #define ECLOPT_MANIFEST "--manifest"
 #define ECLOPT_MANIFEST_DASH "-manifest"
+#define ECLOPT_LEGACY "--legacy"
+#define ECLOPT_LEGACY_DASH "-legacy"
 
 #define ECLOPT_VERBOSE "--verbose"
 #define ECLOPT_VERBOSE_S "-v"
@@ -187,7 +204,7 @@ class EclCmdCommon : public CInterface, implements IEclCommand
 {
 public:
     IMPLEMENT_IINTERFACE;
-    EclCmdCommon() : optVerbose(false), optSSL(false)
+    EclCmdCommon(bool _usesESP=true) : optVerbose(false), optSSL(false), usesESP(_usesESP)
     {
     }
     virtual eclCmdOptionMatchIndicator matchCommandLineOption(ArgvIterator &iter, bool finalAttempt=false);
@@ -196,14 +213,17 @@ public:
     virtual void usage()
     {
         fprintf(stdout,
-            "   --help                 display usage information for the given command\n"
-            "   -v, --verbose          output additional tracing information\n"
-            "   -s, --server=<ip>      ip of server running ecl services (eclwatch)\n"
-            "   -ssl, --ssl            use SSL to secure the connection to the server\n"
-            "   --port=<port>          ecl services port\n"
-            "   -u, --username=<name>  username for accessing ecl services\n"
-            "   -pw, --password=<pw>   password for accessing ecl services\n"
-        );
+            "   --help                 Display usage information for the given command\n"
+            "   -v, --verbose          Output additional tracing information\n"
+          );
+        if (usesESP)
+            fprintf(stdout,
+                "   -s, --server=<ip>      IP of server running ecl services (eclwatch)\n"
+                "   -ssl, --ssl            Use SSL to secure the connection to the server\n"
+                "   --port=<port>          ECL services port\n"
+                "   -u, --username=<name>  Username for accessing ecl services\n"
+                "   -pw, --password=<pw>   Password for accessing ecl services\n"
+              );
     }
 public:
     StringAttr optServer;
@@ -212,12 +232,13 @@ public:
     StringAttr optPassword;
     bool optVerbose;
     bool optSSL;
+    bool usesESP;
 };
 
 class EclCmdWithEclTarget : public EclCmdCommon
 {
 public:
-    EclCmdWithEclTarget() : optNoArchive(false), optResultLimit((unsigned)-1)
+    EclCmdWithEclTarget() : optLegacy(false), optNoArchive(false), optResultLimit((unsigned)-1)
     {
     }
     virtual eclCmdOptionMatchIndicator matchCommandLineOption(ArgvIterator &iter, bool finalAttempt=false);
@@ -227,15 +248,16 @@ public:
     {
         EclCmdCommon::usage();
         fprintf(stdout,
-            "   --main=<definition>    definition to use from legacy ECL repository\n"
-            "   --snapshot,-sn=<label> snapshot label to use from legacy ECL repository\n"
-            "   --ecl-only             send ecl text to hpcc without generating archive\n"
-            "   --limit=<limit>        sets the result limit for the query, defaults to 100\n"
-            "   -f<option>[=value]     set an ECL option (equivalent to #option)\n"
+            "   --main=<definition>    Definition to use from legacy ECL repository\n"
+            "   --snapshot,-sn=<label> Snapshot label to use from legacy ECL repository\n"
+            "   --ecl-only             Send ecl text to hpcc without generating archive\n"
+            "   --limit=<limit>        Sets the result limit for the query, defaults to 100\n"
+            "   -f<option>[=value]     Set an ECL option (equivalent to #option)\n"
             " eclcc options:\n"
             "   -Ipath                 Add path to locations to search for ecl imports\n"
             "   -Lpath                 Add path to locations to search for system libraries\n"
             "   --manifest             Specify path to manifest file\n"
+            "   --legacy               Use legacy import semantics (deprecated)\n"
         );
     }
 public:
@@ -249,6 +271,7 @@ public:
     IArrayOf<IEspNamedValue> debugValues;
     unsigned optResultLimit;
     bool optNoArchive;
+    bool optLegacy;
 };
 
 class EclCmdWithQueryTarget : public EclCmdCommon

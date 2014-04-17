@@ -378,8 +378,15 @@ bool CDfuPlusHelper::variableSpray(const char* srcxml,const char* srcip,const ch
         if(terminator && *terminator)
             req->setSourceCsvTerminate(terminator);
         const char* quote = globals->queryProp("quote");
-        if(quote && *quote)
+        if(quote)
+        {
+            // Pass quote definition string from command line if defined
+            // even it is empty to override default value
             req->setSourceCsvQuote(quote);
+        }
+        const char* escape = globals->queryProp("escape");
+        if(escape && *escape)
+            req->setSourceCsvEscape(escape);
     }
     else 
         encoding = format; // may need extra later
@@ -422,6 +429,12 @@ bool CDfuPlusHelper::variableSpray(const char* srcxml,const char* srcip,const ch
         req->setThrottle(globals->getPropInt("throttle"));
     if(globals->hasProp("transferbuffersize"))
         req->setTransferBufferSize(globals->getPropInt("transferbuffersize"));
+
+    if(globals->hasProp("failIfNoSourceFile"))
+        req->setFailIfNoSourceFile(globals->getPropBool("failIfNoSourceFile",false));
+
+    if(globals->hasProp("recordStructurePresent"))
+        req->setRecordStructurePresent(globals->getPropBool("recordStructurePresent",false));
 
     if(srcxml == NULL)
         info("\nVariable spraying from %s on %s to %s\n", srcfile, srcip, dstname);
@@ -886,14 +899,6 @@ int CDfuPlusHelper::rundafs()
 
 int CDfuPlusHelper::remove()
 {
-    bool nodelete = false;
-    const char* ndstr = NULL;
-    if((ndstr = globals->queryProp("nodelete")) != NULL)
-    {
-        if(strcmp(ndstr, "1") == 0)
-        nodelete = true;
-    }
-
     StringArray files;
     const char* name = globals->queryProp("name");
     const char* names = globals->queryProp("names");
@@ -960,7 +965,6 @@ int CDfuPlusHelper::remove()
     
     Owned<IClientDFUArrayActionRequest> req = dfuclient->createDFUArrayActionRequest();
     req->setType("Delete");
-    req->setNoDelete(nodelete);
     req->setLogicalFiles(files);
 
     Owned<IClientDFUArrayActionResponse> resp = dfuclient->DFUArrayAction(req);

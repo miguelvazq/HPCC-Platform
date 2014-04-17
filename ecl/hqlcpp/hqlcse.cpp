@@ -116,6 +116,9 @@ bool canCreateTemporary(IHqlExpression * expr)
     case type_transform:
     case type_null:
     case type_void:
+    case type_rule:
+    case type_pattern:
+    case type_token:
         return false;
     default:
         return true;
@@ -204,8 +207,8 @@ bool CseSpotterInfo::useInverseForAlias()
 
 
 static HqlTransformerInfo cseSpotterInfo("CseSpotter");
-CseSpotter::CseSpotter() 
-: NewHqlTransformer(cseSpotterInfo)
+CseSpotter::CseSpotter(bool _spotCseInIfDatasetConditions)
+: NewHqlTransformer(cseSpotterInfo), spotCseInIfDatasetConditions(_spotCseInIfDatasetConditions)
 {
     canAlias = true;
     isAssociated = false;
@@ -285,7 +288,7 @@ void CseSpotter::analyseExpr(IHqlExpression * expr)
         extra->canAlias = true;
 
     bool savedCanAlias = canAlias;
-    if (expr->isDataset() && (op != no_select))// && (op != no_if))
+    if (expr->isDataset() && (op != no_select) && (!spotCseInIfDatasetConditions || (op != no_if)))
     {
         //There is little point looking for CSEs within dataset expressions, because only a very small
         //minority which would correctly cse, and it can cause lots of problems - e.g., join conditions.
@@ -531,13 +534,8 @@ bool CseSpotter::checkPotentialCSE(IHqlExpression * expr, CseSpotterInfo * extra
         return true;
     case no_substring:
         {
-            IHqlExpression * child = expr->queryChild(0);
-//          if (queryBodyExtra(child)->isAliased())
-            {
-                SubStringHelper helper(expr);
-                return !helper.canGenerateInline();
-            }
-            return true;
+            SubStringHelper helper(expr);
+            return !helper.canGenerateInline();
         }
     case no_cast:
     case no_implicitcast:
@@ -769,7 +767,7 @@ void CseScopeTransformer::analyseExpr(IHqlExpression * expr)
     //Add here so the cse are in the correct order to cope with dependencies...
     if (op == no_alias)
     {
-        assertex(!expr->hasProperty(globalAtom));
+        assertex(!expr->hasAttribute(globalAtom));
         allCSEs.append(*LINK(splitter));
     }
 }
@@ -996,7 +994,7 @@ void CseScopeTransformer::analyseExpr(IHqlExpression * expr)
     node_operator op = expr->getOperator();
     if (op == no_alias)
     {
-        assertex(!expr->hasProperty(globalAtom));
+        assertex(!expr->hasAttribute(globalAtom));
 
         CseScopeInfo * splitter = queryExtra(expr);
 
@@ -1110,7 +1108,7 @@ ANewTransformInfo * CseScopeTransformer::createTransformInfo(IHqlExpression * ex
 #endif
 
 
-IHqlExpression * spotScalarCSE(IHqlExpression * expr, IHqlExpression * limit)
+IHqlExpression * spotScalarCSE(IHqlExpression * expr, IHqlExpression * limit, bool spotCseInIfDatasetConditions)
 {
     if (expr->isConstant())
         return LINK(expr);
@@ -1127,7 +1125,7 @@ IHqlExpression * spotScalarCSE(IHqlExpression * expr, IHqlExpression * limit)
     bool addedAliases = false;
     //First spot the aliases - so that restructuring the ands doesn't lose any existing aliases.
     {
-        CseSpotter spotter;
+        CseSpotter spotter(spotCseInIfDatasetConditions);
         spotter.analyse(transformed, 0);
         if (spotter.foundCandidates())
         {
@@ -1164,9 +1162,9 @@ IHqlExpression * spotScalarCSE(IHqlExpression * expr, IHqlExpression * limit)
 }
 
 
-void spotScalarCSE(SharedHqlExpr & expr, SharedHqlExpr & associated, IHqlExpression * limit, IHqlExpression * invariantSelector)
+void spotScalarCSE(SharedHqlExpr & expr, SharedHqlExpr & associated, IHqlExpression * limit, IHqlExpression * invariantSelector, bool spotCseInIfDatasetConditions)
 {
-    CseSpotter spotter;
+    CseSpotter spotter(spotCseInIfDatasetConditions);
     spotter.analyse(expr, 0);
     if (associated)
         spotter.analyseAssociated(associated, 0);
@@ -1181,9 +1179,9 @@ void spotScalarCSE(SharedHqlExpr & expr, SharedHqlExpr & associated, IHqlExpress
 }
 
 
-void spotScalarCSE(HqlExprArray & exprs, HqlExprArray & associated, IHqlExpression * limit, IHqlExpression * invariantSelector)
+void spotScalarCSE(HqlExprArray & exprs, HqlExprArray & associated, IHqlExpression * limit, IHqlExpression * invariantSelector, bool spotCseInIfDatasetConditions)
 {
-    CseSpotter spotter;
+    CseSpotter spotter(spotCseInIfDatasetConditions);
     spotter.analyseArray(exprs, 0);
     ForEachItemIn(ia, associated)
         spotter.analyseAssociated(&associated.item(ia), 0);
@@ -1220,7 +1218,7 @@ static bool canHoistInvariant(IHqlExpression * expr)
 {
     if (!canCreateTemporary(expr))
     {
-        if ((expr->getOperator() != no_alias) || expr->hasProperty(globalAtom))
+        if ((expr->getOperator() != no_alias) || expr->hasAttribute(globalAtom))
             return false;
     }
     if (!expr->isPure())
@@ -1272,9 +1270,14 @@ bool TableInvariantTransformer::isInvariant(IHqlExpression * expr)
     case no_preservemeta:
         invariant = isInvariant(expr->queryChild(0));
         break;
-    case no_constant:
     case no_workunit_dataset:
     case no_getresult:
+        if (expr->hasAttribute(wuidAtom))
+            invariant = isInvariant(expr->queryAttribute(wuidAtom));
+        else
+            invariant = true;
+        break;
+    case no_constant:
     case no_getgraphresult:
         invariant = true;
         break;
@@ -1283,7 +1286,7 @@ bool TableInvariantTransformer::isInvariant(IHqlExpression * expr)
             if (!expr->isDataset())
             {
                 IHqlExpression * ds = expr->queryChild(0);
-                if (expr->hasProperty(newAtom) || ds->isDatarow())
+                if (expr->hasAttribute(newAtom) || ds->isDatarow())
                     invariant = isInvariant(ds);
             }
             break;
@@ -1313,6 +1316,9 @@ bool TableInvariantTransformer::isInvariant(IHqlExpression * expr)
         break;
     default:
         if (!isContextDependent(expr))
+        //MORE: The following line is needed if the xml/parse flags are removed from the context, but it causes problems
+        //preventing counts from being hoisted as aliases.  That is really correct - but it makes code worse for some examples.
+        //if (!isContextDependent(expr) && expr->isIndependentOfScope())
         {
             if (!expr->isAction())// && !expr->isDataset() && !expr->isDatarow())
             {
@@ -1357,7 +1363,7 @@ void TableInvariantTransformer::analyseExpr(IHqlExpression * expr)
         TableInvariantInfo * extra = queryBodyExtra(expr);
         if (op == no_alias)
         {
-            if (!expr->hasProperty(globalAtom))
+            if (!expr->hasAttribute(globalAtom))
                 extra->createAlias = true;
         }
         else
@@ -1408,7 +1414,7 @@ void TableInvariantTransformer::analyseExpr(IHqlExpression * expr)
                     switch (op)
                     {
                     case no_alias:
-                        if (!expr->hasProperty(globalAtom))
+                        if (!expr->hasAttribute(globalAtom))
                             extra->createAlias = true;
                         return;
                     default:
@@ -1548,7 +1554,7 @@ void GlobalAliasTransformer::analyseExpr(IHqlExpression * expr)
     extra->numUses++;
     if (expr->getOperator() == no_alias)
     {
-        if (expr->hasProperty(globalAtom))
+        if (expr->hasAttribute(globalAtom))
         {
 //          assertex(!containsActiveDataset(expr) || isInlineTrivialDataset(expr));
             if (!insideGlobal)
@@ -1595,16 +1601,16 @@ IHqlExpression * GlobalAliasTransformer::createTransformed(IHqlExpression * expr
     if ((expr->getOperator() == no_alias))
     {
         GlobalAliasInfo * extra = queryBodyExtra(expr);
-        if (expr->hasProperty(globalAtom))
+        if (expr->hasAttribute(globalAtom))
         {
             if (!extra->isOuter)
             {
                 if (extra->numUses == 1)
                     return LINK(transformed->queryChild(0));
-                if (!expr->hasProperty(localAtom))
+                if (!expr->hasAttribute(localAtom))
                     return appendLocalAttribute(transformed);
             }
-            else if (expr->hasProperty(localAtom))
+            else if (expr->hasAttribute(localAtom))
             {
                 //Should never occur - but just about conceivable that some kind of constant folding
                 //might cause a surrounding global alias to be removed.
@@ -1613,7 +1619,7 @@ IHqlExpression * GlobalAliasTransformer::createTransformed(IHqlExpression * expr
         }
         else
         {
-            if ((extra->numUses == 1) && !expr->hasProperty(internalAtom))
+            if ((extra->numUses == 1) && !expr->hasAttribute(internalAtom))
                 return LINK(transformed->queryChild(0));
         }
     }

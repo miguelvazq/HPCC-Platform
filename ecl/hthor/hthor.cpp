@@ -51,7 +51,6 @@
 static unsigned const hthorReadBufferSize = 0x10000;
 static offset_t const defaultHThorDiskWriteSizeLimit = I64C(10*1024*1024*1024); //10 GB, per Nigel
 static size32_t const spillStreamBufferSize = 0x10000;
-static int const defaultWorkUnitWriteLimit = 10; //10MB as thor
 static unsigned const hthorPipeWaitTimeout = 100; //100ms - fairly arbitrary choice
 
 using roxiemem::IRowManager;
@@ -635,7 +634,10 @@ void CHThorDiskWriteActivity::publish()
     if (encrypted)
         properties.setPropBool("@encrypted", true);
     if (blockcompressed)
+    {
+        properties.setPropInt64("@compressedSize", fileSize);
         properties.setPropBool("@blockCompressed", true);
+    }
     if (helper.getFlags() & TDWpersist)
         properties.setPropBool("@persistent", true);
     if (grouped)
@@ -654,7 +656,8 @@ void CHThorDiskWriteActivity::publish()
     properties.setProp("@job", agent.queryWorkUnit()->getJobName(info).str());
     setFormat(desc);
 
-    setExpiryTime(properties, helper.getExpiryDays());
+    if (helper.getFlags() & TDWexpires)
+        setExpiryTime(properties, helper.getExpiryDays());
     if (helper.getFlags() & TDWupdate)
     {
         unsigned eclCRC;
@@ -674,7 +677,7 @@ void CHThorDiskWriteActivity::publish()
         throw MakeStringException(99, "Cannot publish %s, invalid logical name", lfn.str());
     if (!logicalName.isExternal()) { // no need to publish externals
         Owned<IDistributedFile> file = queryDistributedFileDirectory().createNew(desc);
-        if((helper.getFlags() & TDWpersist) && file->getModificationTime(modifiedTime))
+        if(file->getModificationTime(modifiedTime))
             file->setAccessedTime(modifiedTime);
         file->attach(logicalName.get(), agent.queryCodeContext()->queryUserDescriptor());
         agent.logFileAccess(file, "HThor", "CREATED");
@@ -735,6 +738,7 @@ void CHThorDiskWriteActivity::setFormat(IFileDescriptor * desc)
     const char *recordECL = helper.queryRecordECL();
     if (recordECL && *recordECL)
         desc->queryProperties().setProp("ECL", recordECL);
+    desc->queryProperties().setProp("@kind", "flat");
 }
 
 void CHThorDiskWriteActivity::checkSizeLimit()
@@ -743,7 +747,7 @@ void CHThorDiskWriteActivity::checkSizeLimit()
     {
         StringBuffer msg;
         msg.append("Exceeded disk write size limit of ").append(sizeLimit).append(" while writing file ").append(mangledHelperFileName.str());
-        throw MakeStringException(0, "%s", msg.str());
+        throw MakeStringExceptionDirect(0, msg.str());
     }
 }
 
@@ -867,6 +871,10 @@ void CHThorCsvWriteActivity::setFormat(IFileDescriptor * desc)
     desc->queryProperties().setProp("@csvTerminate", rs.setown(csvInfo->getTerminator(0)));
     desc->queryProperties().setProp("@csvEscape", rs.setown(csvInfo->getEscape(0)));
     desc->queryProperties().setProp("@format","utf8n");
+    desc->queryProperties().setProp("@kind", "csv");
+    const char *recordECL = helper.queryRecordECL();
+    if (recordECL && *recordECL)
+        desc->queryProperties().setProp("ECL", recordECL);
 }
 
 //=====================================================================================================
@@ -929,6 +937,10 @@ void CHThorXmlWriteActivity::setFormat(IFileDescriptor * desc)
 {
     desc->queryProperties().setProp("@format","utf8n");
     desc->queryProperties().setProp("@rowTag",rowTag.str());
+    desc->queryProperties().setProp("@kind", "xml");
+    const char *recordECL = helper.queryRecordECL();
+    if (recordECL && *recordECL)
+        desc->queryProperties().setProp("ECL", recordECL);
 }
 
 //=====================================================================================================
@@ -952,7 +964,7 @@ void throwPipeProcessError(unsigned err, char const * preposition, char const * 
             e->Release();
         }
     }
-    throw MakeStringException(2, "%s", msg.str());
+    throw MakeStringExceptionDirect(2, msg.str());
 }
 
 //=====================================================================================================
@@ -1083,7 +1095,7 @@ void CHThorIndexWriteActivity::execute()
                 StringBuffer msg;
                 OwnedRoxieString fname(helper.getFileName());
                 msg.append("Exceeded disk write size limit of ").append(sizeLimit).append(" while writing index ").append(fname);
-                throw MakeStringException(0, "%s", msg.str());
+                throw MakeStringExceptionDirect(0, msg.str());
             }
             reccount++;
         }
@@ -1163,7 +1175,8 @@ void CHThorIndexWriteActivity::execute()
         properties.setProp("ECL", rececl);
     
 
-    setExpiryTime(properties, helper.getExpiryDays());
+    if (helper.getFlags() & TIWexpires)
+        setExpiryTime(properties, helper.getExpiryDays());
     if (helper.getFlags() & TIWupdate)
     {
         unsigned eclCRC;
@@ -3874,7 +3887,7 @@ void CHThorGroupSortActivity::getSorted()
 }
 
 //interface roxiemem::IBufferedRowCallback
-unsigned CHThorGroupSortActivity::getPriority() const
+unsigned CHThorGroupSortActivity::getSpillCost() const
 {
     return 10;
 }
@@ -5237,6 +5250,7 @@ void CHThorLookupJoinActivity::ready()
         atmostLimit = static_cast<unsigned>(-1);
     if(limitLimit==0)
         limitLimit = static_cast<unsigned>(-1);
+    isSmartJoin = (helper.getJoinFlags() & JFsmart) != 0;
     getLimitType(helper.getJoinFlags(), limitFail, limitOnFail);
 
     if((leftOuterJoin || limitOnFail) && !defaultRight)
@@ -5358,9 +5372,12 @@ const void * CHThorLookupJoinActivity::nextInGroup()
     switch (kind)
     {
     case TAKlookupjoin:
+    case TAKsmartjoin:
         return nextInGroupJoin();
     case TAKlookupdenormalize:
     case TAKlookupdenormalizegroup:
+    case TAKsmartdenormalize:
+    case TAKsmartdenormalizegroup:
         return nextInGroupDenormalize();
     }
     throwUnexpected();
@@ -5377,14 +5394,20 @@ const void * CHThorLookupJoinActivity::nextInGroupJoin()
             keepCount = keepLimit;
             if(!left)
             {
-                if(matchedGroup || eog)
+                if (isSmartJoin)
+                    left.setown(input->nextInGroup());
+
+                if(!left)
                 {
-                    matchedGroup = false;
+                    if(matchedGroup || eog)
+                    {
+                        matchedGroup = false;
+                        eog = true;
+                        return NULL;
+                    }
                     eog = true;
-                    return NULL;
+                    continue;
                 }
-                eog = true;
-                continue;
             }
             eog = false;
             gotMatch = false;
@@ -5441,7 +5464,7 @@ const void * CHThorLookupJoinActivity::nextInGroupDenormalize()
         left.setown(input->nextInGroup());
         if(!left)
         {
-            if (!matchedGroup)
+            if (!matchedGroup || isSmartJoin)
                 left.setown(input->nextInGroup());
 
             if (!left)
@@ -5456,7 +5479,7 @@ const void * CHThorLookupJoinActivity::nextInGroupDenormalize()
         const void * ret = NULL;
         if (failingLimit)
             ret = joinException(left, failingLimit);
-        else if (kind == TAKlookupdenormalize)
+        else if (kind == TAKlookupdenormalize || kind == TAKsmartdenormalize)
         {
             OwnedConstRoxieRow newLeft(left.getLink());
             unsigned rowSize = 0;
@@ -5896,10 +5919,13 @@ CHThorWorkUnitWriteActivity::CHThorWorkUnitWriteActivity(IAgentContext &_agent, 
 
 void CHThorWorkUnitWriteActivity::execute()
 {
-    grouped = (POFgrouped & helper.getFlags()) != 0;
-    size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", defaultWorkUnitWriteLimit);
+    unsigned flags = helper.getFlags();
+    grouped = (POFgrouped & flags) != 0;
+    size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", DALI_RESULT_LIMIT_DEFAULT);
+    if (flags & POFmaxsize)
+        outputLimit = helper.getMaxSize();
     if (outputLimit>DALI_RESULT_OUTPUTMAX)
-        throw MakeStringException(0, "Dali result outputs are restricted to a maximum of %d MB, the default limit is %d MB. A huge dali result usually indicates the ECL needs altering.", DALI_RESULT_OUTPUTMAX, defaultWorkUnitWriteLimit);
+        throw MakeStringException(0, "Dali result outputs are restricted to a maximum of %d MB, the current limit is %d MB. A huge dali result usually indicates the ECL needs altering.", DALI_RESULT_OUTPUTMAX, DALI_RESULT_LIMIT_DEFAULT);
     assertex(outputLimit<=0x1000); // 32bit limit because MemoryBuffer/CMessageBuffers involved etc.
     outputLimit *= 0x100000;
     MemoryBuffer rowdata;
@@ -5950,14 +5976,14 @@ void CHThorWorkUnitWriteActivity::execute()
         if(outputLimit && ((rowdata.length() + thisSize) > outputLimit))
         {
             StringBuffer errMsg("Dataset too large to output to workunit (limit "); 
-            errMsg.append(outputLimit/0x100000).append(") megabytes, in result ("); 
+            errMsg.append(outputLimit/0x100000).append(" megabytes), in result (");
             const char *name = helper.queryName();
             if (name)
                 errMsg.append("name=").append(name);
             else
                 errMsg.append("sequence=").append(helper.getSequence());
             errMsg.append(")");
-            throw MakeStringException(0, "%s", errMsg.str());
+            throw MakeStringExceptionDirect(0, errMsg.str());
          }
         if (rowSerializer)
         {
@@ -6040,7 +6066,7 @@ void CHThorDictionaryWorkUnitWriteActivity::execute()
     }
     size32_t usedCount = rtlDictionaryCount(builder.getcount(), builder.queryrows());
 
-    size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", defaultWorkUnitWriteLimit) * 0x100000;
+    size32_t outputLimit = agent.queryWorkUnit()->getDebugValueInt("outputLimit", DALI_RESULT_LIMIT_DEFAULT) * 0x100000;
     MemoryBuffer rowdata;
     CThorDemoRowSerializer out(rowdata);
     Owned<IOutputRowSerializer> serializer = input->queryOutputMeta()->createDiskSerializer(agent.queryCodeContext(), activityId);
@@ -6048,14 +6074,14 @@ void CHThorDictionaryWorkUnitWriteActivity::execute()
     if(outputLimit && (rowdata.length()  > outputLimit))
     {
         StringBuffer errMsg("Dictionary too large to output to workunit (limit ");
-        errMsg.append(outputLimit/0x100000).append(") megabytes, in result (");
+        errMsg.append(outputLimit/0x100000).append(" megabytes), in result (");
         const char *name = helper.queryName();
         if (name)
             errMsg.append("name=").append(name);
         else
             errMsg.append("sequence=").append(helper.getSequence());
         errMsg.append(")");
-        throw MakeStringException(0, "%s", errMsg.str());
+        throw MakeStringExceptionDirect(0, errMsg.str());
     }
 
     WorkunitUpdate w = agent.updateWorkUnit();
@@ -6646,8 +6672,8 @@ CHThorDistributionActivity::CHThorDistributionActivity(IAgentContext &_agent, un
 
 void CHThorDistributionActivity::execute()
 {
-    IRecordSize *m = helper.queryInternalRecordSize();
-    IDistributionTable * * accumulator = (IDistributionTable * *)rowAllocator->createRow();  //meta: PG MORE --- distribution --- helper.queryInternalRecordSize()
+    MemoryAttr ma;
+    IDistributionTable * * accumulator = (IDistributionTable * *)ma.allocate(helper.queryInternalRecordSize()->getMinRecordSize());
     helper.clearAggregate(accumulator); 
 
     OwnedConstRoxieRow nextrec(input->nextInGroup());
@@ -6668,7 +6694,6 @@ void CHThorDistributionActivity::execute()
     result.append("</XML>");
     helper.sendResult(result.length(), result.str());
     helper.destruct(accumulator);
-    rowAllocator->releaseRow(accumulator);
 }
 
 //---------------------------------------------------------------------------
@@ -6918,13 +6943,12 @@ const void * CHThorEnthActivity::nextInGroup()
 CHThorTopNActivity::CHThorTopNActivity(IAgentContext & _agent, unsigned _activityId, unsigned _subgraphId, IHThorTopNArg & _arg, ThorActivityKind _kind)
     : CHThorSimpleActivityBase(_agent, _activityId, _subgraphId, _arg, _kind), helper(_arg), compare(*helper.queryCompare())
 {
-    limit = helper.getLimit();
-    assertex(limit == (size_t)limit);
-    sorted = (const void * *)checked_calloc((size_t)(limit+1), sizeof(void *), "topn");
     hasBest = helper.hasBest();
     grouped = outputMeta.isGrouped();
     curIndex = 0;
     sortedCount = 0;
+    limit = 0;
+    sorted = NULL;
 }
 
 CHThorTopNActivity::~CHThorTopNActivity()
@@ -6937,6 +6961,9 @@ CHThorTopNActivity::~CHThorTopNActivity()
 void CHThorTopNActivity::ready()
 {
     CHThorSimpleActivityBase::ready();
+    limit = helper.getLimit();
+    assertex(limit == (size_t)limit);
+    sorted = (const void * *)checked_calloc((size_t)(limit+1), sizeof(void *), "topn");
     sortedCount = 0;
     curIndex = 0;
     eof = false;
@@ -6948,6 +6975,8 @@ void CHThorTopNActivity::done()
     CHThorSimpleActivityBase::done();
     while(curIndex < sortedCount)
         ReleaseRoxieRow(sorted[curIndex++]);
+    free(sorted);
+    sorted = NULL;
 }
 
 const void * CHThorTopNActivity::nextInGroup()
@@ -7866,7 +7895,7 @@ void CHThorDiskReadBaseActivity::close()
     if(ldFile)
     {
         IDistributedFile * dFile = ldFile->queryDistributedFile();
-        if(dFile&&persistent) 
+        if(dFile)
             dFile->setAccessed();
         ldFile.clear();
     }
@@ -9292,6 +9321,7 @@ public:
     virtual IOutputRowSerializer * createInternalSerializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual IOutputRowDeserializer * createInternalDeserializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual void walkIndirectMembers(const byte * self, IIndirectMemberVisitor & visitor) {}
+    virtual IOutputMetaData * queryChildMeta(unsigned i) { return NULL; }
 };
 
 //=====================================================================================================
@@ -10014,9 +10044,4 @@ IHThorException * makeHThorException(ThorActivityKind kind, unsigned activityId,
 IHThorException * makeHThorException(ThorActivityKind kind, unsigned activityId, unsigned subgraphId, IException * exc, char const * extra)
 {
     return new CHThorException(exc, extra, kind, activityId, subgraphId);
-}
-
-extern HTHOR_API IEngineRowAllocator * createHThorRowAllocator(IRowManager & _rowManager, IOutputMetaData * _meta, unsigned _activityId, unsigned _allocatorId)
-{
-    return createRoxieRowAllocator(_rowManager, _meta, _activityId, _allocatorId, roxiemem::RHFnone);
 }

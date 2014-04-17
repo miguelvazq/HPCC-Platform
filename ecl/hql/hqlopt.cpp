@@ -80,14 +80,14 @@ IHqlExpression * createFilterCondition(const HqlExprArray & conds, IHqlExpressio
 }
 
 
-bool optimizeFilterConditions(HqlExprArray & conds)
+bool optimizeFilterConditions(IErrorReceiver & errorProcessor, HqlExprArray & conds)
 {
     ForEachItemInRev(i, conds)
     {
         IHqlExpression & cur = conds.item(i);
         if (cur.isConstant())
         {
-            OwnedHqlExpr folded = foldHqlExpression(&cur);
+            OwnedHqlExpr folded = foldHqlExpression(errorProcessor, &cur);
             IValue * value = folded->queryValue();
             if (value)
             {
@@ -201,6 +201,7 @@ void ExpandComplexityMonitor::onExpand(IHqlExpression * select, IHqlExpression *
         case no_null:
         case no_select:
         case no_getresult:
+        case no_getgraphresult:
         case no_id2blob:
             //MORE: Should be a common list somewhere...
             break;
@@ -217,7 +218,7 @@ void ExpandComplexityMonitor::onExpand(IHqlExpression * select, IHqlExpression *
 
 //---------------------------------------------------------------------------
 static HqlTransformerInfo cTreeOptimizerInfo("CTreeOptimizer");
-CTreeOptimizer::CTreeOptimizer(unsigned _options) : PARENT(cTreeOptimizerInfo)
+CTreeOptimizer::CTreeOptimizer(IErrorReceiver & _errorProcessor, unsigned _options) : PARENT(cTreeOptimizerInfo), errorProcessor(_errorProcessor)
 {
     options = _options;
     optimizeFlags |= TCOtransformNonActive;
@@ -282,15 +283,8 @@ IHqlExpression * CTreeOptimizer::swapNodeWithChild(IHqlExpression * parent)
 IHqlExpression * CTreeOptimizer::forceSwapNodeWithChild(IHqlExpression * parent)
 {
     OwnedHqlExpr swapped = swapNodeWithChild(parent);
-    return replaceOwnedProperty(swapped, getNoHoistAttr());
-}
-
-IHqlExpression * CTreeOptimizer::getNoHoistAttr()
-{
-    //Ensure the attribute is unique for each call to the optimizer - otherwise it stops items being hoisted that could be.
-    if (!noHoistAttr)
-        noHoistAttr.setown(createAttribute(_noHoist_Atom, createUniqueId()));
-    return LINK(noHoistAttr);
+    queryBodyExtra(swapped)->setStopHoist();
+    return swapped.getClear();
 }
 
 IHqlExpression * CTreeOptimizer::swapNodeWithChild(IHqlExpression * parent, unsigned childIndex)
@@ -309,7 +303,7 @@ IHqlExpression * CTreeOptimizer::swapIntoIf(IHqlExpression * expr, bool force)
 {
     IHqlExpression * child = expr->queryChild(0);
     //Can't optimize over a condition once a graph has been resourced, otherwise the activities aren't found.
-    if (child->hasProperty(_resourced_Atom))
+    if (child->hasAttribute(_resourced_Atom))
         return LINK(expr);
 
     IHqlExpression * body = expr->queryBody();
@@ -320,26 +314,40 @@ IHqlExpression * CTreeOptimizer::swapIntoIf(IHqlExpression * expr, bool force)
     OwnedHqlExpr newLeft = replaceChildDataset(body, left, 0);
     OwnedHqlExpr newRight = replaceChildDataset(body, right, 0);
 
-    OwnedHqlExpr transformedLeft = transform(newLeft);
-    OwnedHqlExpr transformedRight = transform(newRight);
+    HqlExprArray args;
+    args.append(*LINK(cond));
+    args.append(*LINK(newLeft));
+    args.append(*LINK(newRight));
+    OwnedHqlExpr newIf = child->clone(args);
 
-    //Don't bother moving the condition over the if if it doesn't improve the code elsewhere
-    if (force || (newLeft != transformedLeft) || (newRight != transformedRight))
+    if (!alreadyHasUsage(newIf))
+    {
+        incUsage(newLeft);
+        incUsage(newRight);
+    }
+
+    OwnedHqlExpr transformedIf = transform(newIf);
+    if (force || (newIf != transformedIf))
     {
         //Need to call dec on all expressions that are no longer used... left and right still used by newLeft/newRight
+        if (!alreadyHasUsage(newIf))
+        {
+            //This may possibly leave left/right linked once if transformed(newLeft) doesn't use left any more.
+            //But a recursiveDecUsage could cause too much to be decremented.
+            if (newLeft != transformedIf->queryChild(1))
+                decUsage(newLeft);
+            if (newRight != transformedIf->queryChild(2))
+                decUsage(newRight);
+        }
         noteUnused(child);
         DBGLOG("Optimizer: Swap %s and %s", queryNode0Text(expr), queryNode1Text(child));
-        HqlExprArray args;
-        args.append(*LINK(cond));
-        args.append(*LINK(transformedLeft));
-        args.append(*LINK(transformedRight));
-        OwnedHqlExpr ret = child->clone(args);
-        if (!alreadyHasUsage(ret))
-        {
-            incUsage(transformedLeft);
-            incUsage(transformedRight);
-        }
-        return ret.getClear();
+        return transformedIf.getClear();
+    }
+
+    if (!alreadyHasUsage(newIf))
+    {
+        decUsage(newLeft);
+        decUsage(newRight);
     }
     return LINK(expr);
 }
@@ -497,7 +505,7 @@ IHqlExpression * CTreeOptimizer::optimizeAggregateUnsharedDataset(IHqlExpression
     case no_keyedlimit:
         break;
     case no_limit:
-        if (expr->hasProperty(onFailAtom))
+        if (expr->hasAttribute(onFailAtom))
             return LINK(expr);
         //fall through
     case no_choosen:
@@ -533,7 +541,7 @@ IHqlExpression * CTreeOptimizer::optimizeAggregateUnsharedDataset(IHqlExpression
     case no_newusertable:
         if (isSimpleCount && (options & HOOinsidecompound))
         {
-            if (expr->hasProperty(_countProject_Atom) || expr->hasProperty(prefetchAtom))
+            if (expr->hasAttribute(_countProject_Atom) || expr->hasAttribute(prefetchAtom))
                 break;
             if (isPureActivity(expr) && !isAggregateDataset(expr))
             {
@@ -573,14 +581,14 @@ IHqlExpression * CTreeOptimizer::optimizeAggregateDataset(IHqlExpression * trans
         {
         case no_hqlproject:
         case no_newusertable:
-            if (ds->hasProperty(prefetchAtom))
+            if (ds->hasAttribute(prefetchAtom))
                 break;
 
             //MORE: If the record is empty then either remove the project if no SKIP, or convert the SKIP to a filter
 
             //Don't remove projects for the moment because they can make counts of disk reads much less
             //efficient.  Delete the following lines once we have a count-diskread activity
-            if (!isScalarAggregate && !(options & (HOOcompoundproject|HOOinsidecompound)) && !ds->hasProperty(_countProject_Atom) )
+            if (!isScalarAggregate && !(options & (HOOcompoundproject|HOOinsidecompound)) && !ds->hasAttribute(_countProject_Atom) )
                 break;
             if (isPureActivity(ds) && !isAggregateDataset(ds))
             {
@@ -635,6 +643,10 @@ IHqlExpression * CTreeOptimizer::optimizeAggregateDataset(IHqlExpression * trans
         case no_preload:
             wrapper = ds;
             next = ds->queryChild(0);
+            break;
+        case no_iterate:
+            if (isSimpleCount && !containsSkip(ds->queryChild(1)))
+                next = ds->queryChild(0);
             break;
         }
 
@@ -754,6 +766,54 @@ IHqlExpression * CTreeOptimizer::optimizeDatasetIf(IHqlExpression * transformed)
     return LINK(transformed);
 }
 
+static bool branchesMatch(unsigned options, IHqlExpression * left, IHqlExpression * right)
+{
+    if (left->queryBody() == right->queryBody())
+        return true;
+
+    node_operator leftOp = left->getOperator();
+    if (leftOp != right->getOperator())
+        return false;
+
+    switch (leftOp)
+    {
+    case no_hqlproject:
+    case no_newusertable:
+        break;
+    default:
+        return false;
+    }
+    if (left->numChildren() != right->numChildren())
+        return false;
+
+    //Check for the situation where the only difference between two projects is the selector sequence
+    ForEachChild(i, left)
+    {
+        IHqlExpression * curLeft = left->queryChild(i);
+        if (curLeft->isAttribute() && (curLeft->queryName() == _selectorSequence_Atom))
+            continue;
+        IHqlExpression * curRight = right->queryChild(i);
+        if (curLeft->queryBody() != curRight->queryBody())
+        {
+            //The following code allows LEFT to be referred to within the transform, but I don't think it is worth enabling
+            //because of the potential cost of replacing the selseq within the transform.
+            if (options & HOOexpensive)
+            {
+                if ((leftOp != no_hqlproject) || !curLeft->isTransform())
+                    return false;
+                if (!recordTypesMatch(curLeft,curRight))
+                    return false;
+                OwnedHqlExpr newTransform = replaceExpression(curLeft, querySelSeq(left), querySelSeq(right));
+                if (newTransform->queryBody() != curRight->queryBody())
+                    return false;
+            }
+
+            return false;
+        }
+    }
+    return true;
+}
+
 IHqlExpression * CTreeOptimizer::optimizeIf(IHqlExpression * expr)
 {
     IHqlExpression * trueExpr = expr->queryChild(1);
@@ -762,7 +822,7 @@ IHqlExpression * CTreeOptimizer::optimizeIf(IHqlExpression * expr)
     if (!falseExpr)
         return NULL;
 
-    if (trueExpr->queryBody() == falseExpr->queryBody())
+    if (branchesMatch(options, trueExpr, falseExpr))
     {
         noteUnused(trueExpr);       // inherit usage() will increase the usage again
         noteUnused(falseExpr);
@@ -881,7 +941,7 @@ bool CTreeOptimizer::expandFilterCondition(HqlExprArray & expanded, HqlExprArray
 
             if (expandedFilter->isConstant())
             {
-                expandedFilter.setown(foldHqlExpression(expandedFilter));
+                expandedFilter.setown(foldHqlExpression(errorProcessor, expandedFilter));
                 IValue * value = expandedFilter->queryValue();
                 if (value && !value->getBoolValue())
                 {
@@ -947,7 +1007,7 @@ IHqlExpression * CTreeOptimizer::hoistFilterOverProject(IHqlExpression * transfo
     //Should be able to move filters over count projects, as long as not filtering on the count fields.  
     //Would need to add a containsCounter() test in the expandFields code - cannot just test filterExpr
     //because counter may be there (e.g., countindex3.hql)
-    if (child->hasProperty(_countProject_Atom) || child->hasProperty(prefetchAtom) || isAggregateDataset(child))
+    if (child->hasAttribute(_countProject_Atom) || child->hasAttribute(prefetchAtom) || isAggregateDataset(child))
         return NULL;
     if (hasUnknownTransform(child))
         return NULL;
@@ -955,7 +1015,7 @@ IHqlExpression * CTreeOptimizer::hoistFilterOverProject(IHqlExpression * transfo
     HqlExprArray expanded, unexpanded;
     if (expandFilterCondition(expanded, unexpanded, transformed, true, onlyKeyed))
     {
-        if (optimizeFilterConditions(expanded))
+        if (optimizeFilterConditions(errorProcessor, expanded))
             return getOptimizedFilter(transformed, expanded);
 
         OwnedHqlExpr filterExpr = createFilterCondition(expanded);
@@ -1010,7 +1070,7 @@ IHqlExpression * CTreeOptimizer::getHoistedFilter(IHqlExpression * transformed, 
 
         if (expandedFilter->isConstant())
         {
-            expandedFilter.setown(foldHqlExpression(expandedFilter));
+            expandedFilter.setown(foldHqlExpression(errorProcessor, expandedFilter));
             IValue * value = expandedFilter->queryValue();
             if (value)
             {
@@ -1307,7 +1367,7 @@ IHqlExpression * CTreeOptimizer::optimizeJoinCondition(IHqlExpression * expr)
 {
     //Look at the join condition and move any conditions just on left/right further up the tree
     //can help after other constant folding....
-    if (!isSimpleInnerJoin(expr) || expr->hasProperty(keyedAtom) || expr->hasProperty(atmostAtom))
+    if (!isSimpleInnerJoin(expr) || expr->hasAttribute(keyedAtom) || expr->hasAttribute(atmostAtom))
         return NULL;
 
     IHqlExpression * cond = expr->queryChild(2);
@@ -1345,7 +1405,7 @@ IHqlExpression * CTreeOptimizer::optimizeJoinCondition(IHqlExpression * expr)
     if (!newCond)
         newCond.setown(createConstant(true));
 
-    if (!queryProperty(_conditionFolded_Atom, args))
+    if (!queryAttribute(_conditionFolded_Atom, args))
         args.append(*createAttribute(_conditionFolded_Atom));
     args.replace(*newCond.getClear(), 2);
     return expr->clone(args);
@@ -1359,7 +1419,7 @@ IHqlExpression * CTreeOptimizer::optimizeDistributeDedup(IHqlExpression * expr)
 {
     IHqlExpression * child = expr->queryChild(0);
 
-    if (!child->hasProperty(allAtom) || child->hasProperty(localAtom) || isGrouped(child))
+    if (!child->hasAttribute(allAtom) || child->hasAttribute(localAtom) || isGrouped(child))
         return NULL;
 
     DedupInfoExtractor info(child);
@@ -1374,7 +1434,7 @@ IHqlExpression * CTreeOptimizer::optimizeDistributeDedup(IHqlExpression * expr)
     
     
     OwnedHqlExpr distn;
-    if (expr->hasProperty(manyAtom))
+    if (expr->hasAttribute(manyAtom))
     {
         //DEDUP(DISTRIBUTE(DEDUP(ds, x, y, all, local), hash(trim(x))), x, y, all, LOCAL)
 
@@ -1411,7 +1471,7 @@ IHqlExpression * CTreeOptimizer::optimizeProjectInlineTable(IHqlExpression * tra
     IHqlExpression * child = transformed->queryChild(0);
     IHqlExpression * values = child->queryChild(0);
     //MORE If trivial projection then might be worth merging with multiple items, but unlikely to occur in practice
-    if (!isPureInlineDataset(child) || transformed->hasProperty(prefetchAtom))
+    if (!isPureInlineDataset(child) || transformed->hasAttribute(prefetchAtom))
         return NULL;
 
     bool onlyFoldConstant = false;
@@ -1434,7 +1494,7 @@ IHqlExpression * CTreeOptimizer::optimizeProjectInlineTable(IHqlExpression * tra
     }
 
 
-    IHqlExpression * transformedCountProject = transformed->queryProperty(_countProject_Atom);
+    IHqlExpression * transformedCountProject = transformed->queryAttribute(_countProject_Atom);
     IHqlExpression * seq = querySelSeq(transformed);
     node_operator projectOp = transformed->getOperator();
     OwnedHqlExpr oldSelector = (projectOp == no_hqlproject) ? createSelector(no_left, child, seq) : LINK(child->queryNormalizedSelector());
@@ -1460,8 +1520,13 @@ IHqlExpression * CTreeOptimizer::optimizeProjectInlineTable(IHqlExpression * tra
         if (!next || monitor.isComplex())
             return NULL;
 
-        if (onlyFoldConstant && !isConstantTransform(next))
-            return NULL;
+        if (onlyFoldConstant)
+        {
+            next.setown(foldScopedHqlExpression(errorProcessor, NULL, next));
+
+            if (!isConstantTransform(next))
+                return NULL;
+        }
         newValues.append(*ensureTransformType(next, no_transform));
     }
 
@@ -1539,6 +1604,10 @@ IHqlExpression * CTreeOptimizer::inheritUsage(IHqlExpression * newExpr, IHqlExpr
 {
     OptTransformInfo * newExtra = queryBodyExtra(newExpr);
     OptTransformInfo * oldExtra = queryBodyExtra(oldExpr);
+
+    if (oldExtra->getStopHoist())
+        newExtra->setStopHoist();
+
 #ifdef TRACE_USAGE
     if (newExpr->isDataset() || newExpr->isDatarow())
         DBGLOG("%lx inherit %d,%d (from %lx) [%s]", (unsigned)newExpr, newExtra->useCount, oldExtra->useCount, (unsigned)oldExpr, queryNode0Text(newExpr));
@@ -1568,7 +1637,7 @@ IHqlExpression * CTreeOptimizer::expandProjectedDataset(IHqlExpression * child, 
     OwnedMapper mapper = getMapper(child);
     ExpandSelectorMonitor monitor(*this);
     OwnedHqlExpr expandedTransform = expandFields(mapper, transform, childSelector, NULL, &monitor);
-    IHqlExpression * onFail = child->queryProperty(onFailAtom);
+    IHqlExpression * onFail = child->queryAttribute(onFailAtom);
     OwnedHqlExpr newOnFail;
     if (onFail)
     {
@@ -1715,7 +1784,7 @@ bool CTreeOptimizer::childrenAreShared(IHqlExpression * expr)
 
 bool CTreeOptimizer::isWorthMovingProjectOverLimit(IHqlExpression * project)
 {
-    if (noHoistAttr && project->queryProperty(_noHoist_Atom) == noHoistAttr)
+    if (queryBodyExtra(project)->getStopHoist())
         return false;
 
     IHqlExpression * expr = project->queryChild(0);
@@ -1754,7 +1823,7 @@ bool CTreeOptimizer::isWorthMovingProjectOverLimit(IHqlExpression * project)
                 return false;
             //fallthrough.
         case no_hqlproject:
-            if (!isPureActivity(expr) || expr->hasProperty(_countProject_Atom) || expr->hasProperty(prefetchAtom))
+            if (!isPureActivity(expr) || expr->hasAttribute(_countProject_Atom) || expr->hasAttribute(prefetchAtom))
                 return false;
             return true;
         default:
@@ -1778,9 +1847,15 @@ IHqlExpression * CTreeOptimizer::moveProjectionOverSimple(IHqlExpression * trans
     {
         if (idx != 0)
         {
-            bool ok = false;
+            bool ok = true;
             IHqlExpression * cur = child->queryChild(idx);
-            IHqlExpression * collapsed = mapper->collapseFields(cur, grandchild, newProject, &ok);
+            IHqlExpression * collapsed;
+            //NB: Attributes are generally independent of the input dataset, so they shouldn't be reverse mapped,
+            //otherwise if a input-invariant expression is projected it can cause problems (jholt44.eclxml)
+            if (cur->isAttribute())
+                collapsed = LINK(cur);
+            else
+                collapsed = mapper->collapseFields(cur, grandchild, newProject, &ok);
             if (!ok)
             {
                 ::Release(collapsed);
@@ -1895,8 +1970,8 @@ ANewTransformInfo * CTreeOptimizer::createTransformInfo(IHqlExpression * expr)
 IHqlExpression * CTreeOptimizer::expandFields(TableProjectMapper * mapper, IHqlExpression * expr, IHqlExpression * oldDataset, IHqlExpression * newDataset, IExpandCallback * _expandCallback)
 {
     OwnedHqlExpr expandedFilter = mapper->expandFields(expr, oldDataset, newDataset, _expandCallback);
-    if (options & HOOfold)
-        expandedFilter.setown(foldHqlExpression(expandedFilter));
+    //There used to be code to constant fold filters here - but it can cause dataset expressions to become duplicated
+    //causing code to be duplicated.  Only fold expressions that are reduced to constants.
     return expandedFilter.getClear();
 }
 
@@ -2139,13 +2214,13 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
         break;
     case no_hqlproject:
         {
-            IHqlExpression * counterAttr = transformed->queryProperty(_countProject_Atom);
+            IHqlExpression * counterAttr = transformed->queryAttribute(_countProject_Atom);
             if (counterAttr && !transformContainsCounter(transformed->queryChild(1), counterAttr->queryChild(0)))
-                return removeProperty(transformed, _countProject_Atom);
+                return removeAttribute(transformed, _countProject_Atom);
             //fallthrough
         }
     case no_newusertable:
-        if (transformed->hasProperty(keyedAtom))
+        if (transformed->hasAttribute(keyedAtom))
         {
             IHqlExpression * ret = queryMoveKeyedExpr(transformed);
             if (ret)
@@ -2166,6 +2241,17 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             //If left outer join, and transform doesn't reference RIGHT, and only one rhs record  could match each lhs record (e.g., it was rolled
             //up, or a non-many lookup join, then the join could be converted into a project
             //Can occur once fields get implicitly removed from transforms etc. - e.g., bc10.xhql, although that code has since been fixed.
+
+            //There is no point in distributing the rhs of a global lookup join => remove it.
+            if (transformed->hasAttribute(lookupAtom) && !transformed->hasAttribute(localAtom))
+            {
+                IHqlExpression * rhs = transformed->queryChild(1);
+                if (rhs->getOperator() == no_distribute)
+                {
+                    DBGLOG("Optimizer: Remove %s from RHS of global LOOKUP JOIN", queryNode0Text(rhs));
+                    return ::replaceChild(transformed, 1, rhs->queryChild(0));
+                }
+            }
             break;
         }
     case no_dedup:
@@ -2195,7 +2281,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
     case no_newaggregate:
         {
             node_operator childOp = child->getOperator();
-            if (transformed->hasProperty(keyedAtom))
+            if (transformed->hasAttribute(keyedAtom))
             {
                 IHqlExpression * moved = NULL;
                 switch(childOp)
@@ -2307,29 +2393,41 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
         }
     case no_select:
         {
-            if (transformed->hasProperty(newAtom))
+            if (transformed->hasAttribute(newAtom))
             {
                 node_operator childOp = child->getOperator();
                 switch (childOp)
                 {
                 case no_createrow:
                     {
-                        OwnedHqlExpr match = getExtractSelect(child->queryChild(0), transformed->queryChild(1));
+                        OwnedHqlExpr match = getExtractSelect(child->queryChild(0), transformed->queryChild(1), false);
                         if (match)
                         {
                             IHqlExpression * cur = match;
                             while (isCast(cur))
                                 cur = cur->queryChild(0);
-                            switch (cur->getOperator())
+                            if (cur->isPure())
                             {
-                            case no_createrow:
-                            case no_constant:
-                            case no_select:
-                            case no_null:
-                            case no_getresult:
-                                DBGLOG("Optimizer: Extract value %s from %s", queryNode0Text(match), queryNode1Text(transformed));
-                                noteUnused(child);
-                                return match.getClear();
+                                //This test should not be required, but it avoids problems with elements from rows
+                                //being used conditionally within transforms.  See HPCC-11018 for details.
+                                if (isIndependentOfScope(match))
+                                {
+                                    DBGLOG("Optimizer: Extract value %s from %s", queryNode0Text(cur), queryNode1Text(transformed));
+                                    noteUnused(child);
+                                    return match.getClear();
+                                }
+                                switch (cur->getOperator())
+                                {
+                                case no_createrow:
+                                case no_constant:
+                                case no_select:
+                                case no_null:
+                                case no_getresult:
+                                case no_getgraphresult:
+                                    DBGLOG("Optimizer: Extract value %s from %s", queryNode0Text(match), queryNode1Text(transformed));
+                                    noteUnused(child);
+                                    return match.getClear();
+                                }
                             }
                         }
                     }
@@ -2349,7 +2447,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         if (values->numChildren() == 1) 
                         {
                             IHqlExpression * transform = values->queryChild(0);
-                            OwnedHqlExpr match = getExtractSelect(transform, transformed->queryChild(1));
+                            OwnedHqlExpr match = getExtractSelect(transform, transformed->queryChild(1), false);
                             if (match)
                             {
                                 IHqlExpression * cur = match;
@@ -2361,6 +2459,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                                 case no_select:
                                 case no_null:
                                 case no_getresult:
+                                case no_getgraphresult:
                                 case no_inlinetable:
                                 case no_left:
                                 case no_right:
@@ -2394,7 +2493,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         if (values->numChildren() == 1) 
                         {
                             IHqlExpression * transform = values->queryChild(0);
-                            OwnedHqlExpr match = getExtractSelect(transform, extracted->queryChild(1));
+                            OwnedHqlExpr match = getExtractSelect(transform, extracted->queryChild(1), false);
                             if (match)
                             {
                                 IHqlExpression * cur = match;
@@ -2406,6 +2505,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                                 case no_select:
                                 case no_null:
                                 case no_getresult:
+                                case no_getgraphresult:
                                     {
                                         DBGLOG("Optimizer: Extract value %s from %s", queryNode0Text(match), queryNode1Text(transformed));
                                         noteUnused(child);
@@ -2427,7 +2527,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
     case no_keyeddistribute:
     case no_distribute:
         {
-            if (transformed->hasProperty(skewAtom))
+            if (transformed->hasAttribute(skewAtom))
                 break;
             //If distribution matches existing and grouped then don't distribute, but still remove grouping.
             IHqlExpression * distn = queryDistribution(transformed);
@@ -2481,13 +2581,55 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             if (child->getOperator() == no_list)
             {
                 ECLlocation dummyLocation(0, 0, 0, NULL);
-                ThrowingErrorReceiver errorReporter;
-                OwnedHqlExpr inlineTable = convertTempTableToInlineTable(&errorReporter, dummyLocation, transformed);
+                OwnedHqlExpr inlineTable = convertTempTableToInlineTable(errorProcessor, dummyLocation, transformed);
                 if (transformed != inlineTable)
                     return inlineTable.getClear();
             }
             break;
         }
+    case no_normalize:
+        //Convert NORMALIZE(ds, 0, t(LEFT, COUNTER)) to empty dataset
+        if (matchesConstantValue(transformed->queryChild(1), 0))
+            return replaceWithNull(transformed);
+        //Convert NORMALIZE(ds, 1, t(LEFT, COUNTER)) to PROJECT(ds, t(LEFT, 1));
+        if (matchesConstantValue(transformed->queryChild(1), 1))
+        {
+            IHqlExpression * counter = queryAttributeChild(transformed, _countProject_Atom, 0);
+
+            HqlExprArray args;
+            unwindChildren(args, transformed, 0, 1);
+
+            IHqlExpression * transform = transformed->queryChild(2);
+            if (counter)
+            {
+                OwnedHqlExpr one = createConstant(counter->queryType()->castFrom(false, I64C(1)));
+                //Remove the annotations from the transform, otherwise it may say t(LEFT,COUNTER) which is confusing.
+                args.append(*replaceExpression(transform->queryBody(), counter, one));
+            }
+            else
+                args.append(*LINK(transform));
+
+            DBGLOG("Optimizer: Convert %s(,1) into PROJECT", queryNode0Text(transformed));
+            unwindChildren(args, transformed, 3);
+            //This is not a count project.. so remove the attribute.
+            removeAttribute(args, _countProject_Atom);
+            return createDataset(no_hqlproject, args);
+        }
+        break;
+    case no_split:
+        node_operator childOp = child->getOperator();
+        if (childOp == no_split)
+        {
+            //Don't convert an unbalanced splitter into a balanced splitter
+            //- best would be to set unbalanced on the child, but that would require more complication.
+            if (transformed->hasAttribute(balancedAtom) || !child->hasAttribute(balancedAtom))
+                return removeParentNode(transformed);
+        }
+
+        //This would remove splits only used once, but dangerous if we ever get the usage counting wrong...
+        //if (queryBodyExtra(transformed)->useCount == 1)
+        //    return removeParentNode(transformed);
+        break;
     }
 
     bool shared = childrenAreShared(transformed);
@@ -2514,6 +2656,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     okToContinue = true;
                     break;
                 }
+                break;
             }
         case no_hqlproject:
             {
@@ -2560,6 +2703,9 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             {
             case no_choosen:
                 {
+                    //Too complicated to process the grouped variants.
+                    if (isGrouped(child) || isGrouped(transformed))
+                        break;
                     if (transformed->queryChild(2) || child->queryChild(2))
                     {
                         //choosen(choosen(x, a, b), c, d))
@@ -2595,7 +2741,13 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     if (isPureActivity(child) && !isAggregateDataset(child))
                     {
                         //Don't move a choosen with a start value over a count project - we could if we also adjust the counter
-                        if (!child->queryProperty(_countProject_Atom) || !queryRealChild(transformed, 2))
+                        if (child->queryAttribute(_countProject_Atom))
+                        {
+                            //Don't swap with a grouped project with counter - it changes the meaning of the counter
+                            if (!isGrouped(child) && !queryRealChild(transformed, 2))
+                                return forceSwapNodeWithChild(transformed);
+                        }
+                        else
                             return forceSwapNodeWithChild(transformed);
                     }
                     break;
@@ -2612,6 +2764,8 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_chooseds:
                 return swapIntoAddFiles(transformed);
             case no_sort:
+                //If the sort is grouped then this can't be converted to a topn.
+                if (!isGrouped(child))
                 {
                     unsigned __int64 topNLimit = 1000;
                     OwnedHqlExpr topn = queryConvertChoosenNSort(transformed, topNLimit);
@@ -2620,8 +2774,8 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         noteUnused(child);
                         return topn.getClear();
                     }
-                    break;
                 }
+                break;
             }
             break;
         }
@@ -2633,7 +2787,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_hqlproject:
             case no_newusertable:
                 {
-                    if (isPureActivity(child) && !isAggregateDataset(child) && !transformed->hasProperty(onFailAtom))
+                    if (isPureActivity(child) && !isAggregateDataset(child) && !transformed->hasAttribute(onFailAtom))
                         return forceSwapNodeWithChild(transformed);
                     break;
                 }
@@ -2651,12 +2805,12 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_limit:
                 {
                     //Could be cleverer... but this is safer
-                    if (transformed->queryProperty(skipAtom) != child->queryProperty(skipAtom))
+                    if (transformed->queryAttribute(skipAtom) != child->queryAttribute(skipAtom))
                         break;
-                    if (transformed->queryProperty(onFailAtom) != child->queryProperty(onFailAtom))
+                    if (transformed->queryAttribute(onFailAtom) != child->queryAttribute(onFailAtom))
                         break;
-                    OwnedHqlExpr parentLimit = foldHqlExpression(transformed->queryChild(1));
-                    OwnedHqlExpr childLimit = foldHqlExpression(child->queryChild(1));
+                    OwnedHqlExpr parentLimit = foldHqlExpression(errorProcessor, transformed->queryChild(1));
+                    OwnedHqlExpr childLimit = foldHqlExpression(errorProcessor, child->queryChild(1));
                     if (parentLimit == childLimit)
                         return removeParentNode(transformed);
 
@@ -2673,7 +2827,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_compound_diskread:
                 if (!isLimitedDataset(child))
                 {
-                    if (transformed->hasProperty(skipAtom) || transformed->hasProperty(onFailAtom))
+                    if (transformed->hasAttribute(skipAtom) || transformed->hasAttribute(onFailAtom))
                     {
                         //only merge if roxie
                     }
@@ -2694,16 +2848,16 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                 break;
             case no_choosen:
                 {
-                    OwnedHqlExpr parentLimit = foldHqlExpression(transformed->queryChild(1));
-                    OwnedHqlExpr childLimit = foldHqlExpression(child->queryChild(1));
+                    OwnedHqlExpr parentLimit = foldHqlExpression(errorProcessor, transformed->queryChild(1));
+                    OwnedHqlExpr childLimit = foldHqlExpression(errorProcessor, child->queryChild(1));
                     if (getIntValue(parentLimit, 0) > getIntValue(childLimit, I64C(0x7fffffffffffffff)))
                         return removeParentNode(transformed);
                     break;
                 }
             case no_topn:
                 {
-                    OwnedHqlExpr parentLimit = foldHqlExpression(transformed->queryChild(1));
-                    OwnedHqlExpr childLimit = foldHqlExpression(child->queryChild(2));
+                    OwnedHqlExpr parentLimit = foldHqlExpression(errorProcessor, transformed->queryChild(1));
+                    OwnedHqlExpr childLimit = foldHqlExpression(errorProcessor, child->queryChild(2));
                     if (getIntValue(parentLimit, 0) > getIntValue(childLimit, I64C(0x7fffffffffffffff)))
                         return removeParentNode(transformed);
                     break;
@@ -2734,7 +2888,6 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
     case no_filter:
         {
             node_operator childOp = child->getOperator();
-            IHqlExpression * newGrandchild = child->queryChild(0);
             switch(childOp)
             {
             case no_filter:
@@ -2786,7 +2939,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     OwnedHqlExpr ret = swapNodeWithChild(transformed);
 
                     //Need to add the filter as a skip on the onFail() transform
-                    IHqlExpression * onFail = ret->queryProperty(onFailAtom);
+                    IHqlExpression * onFail = ret->queryAttribute(onFailAtom);
                     if (!onFail)
                         return ret.getClear();
 
@@ -2804,7 +2957,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     OwnedHqlExpr skip = createValue(no_skip, makeVoidType(), getInverse(skipFilter));
                     OwnedHqlExpr newTransform = appendOwnedOperand(limitTransform, skip.getClear());
                     OwnedHqlExpr newOnFail = createExprAttribute(onFailAtom, newTransform.getClear());
-                    return replaceOwnedProperty(ret, newOnFail.getClear());
+                    return replaceOwnedAttribute(ret, newOnFail.getClear());
                 }
             case no_if:
                 return swapIntoIf(transformed);
@@ -2843,12 +2996,12 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
 #endif
                 break;
             case no_selfjoin:
-                if (isPureActivity(child) && !hasUnknownTransform(child) && !isLimitedJoin(child) && !child->hasProperty(fullouterAtom) && !child->hasProperty(fullonlyAtom))
+                if (isPureActivity(child) && !hasUnknownTransform(child) && !isLimitedJoin(child) && !child->hasAttribute(fullouterAtom) && !child->hasAttribute(fullonlyAtom))
                 {
                     //Strictly speaking, we could hoist conditions that can be hoisted for left only (or even full) joins etc. if the fields that are filtered
                     //are based on equalities in the join condition.  However, that can wait....  (same for join below...)
-                    bool canHoistLeft = !child->hasProperty(rightouterAtom) && !child->hasProperty(rightonlyAtom) &&
-                                        !child->hasProperty(leftouterAtom) && !child->hasProperty(leftonlyAtom);
+                    bool canHoistLeft = !child->hasAttribute(rightouterAtom) && !child->hasAttribute(rightonlyAtom) &&
+                                        !child->hasAttribute(leftouterAtom) && !child->hasAttribute(leftonlyAtom);
                     bool canMergeLeft = isInnerJoin(child);
                     bool canHoistRight = false;
                     bool canMergeRight = canMergeLeft;
@@ -2859,11 +3012,11 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                 }
                 break;
             case no_join:
-                if (isPureActivity(child) && !hasUnknownTransform(child) && !isLimitedJoin(child) && !child->hasProperty(fullouterAtom) && !child->hasProperty(fullonlyAtom))
+                if (isPureActivity(child) && !hasUnknownTransform(child) && !isLimitedJoin(child) && !child->hasAttribute(fullouterAtom) && !child->hasAttribute(fullonlyAtom))
                 {
-                    bool canHoistLeft = !child->hasProperty(rightouterAtom) && !child->hasProperty(rightonlyAtom);
+                    bool canHoistLeft = !child->hasAttribute(rightouterAtom) && !child->hasAttribute(rightonlyAtom);
                     bool canMergeLeft = isInnerJoin(child);
-                    bool canHoistRight = !child->hasProperty(leftouterAtom) && !child->hasProperty(leftonlyAtom) && !isKeyedJoin(child);
+                    bool canHoistRight = !child->hasAttribute(leftouterAtom) && !child->hasAttribute(leftonlyAtom) && !isKeyedJoin(child);
                     bool canMergeRight = canMergeLeft;
 
                     IHqlExpression * ret = getHoistedFilter(transformed, canHoistLeft, canMergeLeft, canHoistRight, canMergeRight, 2);
@@ -2906,7 +3059,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         if (!expandedFilter->isConstant())
                             break;
 
-                        OwnedHqlExpr folded = foldHqlExpression(expandedFilter);
+                        OwnedHqlExpr folded = foldHqlExpression(errorProcessor, expandedFilter);
                         IValue * value = folded->queryValue();
                         if (!value)
                             break;
@@ -2968,10 +3121,10 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
     case no_hqlproject:
         {
             node_operator childOp = child->getOperator();
-            IHqlExpression * transformedCountProject = transformed->queryProperty(_countProject_Atom);
-            if (transformed->hasProperty(prefetchAtom))
+            IHqlExpression * transformedCountProject = transformed->queryAttribute(_countProject_Atom);
+            if (transformed->hasAttribute(prefetchAtom))
                 break;      // play safe
-            IHqlExpression * transformKeyed = transformed->queryProperty(keyedAtom);
+            IHqlExpression * transformKeyed = transformed->queryAttribute(keyedAtom);
             IHqlExpression * transform = transformed->queryChild(1);
             switch(childOp)
             {
@@ -2992,11 +3145,15 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     if (!isPureActivityIgnoringSkip(child) || hasUnknownTransform(child))
                         break;
 
-                    IHqlExpression * childCountProject = child->queryProperty(_countProject_Atom);
+                    IHqlExpression * childTransform = queryNewColumnProvider(child);
+                    if (assignsContainSkip(childTransform))
+                        break;
+
+                    IHqlExpression * childCountProject = child->queryAttribute(_countProject_Atom);
                     //Don't merge two count projects - unless we go through and replace counter instances.
                     if (transformedCountProject && childCountProject)
                         break;
-                    IHqlExpression * childKeyed = child->queryProperty(keyedAtom);
+                    IHqlExpression * childKeyed = child->queryAttribute(keyedAtom);
                     if (childKeyed && !transformKeyed)
                         break;
 
@@ -3081,7 +3238,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_keyedlimit:
                 if (isWorthMovingProjectOverLimit(transformed))
                 {
-                    if (child->hasProperty(onFailAtom))
+                    if (child->hasAttribute(onFailAtom))
                         return moveProjectionOverLimit(transformed);
                     return swapNodeWithChild(transformed);
                 }
@@ -3096,7 +3253,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     //MORE: Later this is going to be worth moving aggregates.... when we have a compound aggregates.
                     if (isPureActivity(transformed) && !isAggregateDataset(transformed) && !transformedCountProject)
                     {
-                        if (child->hasProperty(onFailAtom))
+                        if (child->hasAttribute(onFailAtom))
                             return moveProjectionOverLimit(transformed);
                         return swapNodeWithChild(transformed);
                     }
@@ -3191,11 +3348,11 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     if (!isPureActivity(child) || hasUnknownTransform(child))
                         break;
 
-                    if (child->hasProperty(_countProject_Atom) || child->hasProperty(prefetchAtom))
+                    if (child->hasAttribute(_countProject_Atom) || child->hasAttribute(prefetchAtom))
                         break;
     
-                    IHqlExpression * transformKeyed = transformed->queryProperty(keyedAtom);
-                    IHqlExpression * childKeyed = child->queryProperty(keyedAtom);
+                    IHqlExpression * transformKeyed = transformed->queryAttribute(keyedAtom);
+                    IHqlExpression * childKeyed = child->queryAttribute(keyedAtom);
                     if (childKeyed && !transformKeyed)
                         break;
 
@@ -3212,9 +3369,16 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     ForEachChild(idxt, transformExpr)
                     {
                         IHqlExpression * cur = transformExpr->queryChild(idxt);
-                        IHqlExpression * tgt = cur->queryChild(0);
-                        IHqlExpression * src = cur->queryChild(1);
-                        assigns.append(*createAssign(LINK(tgt), expandFields(mapper, src, child, grandchild, &monitor)));
+                        if (cur->getOperator() == no_assign)
+                        {
+                            IHqlExpression * tgt = cur->queryChild(0);
+                            IHqlExpression * src = cur->queryChild(1);
+                            assigns.append(*createAssign(LINK(tgt), expandFields(mapper, src, child, grandchild, &monitor)));
+                        }
+                        else
+                        {
+                            assigns.append(*LINK(cur));
+                        }
                     }
                     OwnedHqlExpr expandedTransform = transformExpr->clone(assigns);
                     args.append(*LINK(expandedTransform));
@@ -3226,7 +3390,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                     if (!monitor.isComplex())
                     {
                         DBGLOG("Optimizer: Merge %s and %s", queryNode0Text(transformed), queryNode1Text(child));
-                        removeProperty(args, _internal_Atom);
+                        removeAttribute(args, _internal_Atom);
                         noteUnused(child);
                         return transformed->clone(args);
                     }
@@ -3273,7 +3437,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                 {
                     if (isPureActivity(transformed) && !isAggregateDataset(transformed))
                     {
-                        if (child->hasProperty(onFailAtom))
+                        if (child->hasAttribute(onFailAtom))
                             return moveProjectionOverLimit(transformed);
                         return swapNodeWithChild(transformed);
                     }
@@ -3311,16 +3475,16 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_group:
                 {
                     IHqlExpression * newChild = child;
-                    bool isLocal = transformed->hasProperty(localAtom);
+                    bool isLocal = transformed->hasAttribute(localAtom);
                     while (newChild->getOperator() == no_group)
                     {
-                        if (newChild->queryProperty(allAtom))
+                        if (newChild->queryAttribute(allAtom))
                             break;
 
                         if (queryRealChild(newChild, 1))
                         {
                             //Don't allow local groups to remove non-local groups.
-                            if (isLocal && !newChild->hasProperty(localAtom))
+                            if (isLocal && !newChild->hasAttribute(localAtom))
                                 break;
                         }
                         noteUnused(newChild);
@@ -3339,7 +3503,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_hqlproject:
             case no_newusertable:
                 //Move ungroups() over projects to increase the likely hood of combining projects and removing groups
-//              if (!queryRealChild(transformed, 1) && !child->hasProperty(_countProject_Atom) && !isAggregateDataset(child))
+//              if (!queryRealChild(transformed, 1) && !child->hasAttribute(_countProject_Atom) && !isAggregateDataset(child))
 //                  return swapNodeWithChild(transformed);
                 break;
             }
@@ -3360,7 +3524,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                 {
                 case no_hqlproject:
                 case no_newusertable:
-                    if (isPureActivity(child) && !child->hasProperty(_countProject_Atom) && !child->hasProperty(prefetchAtom) && !isAggregateDataset(child))
+                    if (isPureActivity(child) && !child->hasAttribute(_countProject_Atom) && !child->hasAttribute(prefetchAtom) && !isAggregateDataset(child))
                         return swapNodeWithChild(transformed);
                     break;
                 }
@@ -3415,7 +3579,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
     case no_keyeddistribute:
     case no_distribute:
         {
-            if (transformed->hasProperty(skewAtom))
+            if (transformed->hasAttribute(skewAtom))
                 break;
             //If distribution matches existing and grouped then don't distribute, but still remove grouping.
             IHqlExpression * distn = queryDistribution(transformed);
@@ -3426,7 +3590,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_keyeddistribute:
             case no_sort:
             case no_subsort:
-                if (!transformed->hasProperty(mergeAtom))
+                if (!transformed->hasAttribute(mergeAtom))
                     return removeChildNode(transformed);
                 break;
             case no_dedup:
@@ -3490,7 +3654,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             case no_compound_indexnormalize:
             case no_compound_childread:
             case no_compound_childnormalize:
-                if (!isGrouped(child) && (options & HOOhascompoundaggregate) && !transformed->hasProperty(localAtom))
+                if (!isGrouped(child) && (options & HOOhascompoundaggregate) && !transformed->hasAttribute(localAtom))
                 {
                     IHqlExpression * ret = optimizeAggregateCompound(transformed);
                     if (ret)
@@ -3585,7 +3749,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
 #if 0
         //Something like the following might theoretically be useful, but seems to cause problems not commoning up
     case no_select:
-        if (transformed->hasProperty(newAtom) && !childrenAreShared(child))
+        if (transformed->hasAttribute(newAtom) && !childrenAreShared(child))
         {
             OwnedHqlExpr ret = transformTrivialSelectProject(transformed);
             if (ret)
@@ -3603,16 +3767,6 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
             node_operator childOp = child->getOperator();
             switch (childOp)
             {
-            case no_projectrow:
-                {
-                    break;
-                    IHqlExpression * grand = child->queryChild(0);
-                    IHqlExpression * base = createDatasetFromRow(LINK(grand));
-                    HqlExprArray args;
-                    unwindChildren(args, child);
-                    args.replace(*base, 0);
-                    return createDataset(no_hqlproject, args);
-                }
             case no_createrow:
                 {
                     DBGLOG("Optimizer: Merge %s and %s to Inline table", queryNode0Text(transformed), queryNode1Text(child));
@@ -3628,7 +3782,7 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
         }
     case no_join:
         {
-            if (isKeyedJoin(transformed) || transformed->hasProperty(lookupAtom))
+            if (isKeyedJoin(transformed) || transformed->hasAttribute(lookupAtom))
             {
                 node_operator childOp = child->getOperator();
                 switch (childOp)
@@ -3636,8 +3790,9 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                 case no_newusertable:
                 case no_hqlproject:
                     {
-                        if (!isPureActivity(child) || child->queryProperty(_countProject_Atom) || child->hasProperty(prefetchAtom))
+                        if (!isPureActivity(child) || child->queryAttribute(_countProject_Atom) || child->hasAttribute(prefetchAtom))
                             break;
+
                         IHqlExpression * transform = queryNewColumnProvider(child);
                         if (transformContainsSkip(transform) || !isSimpleTransformToMergeWith(transform))
                             break;
@@ -3670,11 +3825,22 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         if (ok)
                         {
                             //If expanding the project removed all references to left (very silly join....) make it an all join
-                            if (transformed->hasProperty(lookupAtom) && !exprReferencesDataset(&args.item(2), newLeft))
+                            if (transformed->hasAttribute(lookupAtom) && !exprReferencesDataset(&args.item(2), newLeft))
                                 args.append(*createAttribute(allAtom));
                             DBGLOG("Optimizer: Merge %s and %s", queryNode0Text(transformed), queryNode1Text(child));
                             noteUnused(child);
-                            return transformed->clone(args);
+                            OwnedHqlExpr merged = transformed->clone(args);
+
+                            //Substituting constants into LEFT join expression can cause problems for the ATMOST join
+                            //Only keyed joins currently support it.
+                            if (transformed->hasAttribute(atmostAtom) && !isKeyedJoin(transformed))
+                            {
+                                if (joinHasRightOnlyHardMatch(merged, false))
+                                    merged.clear();
+                            }
+
+                            if (merged)
+                                return merged.getClear();
                         }
                         break;
                     }
@@ -3702,6 +3868,19 @@ IHqlExpression * CTreeOptimizer::doCreateTransformed(IHqlExpression * transforme
                         selectnArgs.append(*child->cloneAllAnnotations(topn));
                         unwindChildren(selectnArgs, transformed, 1);
                         return transformed->clone(selectnArgs);
+                    }
+                    break;
+                }
+            case no_compound_indexread:
+                {
+                    //If we reach here the index read isn't shared, so different indices won't duplicate the index read.
+                    if (!isLimitedDataset(child))
+                    {
+                        //Add a choosen() within the index read to minimize the records returned remotely - convert ir[1] to choosen(ir,1)[1]
+                        //Make it local because that is the thor semantics (roxie is happy with local or non local)
+                        OwnedHqlExpr limited = createDataset(no_choosen, LINK(child->queryChild(0)), createComma(LINK(transformed->queryChild(1)), createLocalAttribute()));
+                        OwnedHqlExpr newIndexRead = replaceChild(child, limited);
+                        return replaceChild(transformed, newIndexRead);
                     }
                     break;
                 }
@@ -3756,23 +3935,25 @@ bool CTreeOptimizer::isSharedOrUnknown(IHqlExpression * expr)
     return (extra->useCount != 1);
 }
 
-IHqlExpression * optimizeHqlExpression(IHqlExpression * expr, unsigned options)
+IHqlExpression * optimizeHqlExpression(IErrorReceiver & errorProcessor, IHqlExpression * expr, unsigned options)
 {
     //The no_compound can get very heavily nested => unwind to save stack traversal.  We really should support nary no_compound
     HqlExprArray args, newArgs;
     unwindCommaCompound(args, expr);
-    optimizeHqlExpression(newArgs, args, options);
+    optimizeHqlExpression(errorProcessor, newArgs, args, options);
     OwnedHqlExpr optimized = createActionList(newArgs);
+
+    if (expr == optimized)
+        return optimized.getClear();
+
     //If the graph was optimized then it is highly likely there are now constant folding opportunities
-    if (expr != optimized)
-        return foldHqlExpression(optimized);
-    return optimized.getClear();
+    return foldHqlExpression(errorProcessor, optimized);
 }
 
 
-void optimizeHqlExpression(HqlExprArray & target, HqlExprArray & source, unsigned options)
+void optimizeHqlExpression(IErrorReceiver & errorProcessor, HqlExprArray & target, HqlExprArray & source, unsigned options)
 {
-    CTreeOptimizer optimizer(options);
+    CTreeOptimizer optimizer(errorProcessor, options);
     optimizer.analyseArray(source, 0);
     optimizer.transformRoot(source, target);
 }

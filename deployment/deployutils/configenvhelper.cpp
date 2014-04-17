@@ -20,6 +20,7 @@
 #include "configenvhelper.hpp"
 #include "deployutils.hpp"
 #include "build-config.h"
+#include "confighelper.hpp"
 
 bool CConfigEnvHelper::handleRoxieOperation(const char* cmd, const char* xmlStr)
 {
@@ -27,6 +28,8 @@ bool CConfigEnvHelper::handleRoxieOperation(const char* cmd, const char* xmlStr)
   if (!strcmp(cmd, "AddRoxieFarm"))
     retVal = this->addRoxieServers(xmlStr);
   else if (!strcmp(cmd, "DeleteRoxieFarm"))
+    retVal = this->deleteRoxiePorts(xmlStr);
+  else if (!strcmp(cmd, "DeleteRoxieServers"))
     retVal = this->deleteRoxieServers(xmlStr);
   else if (!strcmp(cmd, "RoxieSlaveConfig"))
     retVal = this->handleRoxieSlaveConfig(xmlStr);
@@ -141,10 +144,14 @@ bool CConfigEnvHelper::addRoxieServers(const char* xmlArg)
   StringBuffer sFarmName;
   StringBuffer xpath;
 
-  if (strlen(pszFarm))
+  if (pszFarm && strlen(pszFarm))
   {
     xpath.clear().appendf("RoxieCluster[@name='%s']/"XML_TAG_ROXIE_FARM, pszRoxieCluster);
     pFarm = getSoftwareNode(xpath.str(), pszFarm);
+
+    if (pFarm == NULL)
+      return false;
+
     sFarmName = pFarm->queryProp(XML_ATTR_NAME);
     bNewFarm = false;
 
@@ -163,25 +170,7 @@ bool CConfigEnvHelper::addRoxieServers(const char* xmlArg)
     if (!pFarm->hasProp("@aclName"))
       pFarm->addProp("@aclName", "");
 
-    StringBuffer dataDir = pFarm->queryProp(XML_ATTR_DATADIRECTORY);
-    if (dataDir.length()==0)
-      dataDir.append(RUNTIME_DIR"/roxiedata");
-
-    if (!pFarm->queryPropTree(XML_TAG_ROXIE_SERVER"[1]")) //no servers in farm
-    {
-      //if (nComputers > 0)
-      //g_pDocument->makePlatformSpecificAbsolutePath(computers[0]->queryProp(XML_ATTR_NAME), dataDir);
-      Owned<IPropertyTreeIterator> iter = pSrcTree->getElements(XML_TAG_COMPONENT);
-      
-      ForEach (*iter)
-      {
-        IPropertyTree* pFolder = &iter->query();
-        makePlatformSpecificAbsolutePath(pFolder->queryProp(XML_ATTR_NAME), dataDir);
-        break;
-      }
-
-      pFarm->setProp(XML_ATTR_DATADIRECTORY, dataDir.str());
-    }
+    StringBuffer dataDir = pFarm->queryProp(XML_ATTR_LEVEL);
   }
   else
   {
@@ -189,81 +178,17 @@ bool CConfigEnvHelper::addRoxieServers(const char* xmlArg)
     createUniqueName("farm", xpath.str(), sFarmName);
     bNewFarm = true;
 
-    StringBuffer sDataDir;
-    sDataDir.append(RUNTIME_DIR"/roxiedata");
-
-    //get datadir from existing farm if any
-    xpath.clear().appendf("Software/RoxieCluster[@name='%s']/"XML_TAG_ROXIE_FARM"[1]", pszRoxieCluster);
-    IPropertyTree* pFarm1 =  m_pRoot->queryPropTree(xpath.str());
-    if (pFarm1)
-      sDataDir.clear().append(pFarm1->queryProp(XML_ATTR_DATADIRECTORY));
-
-    //if (nComputers > 0)
-    //g_pDocument->makePlatformSpecificAbsolutePath(computers[0]->queryProp(XML_ATTR_NAME), sDataDir);
     Owned<IPropertyTreeIterator> iter = pSrcTree->getElements(XML_TAG_COMPONENT);
       
-    ForEach (*iter)
-    {
-      IPropertyTree* pFolder = &iter->query();
-      makePlatformSpecificAbsolutePath(pFolder->queryProp(XML_ATTR_NAME), sDataDir);
-      break;
-    }
-
     xpath.clear().appendf("RoxieCluster[@name='%s']/"XML_TAG_ROXIE_FARM, pszRoxieCluster);
     pFarm = pParent->addPropTree(xpath.str(), createPTree());
     pFarm->addProp    (XML_ATTR_NAME,       sFarmName.str());
     pFarm->addPropInt("@port", pSrcTree->getPropInt("@port", 9876));
-    pFarm->addProp    (XML_ATTR_DATADIRECTORY,  sDataDir.str());
     pFarm->addPropInt("@listenQueue", 200);
     pFarm->addPropInt("@numThreads",    30);
     pFarm->addPropInt("@requestArrayThreads", 5);
     pFarm->addProp("@aclName", "");
   }
-
-  Owned<IPropertyTreeIterator> iter = pSrcTree->getElements(XML_TAG_COMPONENT);
-  StringBuffer sNotAdded;
-  xpath.clear().appendf("RoxieCluster[@name='%s']/"XML_TAG_ROXIE_FARM"[@name='%s']/"XML_TAG_ROXIE_SERVER, pszRoxieCluster, sFarmName.str());
-  ForEach (*iter)
-  {
-    IPropertyTree* pFolder = &iter->query();
-
-    const char* pszName = pFolder->queryProp(XML_ATTR_NAME);
-
-    // Check if we can add this computer
-    if (checkComputerUse(pszName, pFarm)) 
-    {
-      StringBuffer sServerName( sFarmName), sbUniqueName;
-      sServerName.append("_s");
-      createUniqueName(sServerName.str(), xpath.str(), sbUniqueName);
-
-      // Add process node
-      IPropertyTree* pServer = createPTree(XML_TAG_ROXIE_SERVER);
-      pServer->setProp(XML_ATTR_NAME, sbUniqueName.str());
-      pServer->addProp(XML_ATTR_COMPUTER, pszName);
-      addNode(pServer, pFarm);
-
-      IPropertyTree* pLegacyServer = addLegacyServer(sbUniqueName, pServer, pFarm, pszRoxieCluster);
-    }
-    else
-    {
-      sNotAdded.append('\n');
-      sNotAdded.append(pszName);
-      sNotAdded.append(" ( ");
-      sNotAdded.append( pFolder->queryProp(XML_ATTR_NETADDRESS) );
-      sNotAdded.append(" )");
-    }
-  }
-
-  xpath.clear().appendf("Software/RoxieCluster[@name='%s']", pszRoxieCluster);
-  IPropertyTree* pRoxieCluster = m_pRoot->queryPropTree(xpath.str());   
-  renameInstances(pRoxieCluster);
-
-  if (sNotAdded.length())
-  {
-    StringBuffer sMsg("The following servers were already allocated to the farm and could not be added:\n");
-    sMsg.append(sNotAdded.str());
-  }
-
   return true;
 }
 
@@ -335,47 +260,6 @@ bool CConfigEnvHelper::checkComputerUse(/*IPropertyTree* pComputerNode*/ const c
 }
 
 
-bool CConfigEnvHelper::makePlatformSpecificAbsolutePath(const char* computer, StringBuffer& path)
-{
-  bool rc = false;
-  if (computer && *computer && path.length())
-  {
-    IPropertyTree* pComputer = lookupComputerByName(computer);
-    const char* computerType = pComputer ? pComputer->queryProp(XML_ATTR_COMPUTERTYPE) : NULL;
-    if (computerType && *computerType)
-    {
-      StringBuffer xpath;
-      xpath.appendf("Hardware/ComputerType[@name='%s']", computerType);
-
-      Owned<IPropertyTreeIterator> iter = m_pRoot->getElements(xpath.str());
-      if (iter->first() && iter->isValid())
-      {
-        const char* os = iter->query().queryProp("@opSys");
-        if (os && *os)
-        {
-          const bool bLinux = 0 != stricmp(os, "W2K");
-          if (bLinux)
-          {
-            path.replace('\\', '/');
-            path.replace(':', '$');
-            if (*path.str() != '/')
-              path.insert(0, '/');
-          }
-          else
-          {
-            path.replace('/', '\\');
-            path.replace('$', ':');
-            if (*path.str() == '\\')
-              path.remove(0, 1);
-          }
-          rc = true;
-        }
-      }
-    }
-  }
-  return rc;
-}
-
 IPropertyTree* CConfigEnvHelper::addLegacyServer(const char* name, IPropertyTree* pServer, 
                                                  IPropertyTree* pFarm, const char* roxieClusterName)
 {
@@ -394,17 +278,6 @@ IPropertyTree* CConfigEnvHelper::addLegacyServer(const char* name, IPropertyTree
     pLegacyServer->setProp( XML_ATTR_NAME, name);
     pLegacyServer->setProp( XML_ATTR_COMPUTER, szComputer );
     pLegacyServer->setProp( XML_ATTR_NETADDRESS, netAddress);
-    Owned<IAttributeIterator> iAttr = pFarm->getAttributes();
-    ForEach(*iAttr)
-    {
-      const char* attrName = iAttr->queryName();
-      if (0 != strcmp(attrName, XML_ATTR_COMPUTER)  && //skip
-        0 != strcmp(attrName, XML_ATTR_NETADDRESS) &&
-        0 != strcmp(attrName, XML_ATTR_NAME))
-      {
-        pLegacyServer->addProp(attrName, iAttr->queryValue());
-      }
-    }
   }
   else
     pLegacyServer = NULL;
@@ -694,31 +567,79 @@ IPropertyTree* CConfigEnvHelper::findLegacyServer(IPropertyTree* pRoxieCluster, 
 
 bool CConfigEnvHelper::deleteRoxieServers(const char* xmlArg)
 {
+    Owned<IPropertyTree> pSrcTree = createPTreeFromXMLString(xmlArg && *xmlArg ? xmlArg : "<RoxieData/>");
+    const char* pszRoxieCluster = pSrcTree->queryProp("@roxieName");
+
+    StringBuffer xpath;
+    xpath.clear().appendf("Software/RoxieCluster[@name='%s']", pszRoxieCluster);
+
+    IPropertyTree* pRoxieCluster = m_pRoot->queryPropTree(xpath.str());
+
+    if (pRoxieCluster == NULL)
+        return false;
+
+    IPropertyTree* pChild = NULL;
+
+    while ((pChild = pRoxieCluster->queryPropTree( XML_TAG_ROXIE_SERVER_PROCESSS"[1]")) != NULL)
+        pRoxieCluster->removeTree( pChild );
+
+    return true;
+}
+
+bool CConfigEnvHelper::deleteRoxiePorts(const char* xmlArg)
+{
   Owned<IPropertyTree> pSrcTree = createPTreeFromXMLString(xmlArg && *xmlArg ? xmlArg : "<RoxieData/>");
   const char* pszRoxieCluster = pSrcTree->queryProp("@roxieName");
-  unsigned int nComputers = 0;//computers.size();
+  const char* pParentName = pSrcTree->queryPropTree(XML_TAG_ROXIE_FARM) != NULL ? pSrcTree->queryPropTree(XML_TAG_ROXIE_FARM)->queryProp("@parent"): "";
+  const char* pRoxiePortName = pSrcTree->queryPropTree(XML_TAG_ROXIE_FARM) != NULL ? pSrcTree->queryPropTree(XML_TAG_ROXIE_FARM)->queryProp(XML_ATTR_NAME): "";
+  unsigned int nComputers = 0;
   StringBuffer xpath;
   xpath.clear().appendf("Software/RoxieCluster[@name='%s']", pszRoxieCluster);
   IPropertyTree* pRoxieCluster = m_pRoot->queryPropTree(xpath.str());
-  StringBuffer sFarmName;
 
-  Owned<IPropertyTreeIterator> iterFarm = pSrcTree->getElements(XML_TAG_ROXIE_FARM);
-  ForEach (*iterFarm)
+  if (pRoxiePortName && *pRoxiePortName && pParentName && *pParentName && strcmp(pParentName, "Roxie Ports") == 0)
   {
-    IPropertyTree* pFarm = &iterFarm->query();
-    const char* pszFarm = pFarm->queryProp(XML_ATTR_NAME);
-    deleteFarm(pRoxieCluster, pszFarm);
+    StringBuffer sFarmName;
+
+    Owned<IPropertyTreeIterator> iterFarm = pSrcTree->getElements(XML_TAG_ROXIE_FARM);
+    ForEach (*iterFarm)
+    {
+      IPropertyTree* pFarm = &iterFarm->query();
+      const char* pszFarm = pFarm->queryProp(XML_ATTR_NAME);
+
+      if (pszFarm == NULL || *pszFarm == 0)
+        return false;
+
+      if (strcmp(pszFarm, pRoxiePortName) == 0)
+      {
+        deleteFarm(pRoxieCluster, pszFarm);
+        return true;
+      }
+    }
+    return false;
   }
 
-  Owned<IPropertyTreeIterator> iterServer = pSrcTree->getElements(XML_TAG_ROXIE_SERVER);
-  ForEach (*iterServer)
-  {
-    IPropertyTree* pServer = &iterServer->query();
+  Owned<IPropertyTreeIterator> iter = pRoxieCluster->getElements(XML_TAG_ROXIE_SERVER);
 
-    const char* pszName = pServer->queryProp(XML_ATTR_NAME);
-    const char* pszFarm = pServer->queryProp("@parent");
-    deleteServer(pRoxieCluster, pszFarm, pszName);
-  }
+  IPropertyTree *pTree = NULL;
+
+  int count = 1;
+
+  do
+  {
+    StringBuffer xpath2(XML_TAG_ROXIE_SERVER);
+    xpath2.appendf("[%d]", count);
+    count++;
+
+    pTree = pRoxieCluster->queryPropTree(xpath2.str());
+    if (pSrcTree->queryPropTree(XML_TAG_ROXIE_ONLY_SLAVE) == NULL)  //probably an old config
+        throw MakeStringException(-1, "Error modifying roxie cluster!  Possible using an old version of the config?" );
+    if (pTree && (!strcmp(pSrcTree->queryPropTree(XML_TAG_ROXIE_ONLY_SLAVE)->queryProp(XML_ATTR_NAME), "Roxie Cluster") || !strcmp(pTree->queryProp(XML_ATTR_NAME), pSrcTree->queryPropTree(XML_TAG_ROXIE_ONLY_SLAVE)->queryProp(XML_ATTR_NAME))))
+    {
+      pRoxieCluster->removeTree(pTree);
+      count--;
+    }
+  } while (pTree);
 
     Owned<IPropertyTreeIterator> iterSlaves = pSrcTree->getElements(XML_TAG_ROXIE_ONLY_SLAVE);
     ForEach (*iterSlaves)
@@ -787,13 +708,30 @@ void CConfigEnvHelper::addComponent(const char* pszBuildSet, StringBuffer& sbNew
   {
     // NOTE - we are assuming buildSet is unique in a build.
     StringBuffer xPath, value;
+    Owned<IPropertyTreeIterator> buildSet;
+    const char* buildName = NULL;
+
     xPath.appendf("./Programs/Build/BuildSet[@name=\"%s\"]", pszBuildSet);
-    Owned<IPropertyTreeIterator> buildSet = m_pRoot->getElements(xPath.str());
+
+    CConfigHelper *pConfigHelper = CConfigHelper::getInstance();
+
+    if (pConfigHelper != NULL)
+    {
+        buildSet.setown(pConfigHelper->getBuildSetTree()->getElements(xPath.str()));
+        buildName = pConfigHelper->getBuildSetTree()->queryPropTree("./Programs/Build[1]")->queryProp(XML_ATTR_NAME);
+    }
+    else
+    {
+        buildSet.setown(m_pRoot->getElements(xPath.str()));
+        buildName = m_pRoot->queryPropTree("./Programs/Build[1]")->queryProp(XML_ATTR_NAME);
+    }
+
     buildSet->first();
     IPropertyTree* pBuildSet = &buildSet->query();
     const char* buildSetName = pBuildSet->queryProp(XML_ATTR_NAME);
     const char* processName = pBuildSet->queryProp(XML_ATTR_PROCESS_NAME);
-    const char* buildName = m_pRoot->queryPropTree("./Programs/Build[1]")->queryProp(XML_ATTR_NAME);
+
+
     if (!processName) //support non-generic components as well
       processName = buildSetName;
 
@@ -862,24 +800,18 @@ bool CConfigEnvHelper::handleRoxieSlaveConfig(const char* xmlArg)
     try
     {
         Owned<IPropertyTree> pSrcTree = createPTreeFromXMLString(xmlArg && *xmlArg ? xmlArg : "<RoxieData/>");
-        const char* type = pSrcTree->queryProp(XML_ATTR_TYPE);
         const char* pszRoxie = pSrcTree->queryProp("@roxieName");
-        const char* val1 = pSrcTree->queryProp("@val1");
-        const char* sOffset = pSrcTree->queryProp("@val2");
-        StringBuffer dir1, dir2, dir3;
-    getCommonDir(m_pRoot.get(), "data", "roxie", pszRoxie, dir1);
-        getCommonDir(m_pRoot.get(), "data2", "roxie", pszRoxie, dir2);
-        getCommonDir(m_pRoot.get(), "data3", "roxie", pszRoxie, dir3);
 
         StringBuffer xpath;
-        xpath.clear().appendf("Software/RoxieCluster[@name='%s']", pszRoxie);
+        xpath.clear().appendf("%s/%s[%s='%s']", XML_TAG_SOFTWARE, XML_TAG_ROXIECLUSTER, XML_ATTR_NAME, pszRoxie);
         IPropertyTree* pRoxie = m_pRoot->queryPropTree(xpath.str());
 
         if (!pRoxie)
             throw MakeStringException(-1, "Cannot find roxie with name %s", pszRoxie);
 
-        Owned<IPropertyTreeIterator> iterComputers = pSrcTree->getElements("Computer");
+        Owned<IPropertyTreeIterator> iterComputers = pSrcTree->getElements(XML_TAG_INSTANCES"/"XML_TAG_INSTANCE);
         IPropertyTreePtrArray computers;
+
         ForEach (*iterComputers)
         {
             IPropertyTree* pComp = &iterComputers->query();
@@ -891,96 +823,23 @@ bool CConfigEnvHelper::handleRoxieSlaveConfig(const char* xmlArg)
                 computers.push_back(pComputer);
         }
 
-        m_numChannels = atoi(val1);
-        m_numDataCopies = 0;
-        const char* confType;
-        char chDrive;
+        RemoveSlaves(pRoxie, true);
+        RemoveSlaves(pRoxie, false);
 
-        if (!strcmp(type, "Circular"))
+        for (int i=0; i<computers.size(); i++)
         {
-            if (!GenerateCyclicRedConfig(pRoxie, computers, val1, sOffset, dir1.str(), dir2.str(), dir3.str()))
-                return false;
+          IPropertyTree* pComputer = computers[i];
+          const char* szComputer = pComputer->queryProp(XML_ATTR_NAME);
+          const char* netAddress = pComputer->queryProp(XML_ATTR_NETADDRESS);
+          const char* pCompName = pComputer->queryProp(XML_ATTR_NAME);
 
-            confType = "cyclic redundancy";
-            chDrive = 'c';
-
-            pRoxie->setProp("@cyclicOffset", sOffset);
-        }
-        else 
-        {
-            if (!strcmp(type, "Overloaded"))
-            {
-                if (!GenerateOverloadedConfig(pRoxie, computers, val1, dir1.str(), dir2.str(), dir3.str()))
-                    return false;
-
-                confType = "overloaded";
-                chDrive = 'c';
-            }
-            else 
-            {
-                if (!strcmp(type, "Full"))
-                {
-                    m_numDataCopies = atoi( val1 );
-                    confType = "full redundancy";
-                }
-                else //no redundancy
-                {
-                    m_numDataCopies = 1;
-                    confType = "simple";
-                }
-
-                if (!GenerateFullRedConfig(pRoxie, m_numDataCopies, computers, dir1.str()))
-                    return false;
-            }
-
-            if (pRoxie->hasProp("@cyclicOffset"))
-                pRoxie->removeProp("@cyclicOffset");
-        }
-        StringBuffer sDataDir;
-        sDataDir.appendf("%s", dir1.str());
-
-        //give legacy slaves unique names
-        UINT i = 1;
-        Owned<IPropertyTreeIterator> it = pRoxie->getElements(XML_TAG_ROXIE_SLAVE);
-        ForEach( *it)
-        {
-            StringBuffer name;
-            name.append('s').append(i);
-
-            IPropertyTree* pLegacySlave = &it->query();
-            pLegacySlave->setProp(XML_ATTR_NAME, name.str() );
-
-            if (i++==1)
-                makePlatformSpecificAbsolutePath( pLegacySlave->queryProp(XML_ATTR_COMPUTER), sDataDir);
+          IPropertyTree *pTree = addNode(XML_TAG_ROXIE_SERVER, pRoxie);
+          pTree->setProp(XML_ATTR_NAME, szComputer);
+          pTree->setProp(XML_ATTR_NETADDRESS, netAddress);
+          pTree->setProp(XML_ATTR_COMPUTER, pCompName);
         }
 
-        pRoxie->setProp("@slaveConfig", confType);
-        pRoxie->setPropInt("@clusterWidth", computers.size());
-        pRoxie->setPropInt("@numChannels",   m_numChannels);
-        pRoxie->setPropInt("@numDataCopies", m_numDataCopies);
-        pRoxie->setProp("@baseDataDir", sDataDir.str());
-        pRoxie->setProp("@localSlave", computers.size() > 1 ? "false" : "true");
-
-        //update Roxie data directories for all farms and all legacy servers
-        //change all farms
-        Owned<IPropertyTreeIterator> iterFarms = pRoxie->getElements(XML_TAG_ROXIE_FARM);
-        ForEach (*iterFarms)
-        {
-            IPropertyTree* pTmpComp = &iterFarms->query();
-            if (strcmp(pTmpComp->queryProp(XML_ATTR_DATADIRECTORY), sDataDir.str()))
-                pTmpComp->setProp(XML_ATTR_DATADIRECTORY, sDataDir.str());
-        }
-
-        //change all legacy servers
-        Owned<IPropertyTreeIterator> iterServers = pRoxie->getElements(XML_TAG_ROXIE_SERVER);
-
-        ForEach (*iterServers)
-        {
-            IPropertyTree* pTmpComp = &iterServers->query();
-            if (strcmp(pTmpComp->queryProp(XML_ATTR_DATADIRECTORY), sDataDir.str()))
-                pTmpComp->setProp(XML_ATTR_DATADIRECTORY, sDataDir.str());
-        }
-    }
+   }
     catch (IException *e)
     {
         StringBuffer msg;
@@ -988,168 +847,27 @@ bool CConfigEnvHelper::handleRoxieSlaveConfig(const char* xmlArg)
     }
     catch (...)
     {
-        throw MakeStringException(-1, "Unknown exception in generating slave configuration!" );
+        throw MakeStringException(-1, "Unknown exception adding servers" );
     }
 
     return true;
 }
 
-
-void CConfigEnvHelper::addReplicateConfig(IPropertyTree* pSlaveNode, int channel, const char* dir, 
-                                                                const char* netAddress, IPropertyTree* pRoxie)
-{
-    StringBuffer directory;
-    directory.appendf("%s", dir);
-    makePlatformSpecificAbsolutePath( pSlaveNode->queryProp(XML_ATTR_COMPUTER), directory);
-
-    IPropertyTree* pInstance = pSlaveNode->addPropTree(XML_TAG_ROXIE_CHANNEL, createPTree());
-    pInstance->setPropInt("@number", channel);
-    pInstance->addProp(XML_ATTR_DATADIRECTORY, directory.str());
-    
-    //maintain a copy as an old style slave procss
-    IPropertyTree* pSlaveProcess = pRoxie->addPropTree(XML_TAG_ROXIE_SLAVE, createPTree());
-    pSlaveProcess->addProp(XML_ATTR_COMPUTER, pSlaveNode->queryProp(XML_ATTR_COMPUTER));
-    pSlaveProcess->addPropInt("@channel", channel);
-    pSlaveProcess->addProp(XML_ATTR_DATADIRECTORY, directory.str());
-    pSlaveProcess->addProp(XML_ATTR_NETADDRESS, netAddress);
-}
-
-bool CConfigEnvHelper::GenerateCyclicRedConfig(IPropertyTree* pRoxie, IPropertyTreePtrArray& computers, 
-                                                                                             const char* copies, const char* pszOffset,
-                                                                                             const char* dir1, const char* dir2, const char* dir3)
-{
-    const int nComputers = computers.size();
-    if (!nComputers)
-        return false;
-
-    if (!EnsureInRange(copies, min(2, nComputers), max(nComputers, 1), "Channel redundancy") ||
-         !EnsureInRange(pszOffset, min(1, nComputers-1), nComputers-1, "Channel offset"))
-    {
-        return false;
-    }
-
-    const int offset = atoi( pszOffset );
-    m_numDataCopies = atoi( copies );
-    
-    const int minOffset = min(1, nComputers-1);
-    if( offset < minOffset )
-         throw MakeStringException(-1, "Offset cannot be less than %d", minOffset);
-    if ( offset > nComputers )
-        throw MakeStringException(-1, "Offset cannot be greater than %d", nComputers);
-
-    RemoveSlaves(pRoxie, true);
-    RemoveSlaves(pRoxie, false);
-
-    for (int i=0; i<nComputers; i++)
-    {
-        IPropertyTree* pComputer = computers[i];
-        const char* szComputer = pComputer->queryProp(XML_ATTR_NAME);
-        const char* netAddress = pComputer->queryProp(XML_ATTR_NETADDRESS);
-
-        StringBuffer name;
-        name.appendf("s%d", i+1);
-
-        IPropertyTree* pSlave = pRoxie->addPropTree(XML_TAG_ROXIE_ONLY_SLAVE, createPTree());
-        pSlave->addProp(XML_ATTR_NAME, name.str());
-        pSlave->addProp(XML_ATTR_COMPUTER, szComputer);
-
-        const int baseChannel = i; //channel for first copy of slave (0 based)
-        int channel;
-        for (int c=0; c<m_numDataCopies; c++)
-        {
-            const char drive = 'c' + c;
-            channel = 1 + ((baseChannel + c*(nComputers-offset)) % nComputers);
-
-            addReplicateConfig(pSlave, channel, c==0? dir1: (c==1?dir2:dir3), netAddress, pRoxie);
-        }
-    }
-    m_numChannels = nComputers;
-    return true;
-}
-
-bool CConfigEnvHelper::GenerateOverloadedConfig(IPropertyTree* pRoxie, IPropertyTreePtrArray& computers, const char* copies,
-                                                                                                const char* dir1, const char* dir2, const char* dir3)
-{
-    const UINT nComputers = computers.size();
-    if (!nComputers)
-        return false;
-
-    if (!EnsureInRange(copies, 1, 0, "Channels per host"))
-        return false;
-
-    m_numDataCopies = atoi( copies );
-        
-    RemoveSlaves(pRoxie, true);
-    RemoveSlaves(pRoxie, false);
-
-    int channel = 1;
-    for (UINT i=0; i<nComputers; i++)
-    {
-        IPropertyTree* pComputer = computers[i];
-        const char* szComputer = pComputer->queryProp(XML_ATTR_NAME);
-        const char* netAddress = pComputer->queryProp(XML_ATTR_NETADDRESS);
-
-        StringBuffer name;
-        name.appendf("s%d", i+1);
-
-        IPropertyTree* pSlave = pRoxie->addPropTree(XML_TAG_ROXIE_ONLY_SLAVE, createPTree());
-        pSlave->addProp(XML_ATTR_NAME, name.str());
-        pSlave->addProp(XML_ATTR_COMPUTER, szComputer);
-
-        for (int c=0; c<m_numDataCopies; c++)
-        {
-            const char drive = 'c' + c;
-            addReplicateConfig(pSlave, channel + c*nComputers, c==0?dir1:(c==1?dir2:dir3), netAddress, pRoxie);
-        }
-        channel++;
-    }
-    m_numChannels = m_numDataCopies*nComputers;
-    return true;
-}
-
-bool CConfigEnvHelper::GenerateFullRedConfig(IPropertyTree* pRoxie, int copies, IPropertyTreePtrArray& computers, const char* dir1)
-{
-    int nComputers = computers.size();
-    if (!nComputers)
-        return false;
-
-    StringBuffer sbCopies;
-    sbCopies.appendf("%d", copies);
-    //if full redundancy is selected then check channel redundancy
-    if (copies != 1 && !EnsureInRange(sbCopies.str(), min(2, nComputers), (nComputers+1)/2, "Channel redundancy"))
-        return false;
-
-    const int maxChannel = nComputers / copies;
-
-    RemoveSlaves(pRoxie, true);
-    RemoveSlaves(pRoxie, false);
-
-    int channel = 0;
-    nComputers = maxChannel * copies;
-    for (int i=0; i<nComputers; i++)
-    {
-        IPropertyTree* pComputer = computers[i];
-        const char* szComputer = pComputer->queryProp(XML_ATTR_NAME);
-        const char* netAddress = pComputer->queryProp(XML_ATTR_NETADDRESS);
-
-        StringBuffer name;
-        name.appendf("s%d", i+1);
-
-        IPropertyTree* pSlave = pRoxie->addPropTree(XML_TAG_ROXIE_ONLY_SLAVE, createPTree());
-        pSlave->addProp(XML_ATTR_NAME, name.str());
-        pSlave->addProp(XML_ATTR_COMPUTER, szComputer);
-
-        addReplicateConfig(pSlave, 1 + (channel++ % maxChannel), dir1, netAddress, pRoxie);
-    }
-    m_numChannels = maxChannel;
-    return true;
-}
 
 void CConfigEnvHelper::RemoveSlaves(IPropertyTree* pRoxie, bool bLegacySlaves/*=false*/)
 {
     IPropertyTree* pChild;
     while ((pChild = pRoxie->queryPropTree( bLegacySlaves ? XML_TAG_ROXIE_SLAVE "[1]" : "RoxieSlave[1]")) != NULL)
         pRoxie->removeTree( pChild );
+
+    IPropertyTree *pTree = NULL;
+    do
+    {
+        pTree = pRoxie->queryPropTree(XML_TAG_ROXIE_SERVER"[1]");
+
+        if (pTree)
+          pRoxie->removeTree(pTree);
+    } while (pTree);
 }
 
 void CConfigEnvHelper::RenameThorInstances(IPropertyTree* pThor)

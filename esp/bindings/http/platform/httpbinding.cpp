@@ -100,7 +100,7 @@ EspHttpBinding::EspHttpBinding(IPropertyTree* tree, const char *bindname, const 
 {
     Owned<IPropertyTree> proc_cfg = getProcessConfig(tree, procname);
     m_viewConfig = proc_cfg ? proc_cfg->getPropBool("@httpConfigAccess") : false;   
-    m_formOptions = proc_cfg ? proc_cfg->getPropBool("@formOptionsAccess") : false; 
+    m_formOptions = proc_cfg ? proc_cfg->getPropBool("@formOptionsAccess") : false;
     m_includeSoapTest = true;
     m_configFile.set(tree ? tree->queryProp("@config") : "esp.xml");
     Owned<IPropertyTree> bnd_cfg = getBindingConfig(tree, bindname, procname);
@@ -367,6 +367,26 @@ StringBuffer &EspHttpBinding::generateNamespace(IEspContext &context, CHttpReque
     if (serv && *serv)
         ns.appendLower(strlen(serv), serv);
     return ns;
+}
+
+void EspHttpBinding::getSchemaLocation( IEspContext &context, CHttpRequest* request, StringBuffer &schemaLocation )
+{
+    const char* svcName = request->queryServiceName();
+    const char* method = request->queryServiceMethod();
+    if ( !svcName || !(*svcName) )
+        return;
+
+    StringBuffer host;
+    const char* wsdlAddr = request->queryParameters()->queryProp("__wsdl_address");
+    if (wsdlAddr && *wsdlAddr)
+        host.append(wsdlAddr);
+    else
+    {
+        host.append(request->queryHost());
+        if (request->getPort()>0)
+          host.append(":").append(request->getPort());
+    }
+    schemaLocation.appendf("%s/%s/%s?xsd&amp;ver_=%g", host.str(), svcName, method ? method : "", context.getClientVersion());
 }
 
 int EspHttpBinding::getMethodDescription(IEspContext &context, const char *serv, const char *method, StringBuffer &page)
@@ -672,6 +692,7 @@ int EspHttpBinding::onGet(CHttpRequest* request, CHttpResponse* response)
         case sub_serv_index:
             return onGetIndex(context, request, response, serviceName.str());
         case sub_serv_files:
+            checkInitEclIdeResponse(request, response);
             return onGetFile(context, request, response, pathEx.str());
         case sub_serv_itext:
             return onGetItext(context, request, response, pathEx.str());
@@ -1050,11 +1071,14 @@ int EspHttpBinding::onGetFile(IEspContext &context, CHttpRequest* request, CHttp
 {
     return onGetNotFound(context, request,  response, NULL);
 }
+
 int EspHttpBinding::onGetItext(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *path)
 {
     StringBuffer title;
     request->getParameter("text", title);
     StringBuffer content;
+    if (checkInitEclIdeResponse(request, response))
+        content.append("<!DOCTYPE html>"); //may be safe for all browsers? but better to be safe for now?
     content.append("<html><head>");
     if(title.length() > 0)
         content.appendf("<title>%s</title>", title.str());
@@ -1071,6 +1095,8 @@ int EspHttpBinding::onGetIframe(IEspContext &context, CHttpRequest* request, CHt
     StringBuffer title;
     request->getParameter("esp_iframe_title", title);
     StringBuffer content;
+    if (checkInitEclIdeResponse(request, response))
+        content.append("<!DOCTYPE html>"); //may be safe for all browsers? but better to be safe for now?
     content.append("<html><head>");
     if(title.length() > 0)
         content.appendf("<title>%s</title>", title.str());
@@ -1434,6 +1460,57 @@ void EspHttpBinding::generateSampleXml(bool isRequest, IEspContext &context, CHt
     throw MakeStringException(-1,"Unknown type: %s", element.str());
 }
 
+void EspHttpBinding::generateSampleXmlFromSchema(bool isRequest, IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method, const char * schemaxml)
+{
+    StringBuffer serviceQName, methodQName;
+
+    if (!qualifyServiceName(context, serv, method, serviceQName, &methodQName))
+        return;
+
+    MethodInfoArray info;
+    getQualifiedNames(context, info);
+    StringBuffer element;
+    for (unsigned i=0; i<info.length(); i++)
+    {
+        CMethodInfo& m = info.item(i);
+        if (stricmp(m.m_label, methodQName)==0)
+        {
+            element.set(isRequest ? m.m_requestLabel : m.m_responseLabel);
+            break;
+        }
+    }
+
+    if (!element.length())
+        element.append(methodQName.str()).append(isRequest ? "Request" : "Response");
+
+    StringBuffer schemaXmlbuff(schemaxml);
+
+    Owned<IXmlSchema> schema = createXmlSchema(schemaXmlbuff);
+    if (schema.get())
+    {
+        IXmlType* type = schema->queryElementType(element);
+        if (type)
+        {
+            StringBuffer content;
+            StringStack parent;
+            StringBuffer nsdecl("xmlns=\"");
+
+            content.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+            if (context.queryRequestParameters()->hasProp("display"))
+                content.append("<?xml-stylesheet type=\"text/xsl\" href=\"/esp/xslt/xmlformatter.xsl\"?>");
+
+            genSampleXml(parent,type, content, element, generateNamespace(context, request, serviceQName.str(), methodQName.str(), nsdecl).append('\"').str());
+            response->setContent(content.length(), content.str());
+            response->setContentType(HTTP_TYPE_APPLICATION_XML_UTF8);
+            response->setStatus(HTTP_STATUS_OK);
+            response->send();
+            return;
+        }
+    }
+
+    throw MakeStringException(-1,"Unknown type: %s", element.str());
+}
+
 int EspHttpBinding::onGetReqSampleXml(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)
 {
     generateSampleXml(true, ctx, request, response, serv, method);
@@ -1448,7 +1525,7 @@ int EspHttpBinding::onGetRespSampleXml(IEspContext &ctx, CHttpRequest* request, 
 
 int EspHttpBinding::onStartUpload(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *serv, const char *method)
 {
-    StringArray fileNames;
+    StringArray fileNames, files;
     Owned<IMultiException> me = MakeMultiException("FileSpray::UploadFile()");
     try
     {
@@ -1458,12 +1535,12 @@ int EspHttpBinding::onStartUpload(IEspContext &ctx, CHttpRequest* request, CHttp
         StringBuffer netAddress, path;
         request->getParameter("NetAddress", netAddress);
         request->getParameter("Path", path);
+        if (((netAddress.length() < 1) || (path.length() < 1)))
+            request->readUploadFileContent(fileNames, files);
+        else
+            request->readContentToFiles(netAddress, path, fileNames);
 
-        if ((netAddress.length() < 1) || (path.length() < 1))
-            throw MakeStringException(-1, "Upload destination not specified.");
-
-        request->readContentToFiles(netAddress, path, fileNames);
-        return onFinishUpload(ctx, request, response, serv, method, fileNames, NULL);
+        return onFinishUpload(ctx, request, response, serv, method, fileNames, files, NULL);
     }
     catch (IException* e)
     {
@@ -1473,10 +1550,11 @@ int EspHttpBinding::onStartUpload(IEspContext &ctx, CHttpRequest* request, CHttp
     {
         me->append(*MakeStringExceptionDirect(-1, "Unknown Exception"));
     }
-    return onFinishUpload(ctx, request, response, serv, method, fileNames, me);
+    return onFinishUpload(ctx, request, response, serv, method, fileNames, files, me);
 }
 
-int EspHttpBinding::onFinishUpload(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method, StringArray& fileNames, IMultiException *me)
+int EspHttpBinding::onFinishUpload(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response,    const char *serv, const char *method,
+                                   StringArray& fileNames, StringArray& files, IMultiException *me)
 {
     response->setContentType("text/html; charset=UTF-8");
     StringBuffer content(
@@ -1504,7 +1582,6 @@ int EspHttpBinding::onFinishUpload(IEspContext &ctx, CHttpRequest* request, CHtt
 
     return 0;
 }
-
 
 int EspHttpBinding::getWsdlMessages(IEspContext &context, CHttpRequest *request, StringBuffer &content, const char *service, const char *method, bool mda)
 {
@@ -1751,7 +1828,7 @@ int EspHttpBinding::onGetIndex(IEspContext &context, CHttpRequest* request,  CHt
 
 // Interestingly, only single quote needs to HTML escape.
 // ", <, >, & don't need escape.
-static void escapeSingleQuote(StringBuffer& src, StringBuffer& escaped)
+void EspHttpBinding::escapeSingleQuote(StringBuffer& src, StringBuffer& escaped)
 {
     for (const char* p = src.str(); *p!=0; p++)
     {

@@ -37,6 +37,11 @@ public:
 		userMap.kill();
 	}
 
+	secManagerType querySecMgrType()
+	{
+		return SMT_HTPasswd;
+	}
+
 	IAuthMap * createAuthMap(IPropertyTree * authconfig)
 	{
 		CAuthMap* authmap = new CAuthMap(this);
@@ -66,7 +71,7 @@ public:
 					ISecResourceList* rlist = authmap->queryResourceList(pathstr.str());
 					if(rlist == NULL)
 					{
-						rlist = createResourceList("localsecurity");
+						rlist = createResourceList("htpasswdsecurity");
 						authmap->add(pathstr.str(), rlist);
 					}
 					ISecResource* rs = rlist->addResource(rstr.str());

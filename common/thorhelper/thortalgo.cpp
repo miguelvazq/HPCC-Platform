@@ -177,7 +177,7 @@ void ProductionFeatureInfo::deserialize(MemoryBuffer & in)
     extra.deserialize(in);
     unsigned numActions;
     in.read(numActions);
-    for (unsigned i = 0; i < numActions; numActions++)
+    for (unsigned i = 0; i < numActions; i++)
     {
         FeatureAction & cur = * new FeatureAction;
         cur.deserialize(in);
@@ -1050,7 +1050,7 @@ void LRTableBuilder::addGoto(symbol_id id, unsigned newState)
     curState->gotos[id - table.numTokens] = newState;
 }
 
-void LRTableBuilder::addProduction(unsigned id, unsigned ruleId, _ATOM ruleName, unsigned numToPop, int penalty, bool transformClonesFirstSymbol)
+void LRTableBuilder::addProduction(unsigned id, unsigned ruleId, IAtom * ruleName, unsigned numToPop, int penalty, bool transformClonesFirstSymbol)
 {
     assertex(id < table.numProductions); 
     LRProduction & cur = table.productions[id];

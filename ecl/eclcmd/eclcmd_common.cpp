@@ -341,6 +341,15 @@ bool EclCmdCommon::finalizeOptions(IProperties *globals)
     extractEclCmdOption(optUsername, globals, ECLOPT_USERNAME_ENV, ECLOPT_USERNAME_INI, NULL, NULL);
     extractEclCmdOption(optPassword, globals, ECLOPT_PASSWORD_ENV, ECLOPT_PASSWORD_INI, NULL, NULL);
 
+    if (!optUsername.isEmpty() && optPassword.isEmpty())
+    {
+        VStringBuffer prompt("%s's password: ", optUsername.get());
+        StringBuffer pw;
+        passwordInput(prompt, pw);
+        if (pw.length())
+            optPassword.set(pw);
+    }
+
     if (!optVerbose)
     {
         Owned<ILogMsgFilter> filter = getCategoryLogMsgFilter(MSGAUD_user, MSGCLS_error);
@@ -369,6 +378,8 @@ public:
     void buildCmd(StringBuffer &cmdLine)
     {
         cmdLine.set("eclcc -E");
+        if (cmd.optLegacy)
+            cmdLine.append(" -legacy");
         appendOptPath(cmdLine, 'I', cmd.optImpPath.str());
         appendOptPath(cmdLine, 'L', cmd.optLibPath.str());
         if (cmd.optAttributePath.length())
@@ -380,7 +391,12 @@ public:
             if (cmd.optManifest.length())
                 cmdLine.append(" -manifest ").append(cmd.optManifest.get());
             if (cmd.optObj.value.get())
-                cmdLine.append(" ").append(streq(cmd.optObj.value.get(), "stdin") ? "- " : cmd.optObj.value.get());
+            {
+                if (streq(cmd.optObj.value.get(), "stdin"))
+                    cmdLine.append(" - ");
+                else
+                    cmdLine.append(" \"").append(cmd.optObj.value.get()).append('"');;
+            }
         }
         if (cmd.debugValues.length())
         {
@@ -551,6 +567,8 @@ eclCmdOptionMatchIndicator EclCmdWithEclTarget::matchCommandLineOption(ArgvItera
     if (iter.matchOption(optSnapshot, ECLOPT_SNAPSHOT) || iter.matchOption(optSnapshot, ECLOPT_SNAPSHOT_S))
         return EclCmdOptionMatch;
     if (iter.matchFlag(optNoArchive, ECLOPT_ECL_ONLY))
+        return EclCmdOptionMatch;
+    if (iter.matchFlag(optLegacy, ECLOPT_LEGACY) || iter.matchFlag(optLegacy, ECLOPT_LEGACY_DASH))
         return EclCmdOptionMatch;
     if (iter.matchOption(optResultLimit, ECLOPT_RESULT_LIMIT))
         return EclCmdOptionMatch;

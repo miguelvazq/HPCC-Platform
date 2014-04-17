@@ -60,8 +60,8 @@ class NullContextCallback : public CInterface, implements ICodegenContextCallbac
 class HqlDllGenerator : public CInterface, implements IHqlExprDllGenerator, implements IAbortRequestCallback
 {
 public:
-    HqlDllGenerator(IErrorReceiver * _errs, const char * _wuname, const char * _targetdir, IWorkUnit * _wu, const char * _template_dir, ClusterType _targetClusterType, ICodegenContextCallback * _ctxCallback, bool _checkForLocalFileUploads) :
-        errs(_errs), wuname(_wuname), targetDir(_targetdir), wu(_wu), template_dir(_template_dir), targetClusterType(_targetClusterType), ctxCallback(_ctxCallback), checkForLocalFileUploads(_checkForLocalFileUploads)
+    HqlDllGenerator(IErrorReceiver * _errs, const char * _wuname, const char * _targetdir, IWorkUnit * _wu, const char * _template_dir, ClusterType _targetClusterType, ICodegenContextCallback * _ctxCallback, bool _checkForLocalFileUploads, bool _okToAbort) :
+        errs(_errs), wuname(_wuname), targetDir(_targetdir), wu(_wu), template_dir(_template_dir), targetClusterType(_targetClusterType), ctxCallback(_ctxCallback), checkForLocalFileUploads(_checkForLocalFileUploads), okToAbort(_okToAbort)
     {
         if (!ctxCallback)
             ctxCallback.setown(new NullContextCallback);
@@ -70,6 +70,7 @@ public:
         generateTarget = EclGenerateNone;
         code.setown(createCppInstance(wu, wuname));
         deleteGenerated = false;
+        totalGeneratedSize = 0;
     }
     IMPLEMENT_IINTERFACE
 
@@ -98,6 +99,7 @@ protected:
     bool generateCode(HqlQueryContext & query);
     bool generateFullFieldUsageStatistics(HqlCppTranslator & translator, IHqlExpression * query);
     IPropertyTree * generateSingleFieldUsageStatistics(IHqlExpression * expr, const char * variety, const IPropertyTree * exclude);
+    offset_t getGeneratedSize() const;
     void insertStandAloneCode();
     void setWuState(bool ok);
     inline bool abortRequested();
@@ -114,10 +116,12 @@ protected:
     unsigned defaultMaxCompileThreads;
     StringArray sourceFiles;
     StringArray libraries;
+    offset_t totalGeneratedSize;
     bool checkForLocalFileUploads;
     bool noOutput;
     EclGenerateTarget generateTarget;
     bool deleteGenerated;
+    bool okToAbort;
 };
 
 
@@ -180,6 +184,8 @@ void HqlDllGenerator::expandCode(const char * templateName, const char * ext, IH
     props->setProp("outputName", fullname.str());
 
     expander->generate(*writer, pass, props);
+
+    totalGeneratedSize += out->size();
 
     if (!deleteGenerated)
         addCppName(fullname);
@@ -429,9 +435,15 @@ bool HqlDllGenerator::generateCode(HqlQueryContext & query)
             return false;
         }
 
+        if (wu->getDebugValueBool("saveEclTempFiles", false) || wu->getDebugValueBool("saveCppTempFiles", false))
+            setSaveGeneratedFiles(true);
+
         doExpand(translator);
         if (wu->getDebugValueBool("addTimingToWorkunit", true))
-            wu->setTimerInfo("EclServer: generate code", NULL, msTick()-time, 1, 0);
+        {
+            unsigned elapsed = msTick()-time;
+            updateWorkunitTimeStat(wu, "eclcc", "workunit", "GenerateCpp", "eclcc: generate code", milliToNano(elapsed), 1, 0);
+        }
 
         wu->commit();
         addWorkUnitAsResource();
@@ -443,7 +455,7 @@ bool HqlDllGenerator::generateCode(HqlQueryContext & query)
 void HqlDllGenerator::addWorkUnitAsResource()
 {
     SCMStringBuffer wuXML;
-    exportWorkUnitToXML(wu, wuXML, false);
+    exportWorkUnitToXML(wu, wuXML, false, false);
     code->addCompressResource("WORKUNIT", wuXML.length(), wuXML.str(), NULL, 1000);
 }
 
@@ -479,7 +491,7 @@ void HqlDllGenerator::doExpand(HqlCppTranslator & translator)
 
     unsigned endExpandTime = msTick();
     if (wu->getDebugValueBool("addTimingToWorkunit", true))
-        wu->setTimerInfo("EclServer: write c++", NULL, endExpandTime-startExpandTime, 1, 0);
+        updateWorkunitTimeStat(wu, "eclcc", "workunit", "writeCpp", "eclcc: Time to write c++", milliToNano(endExpandTime-startExpandTime), 1, 0);
 }
 
 bool HqlDllGenerator::abortRequested()
@@ -506,6 +518,8 @@ bool HqlDllGenerator::doCompile(ICppCompiler * compiler)
             compiler->setOptimizeLevel(optimizeLevel);
     }
 #ifdef __64BIT__
+    // ARMFIX: Map all the uses of this property and make sure
+    // they're not used to mean x86_64 (it shouldn't, though)
     bool target64bit = wu->getDebugValueBool("target64bit", true);
 #else
     bool target64bit = wu->getDebugValueBool("target64bit", false);
@@ -524,7 +538,8 @@ bool HqlDllGenerator::doCompile(ICppCompiler * compiler)
     wu->getDebugValue("compileOptions", optionAdaptor);
     compiler->addCompileOption(options.str());
 
-    compiler->setAbortChecker(this);
+    if (okToAbort)
+        compiler->setAbortChecker(this);
 
     MTIME_SECTION (timer, "Compile_code");
     unsigned time = msTick();
@@ -536,7 +551,7 @@ bool HqlDllGenerator::doCompile(ICppCompiler * compiler)
         PrintLog("Failed to compile %s", wuname);
     time = msTick()-time;
     if (wu->getDebugValueBool("addTimingToWorkunit", true))
-        wu->setTimerInfo("EclServer: compile code", NULL, time, 1, 0);
+        updateWorkunitTimeStat(wu, "eclcc", "workunit", "compile", "eclcc: compile code", milliToNano(time), 1, 0);
 
     //Keep the files if there was a compile error.
     if (ok && deleteGenerated)
@@ -593,16 +608,21 @@ double HqlDllGenerator::getECLcomplexity(IHqlExpression * exprs)
     return translator.getComplexity(*code, query.expr);
 }
 
+offset_t HqlDllGenerator::getGeneratedSize() const
+{
+    return totalGeneratedSize;
+}
 
 extern HQLCPP_API double getECLcomplexity(IHqlExpression * exprs, IErrorReceiver * errs, IWorkUnit *wu, ClusterType targetClusterType)
 {
-    HqlDllGenerator generator(errs, "unknown", NULL, wu, NULL, targetClusterType, NULL, false);
+    HqlDllGenerator generator(errs, "unknown", NULL, wu, NULL, targetClusterType, NULL, false, false);
     return generator.getECLcomplexity(exprs);
 }
 
-extern HQLCPP_API IHqlExprDllGenerator * createDllGenerator(IErrorReceiver * errs, const char *wuname, const char * targetdir, IWorkUnit *wu, const char * template_dir, ClusterType targetClusterType, ICodegenContextCallback *ctxCallback, bool checkForLocalFileUploads)
+
+extern HQLCPP_API IHqlExprDllGenerator * createDllGenerator(IErrorReceiver * errs, const char *wuname, const char * targetdir, IWorkUnit *wu, const char * template_dir, ClusterType targetClusterType, ICodegenContextCallback *ctxCallback, bool checkForLocalFileUploads, bool okToAbort)
 {
-    return new HqlDllGenerator(errs, wuname, targetdir, wu, template_dir, targetClusterType, ctxCallback, checkForLocalFileUploads);
+    return new HqlDllGenerator(errs, wuname, targetdir, wu, template_dir, targetClusterType, ctxCallback, checkForLocalFileUploads, okToAbort);
 }
 
 /*
@@ -665,8 +685,21 @@ void setWorkunitHash(IWorkUnit * wu, IHqlExpression * expr)
 #ifdef _WIN32
     cacheCRC++; // make sure CRC is different in windows/linux
 #endif
-#ifdef __64BIT__
-    cacheCRC += 2; // make sure CRC is different for different host platform (shouldn't really matter if cross-compiling working properly, but fairly harmless)
+// make sure CRC is different for different host platform
+// shouldn't really matter if cross-compiling working properly,
+// but fairly harmless.
+#ifdef _ARCH_X86_
+    cacheCRC += 1;
+#endif
+#ifdef _ARCH_X86_64_
+    cacheCRC += 2;
+#endif
+// In theory, ARM and x86 workunits should be totally different, but...
+#ifdef _ARCH_ARM32_
+    cacheCRC += 3;
+#endif
+#ifdef _ARCH_ARM64_
+    cacheCRC += 4;
 #endif
     IExtendedWUInterface *ewu = queryExtendedWU(wu);
     cacheCRC = ewu->calculateHash(cacheCRC);

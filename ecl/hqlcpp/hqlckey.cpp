@@ -155,7 +155,7 @@ IHqlExpression * getHozedKeyValue(IHqlExpression * _value)
 
 IHqlExpression * convertIndexPhysical2LogicalValue(IHqlExpression * cur, IHqlExpression * physicalSelect, bool allowTranslate)
 {
-    if (cur->hasProperty(blobAtom))
+    if (cur->hasAttribute(blobAtom))
     {
         if (cur->isDataset())
             return createDataset(no_id2blob, LINK(physicalSelect), LINK(cur->queryRecord()));
@@ -204,7 +204,7 @@ void HqlCppTranslator::buildJoinMatchFunction(BuildCtx & ctx, const char * name,
         bindTableCursor(matchctx, left, "left", no_left, selSeq);
         bindTableCursor(matchctx, right, "right", no_right, selSeq);
 
-        OwnedHqlExpr cseMatch = options.spotCSE ? spotScalarCSE(match) : LINK(match);
+        OwnedHqlExpr cseMatch = options.spotCSE ? spotScalarCSE(match, NULL, queryOptions().spotCseInIfDatasetConditions) : LINK(match);
         buildReturn(matchctx, cseMatch);
     }
 }
@@ -240,8 +240,8 @@ public:
     IHqlExpression * queryFileFilename()                    { return file->queryChild(0); }
     IHqlExpression * queryRawKey()                          { return rawKey; }
     IHqlExpression * queryRawRhs()                          { return rawRhs; }
-    bool isKeyOpt()                                         { return key->hasProperty(optAtom); }
-    bool isFileOpt()                                        { return file && file->hasProperty(optAtom); }
+    bool isKeyOpt()                                         { return key->hasAttribute(optAtom); }
+    bool isFileOpt()                                        { return file && file->hasAttribute(optAtom); }
     bool needToExtractJoinFields() const                    { return extractJoinFieldsTransform != NULL; }
     bool hasPostFilter() const                              { return monitors->queryExtraFilter() || fileFilter; }
     bool requireActivityForKey() const                      { return hasComplexIndex; }
@@ -284,6 +284,7 @@ protected:
     OwnedHqlExpr    extractJoinFieldsTransform;
     bool            canOptimizeTransfer;
     bool            hasComplexIndex;
+    bool            keyHasFileposition;
 };
 
 KeyedJoinInfo::KeyedJoinInfo(HqlCppTranslator & _translator, IHqlExpression * _expr, bool _canOptimizeTransfer) : translator(_translator)
@@ -293,12 +294,13 @@ KeyedJoinInfo::KeyedJoinInfo(HqlCppTranslator & _translator, IHqlExpression * _e
     hasComplexIndex = false;
 
     IHqlExpression * right = expr->queryChild(1);
-    IHqlExpression * keyed = expr->queryProperty(keyedAtom);
+    IHqlExpression * keyed = expr->queryAttribute(keyedAtom);
     if (keyed && keyed->queryChild(0))
     {
         key.set(keyed->queryChild(0));
         if (right->getOperator() == no_keyed)
             right = right->queryChild(0);
+        assertex(getBoolAttribute(right, filepositionAtom, true));
         file.set(right);
         IHqlExpression * rightTable = queryPhysicalRootTable(right);
         if (!rightTable || rightTable->queryNormalizedSelector() != right->queryNormalizedSelector())
@@ -324,13 +326,15 @@ KeyedJoinInfo::KeyedJoinInfo(HqlCppTranslator & _translator, IHqlExpression * _e
             translator.throwError1(HQLERR_KeyedJoinNoRightIndex_X, getOpString(right->getOperator()));
     }
 
+    keyHasFileposition = getBoolAttribute(key, filepositionAtom, true);
+
     if (!originalKey)
         originalKey.set(key);
     expandedKey.setown(translator.convertToPhysicalIndex(key));
     rawKey.set(queryPhysicalRootTable(expandedKey));
     canOptimizeTransfer = _canOptimizeTransfer; 
     monitors = NULL;
-    counter.set(queryPropertyChild(expr, _countProject_Atom, 0));
+    counter.set(queryAttributeChild(expr, _countProject_Atom, 0));
 
     if (isFullJoin())
         rawRhs.set(rawFile);
@@ -529,7 +533,7 @@ void KeyedJoinInfo::buildIndexReadMatch(BuildCtx & ctx)
         OwnedHqlExpr fileposVar = createVariable("_filepos", fileposExpr->getType());
 
         if (translator.queryOptions().spotCSE)
-            matchExpr.setown(spotScalarCSE(matchExpr));
+            matchExpr.setown(spotScalarCSE(matchExpr, NULL, translator.queryOptions().spotCseInIfDatasetConditions));
 
         translator.associateBlobHelper(matchctx, rawKey, "blobs");
 
@@ -653,7 +657,7 @@ void KeyedJoinInfo::buildTransformBody(BuildCtx & ctx, IHqlExpression * transfor
 {
     IHqlExpression * rhs = expr->queryChild(1);
     IHqlExpression * rhsRecord = rhs->queryRecord();
-    IHqlExpression * rowsid = expr->queryProperty(_rowsid_Atom);
+    IHqlExpression * rowsid = expr->queryAttribute(_rowsid_Atom);
 
     OwnedHqlExpr originalRight = createSelector(no_right, rhsRecord, joinSeq);
     OwnedHqlExpr serializedRhsRecord = getSerializedForm(rhsRecord, diskAtom);
@@ -687,7 +691,7 @@ void KeyedJoinInfo::buildTransformBody(BuildCtx & ctx, IHqlExpression * transfor
     if (extractJoinFieldsTransform)
     {
         IHqlExpression * fileposField = isFullJoin() ? queryVirtualFileposField(file->queryRecord()) : queryLastField(key->queryRecord());
-        if (fileposField && (expr->getOperator() != no_denormalizegroup))
+        if (keyHasFileposition && fileposField && (expr->getOperator() != no_denormalizegroup))
         {
             HqlMapTransformer fileposMapper;
             OwnedHqlExpr select = createSelectExpr(LINK(serializedRight), LINK(fileposField));
@@ -706,7 +710,7 @@ void KeyedJoinInfo::buildTransformBody(BuildCtx & ctx, IHqlExpression * transfor
             newTransform.setown(expandDatasetReferences(newTransform, expandedKey));
     }
 
-    newTransform.setown(optimizeHqlExpression(newTransform, HOOfold|HOOcompoundproject));
+    newTransform.setown(optimizeHqlExpression(translator.queryErrorProcessor(), newTransform, HOOfold|HOOcompoundproject));
     newTransform.setown(foldHqlExpression(newTransform));
 
     BoundRow * selfCursor = translator.buildTransformCursors(ctx, newTransform, expr->queryChild(0), joinDataset, expr, joinSeq);
@@ -794,7 +798,7 @@ IHqlExpression * KeyedJoinInfo::optimizeTransfer(HqlExprArray & fields, HqlExprA
                         //Check same field isn't used in two different nested records.
                         StringBuffer name;
                         name.append("__unnamed__").append(fields.ordinality());
-                        field.setown(createField(createIdentifierAtom(name), field->getType(), NULL, NULL));
+                        field.setown(createField(createIdAtom(name), field->getType(), NULL, NULL));
                     }
 
                     fields.append(*LINK(field));
@@ -966,6 +970,9 @@ static void doGatherFieldsAccessed(RecursionChecker & checker, HqlExprArray & fi
 
 static void gatherFieldsAccessed(HqlExprArray & fieldsAccessed, IHqlExpression * cond, IHqlExpression * ds)
 {
+    if (!cond)
+        return;
+
     RecursionChecker checker;
 
     doGatherFieldsAccessed(checker, fieldsAccessed, cond, ds);
@@ -984,7 +991,7 @@ void KeyedJoinInfo::optimizeExtractJoinFields()
     {
         //Version1: Don't remove any fields
         doExtract = true;
-        OwnedHqlExpr rows = createDataset(no_rows, LINK(right), LINK(expr->queryProperty(_rowsid_Atom)));
+        OwnedHqlExpr rows = createDataset(no_rows, LINK(right), LINK(expr->queryAttribute(_rowsid_Atom)));
         if (isFullJoin())
         {
             //unwindFields(fieldsAccessed, file->queryRecord());
@@ -994,12 +1001,14 @@ void KeyedJoinInfo::optimizeExtractJoinFields()
         {
 //          unwindFields(fieldsAccessed, key->queryRecord());
             extractedRecord.set(key->queryRecord());
+            if (keyHasFileposition)
                 fileposField = queryLastField(key->queryRecord());
         }
     }
     else
     {
         gatherFieldsAccessed(fieldsAccessed, expr->queryChild(3), right);
+        gatherFieldsAccessed(fieldsAccessed, queryAttributeChild(expr, onFailAtom, 0), right);
 
         if (isFullJoin())
         {
@@ -1013,7 +1022,7 @@ void KeyedJoinInfo::optimizeExtractJoinFields()
         {
             IHqlExpression * keyRecord = key->queryRecord();
             IHqlExpression * filepos = queryLastField(keyRecord);
-            if (filepos)
+            if (filepos && keyHasFileposition)
                 fieldsAccessed.zap(*filepos);
 
             if (translator.getTargetClusterType() != HThorCluster)
@@ -1100,13 +1109,12 @@ void KeyedJoinInfo::optimizeExtractJoinFields()
 
 bool KeyedJoinInfo::processFilter()
 {
-    OwnedHqlExpr atmostCond, atmostLimit;
-    IHqlExpression * atmost = expr->queryProperty(atmostAtom);
-    extractAtmostArgs(atmost, atmostCond, atmostLimit);
+    IHqlExpression * atmostAttr = expr->queryAttribute(atmostAtom);
+    AtmostLimit atmost(atmostAttr);
 
     IHqlExpression * cond = expr->queryChild(2);
     OwnedHqlExpr fuzzy, hard;
-    translator.splitFuzzyCondition(cond, atmostCond, fuzzy, hard);
+    splitFuzzyCondition(cond, atmost.required, fuzzy, hard);
 
     OwnedHqlExpr keyedKeyFilter, fuzzyKeyFilter;
     splitFilter(hard, keyedKeyFilter);
@@ -1124,7 +1132,7 @@ bool KeyedJoinInfo::processFilter()
         else
             leftOnlyMatch.set(cond);
     }
-    if (atmost && fileFilter)
+    if (atmostAttr && fileFilter)
     {
         StringBuffer s;
         translator.throwError1(HQLERR_BadKeyedJoinConditionAtMost,getExprECL(fileFilter, s.append(" (")).append(")").str());
@@ -1139,7 +1147,6 @@ bool KeyedJoinInfo::processFilter()
     //Now need to transform the index into its real representation so
     //the hozed transforms take place.
     unsigned payload = numPayloadFields(key);
-    assertex(payload);          // don't use rawindex once payload can be 0
     TableProjectMapper mapper(expandedKey);
     OwnedHqlExpr rightSelect = createSelector(no_right, key, joinSeq);
     OwnedHqlExpr newFilter = mapper.expandFields(keyedKeyFilter, rightSelect, rawKey, rawKey);
@@ -1150,7 +1157,7 @@ bool KeyedJoinInfo::processFilter()
     if (newFilter)
         monitors->extractFilters(newFilter, extra);
 
-    if (atmost && extra && (atmostCond || !monitors->isCleanlyKeyedExplicitly()))
+    if (atmostAttr && extra && (atmost.required || !monitors->isCleanlyKeyedExplicitly()))
     {
         StringBuffer s;
         //map the key references back so the error message refers to RIGHT instead of a weird key expression.
@@ -1264,7 +1271,7 @@ void HqlCppTranslator::buildKeyedJoinExtra(ActivityInstance & instance, IHqlExpr
 
     //virtual size32_t transform(ARowBuilder & crSelf, const void * _left, const void * _right) = 0;
     info->buildTransform(instance.startctx);
-    IHqlExpression * onFail = expr->queryProperty(onFailAtom);
+    IHqlExpression * onFail = expr->queryAttribute(onFailAtom);
     if (onFail)
     {
         //virtual size32_t onFailTransform(ARowBuilder & crSelf, const void * _left, const void * _right, unsigned __int64 _filepos, IException * except)
@@ -1272,10 +1279,10 @@ void HqlCppTranslator::buildKeyedJoinExtra(ActivityInstance & instance, IHqlExpr
     }
 
     //limit helpers...
-    IHqlExpression * limit = expr->queryProperty(limitAtom);
+    IHqlExpression * limit = expr->queryAttribute(limitAtom);
     if (limit)
     {
-        if (limit->hasProperty(skipAtom))
+        if (limit->hasAttribute(skipAtom))
         {
             BuildCtx ctx1(instance.startctx);
             ctx1.addQuotedCompound("virtual unsigned __int64 getSkipLimit()");
@@ -1351,6 +1358,8 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedJoinOrDenormalize(BuildCt
     case no_denormalizegroup:
         kind = TAKkeyeddenormalizegroup;
         break;
+    default:
+        throwUnexpected();
     }
     Owned<ActivityInstance> instance = new ActivityInstance(*this, ctx, kind, expr, (op == no_join) ? "KeyedJoin" : "KeyedDenormalize");
 
@@ -1371,37 +1380,36 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedJoinOrDenormalize(BuildCt
         }
     }
     buildActivityFramework(instance);
-    IHqlExpression * rowlimit = expr->queryProperty(rowLimitAtom);
+    IHqlExpression * rowlimit = expr->queryAttribute(rowLimitAtom);
 
     StringBuffer s;
     buildInstancePrefix(instance);
 
-    OwnedHqlExpr atmostCond, atmostLimit;
-    IHqlExpression * atmost = expr->queryProperty(atmostAtom);
-    extractAtmostArgs(atmost, atmostCond, atmostLimit);
+    IHqlExpression * atmostAttr = expr->queryAttribute(atmostAtom);
+    AtmostLimit atmost(atmostAttr);
 
     //virtual unsigned getJoinFlags()
     StringBuffer flags;
-    bool isLeftOuter = (expr->hasProperty(leftonlyAtom) || expr->hasProperty(leftouterAtom));
-    if (expr->hasProperty(leftonlyAtom)) flags.append("|JFexclude");
+    bool isLeftOuter = (expr->hasAttribute(leftonlyAtom) || expr->hasAttribute(leftouterAtom));
+    if (expr->hasAttribute(leftonlyAtom)) flags.append("|JFexclude");
     if (isLeftOuter) flags.append("|JFleftouter");
-    if (expr->hasProperty(firstAtom)) flags.append("|JFfirst");
-    if (expr->hasProperty(firstLeftAtom)) flags.append("|JFfirstleft");
+    if (expr->hasAttribute(firstAtom)) flags.append("|JFfirst");
+    if (expr->hasAttribute(firstLeftAtom)) flags.append("|JFfirstleft");
     if (transformContainsSkip(expr->queryChild(3)))
         flags.append("|JFtransformMaySkip");
     if (info.isFetchFiltered())
         flags.append("|JFfetchMayFilter");
-    if (rowlimit && rowlimit->hasProperty(skipAtom))
+    if (rowlimit && rowlimit->hasAttribute(skipAtom))
         flags.append("|JFmatchAbortLimitSkips");
-    if (rowlimit && rowlimit->hasProperty(countAtom))
+    if (rowlimit && rowlimit->hasAttribute(countAtom))
         flags.append("|JFcountmatchabortlimit");
-    if (expr->hasProperty(onFailAtom))
+    if (expr->hasAttribute(onFailAtom))
         flags.append("|JFonfail");
     if (info.isKeyOpt())
         flags.append("|JFindexoptional");
     if (info.needToExtractJoinFields())
         flags.append("|JFextractjoinfields");
-    if (expr->hasProperty(unorderedAtom))
+    if (expr->hasAttribute(unorderedAtom))
         flags.append("|JFreorderable");
     if (transformReturnsSide(expr, no_left, 0))
         flags.append("|JFtransformmatchesleft");
@@ -1431,17 +1439,17 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedJoinOrDenormalize(BuildCt
         doBuildUnsignedFunction(instance->classctx, "getFetchFlags", flags.str()+1);
 
     //virtual unsigned getJoinLimit()
-    if (!isZero(atmostLimit))
-        doBuildUnsignedFunction(instance->startctx, "getJoinLimit", atmostLimit);
+    if (!isZero(atmost.limit))
+        doBuildUnsignedFunction(instance->startctx, "getJoinLimit", atmost.limit);
 
     //virtual unsigned getKeepLimit()
-    LinkedHqlExpr keepLimit = queryPropertyChild(expr, keepAtom, 0);
+    LinkedHqlExpr keepLimit = queryAttributeChild(expr, keepAtom, 0);
     if (keepLimit)
         doBuildUnsignedFunction(instance->startctx, "getKeepLimit", keepLimit);
 
-    bool implicitLimit = !rowlimit && !atmost &&
+    bool implicitLimit = !rowlimit && !atmostAttr &&
                         (!keepLimit || info.hasPostFilter()) &&
-                        !expr->hasProperty(leftonlyAtom);
+                        !expr->hasAttribute(leftonlyAtom);
 
     //virtual unsigned getKeepLimit()
     doBuildJoinRowLimitHelper(*instance, rowlimit, info.queryKeyFilename(), implicitLimit);
@@ -1450,14 +1458,14 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedJoinOrDenormalize(BuildCt
     if (info.isFullJoin())
     {
         buildFormatCrcFunction(instance->classctx, "getDiskFormatCrc", info.queryRawRhs(), NULL, 0);
-        buildEncryptHelper(instance->startctx, info.queryFile()->queryProperty(encryptAtom), "getFileEncryptKey");
+        buildEncryptHelper(instance->startctx, info.queryFile()->queryAttribute(encryptAtom), "getFileEncryptKey");
     }
 
     IHqlExpression * key = info.queryKey();
     buildSerializedLayoutMember(instance->classctx, key->queryRecord(), "getIndexLayout", numKeyedFields(key));
 
     //--function to clear right, used for left outer join
-    if (isLeftOuter || expr->hasProperty(onFailAtom))
+    if (isLeftOuter || expr->hasAttribute(onFailAtom))
         info.buildClearRightFunction(instance->createctx);
 
     buildKeyedJoinExtra(*instance, expr, &info);
@@ -1494,20 +1502,19 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedDistribute(BuildCtx & ctx
     if (!targetThor() || insideChildQuery(ctx))
         return buildCachedActivity(ctx, expr->queryChild(0));
 
-    HqlExprArray leftSorts, rightSorts;
     IHqlExpression * left = expr->queryChild(0);
     IHqlExpression * right = expr->queryChild(1);
     IHqlExpression * indexRecord = right->queryRecord();
     IHqlExpression * seq = querySelSeq(expr);
-    bool isLimitedSubstringJoin;
-    OwnedHqlExpr match = findJoinSortOrders(expr, leftSorts, rightSorts, isLimitedSubstringJoin, NULL);
-    assertex(leftSorts.ordinality() == rightSorts.ordinality());
-    if (isLimitedSubstringJoin)
+
+    JoinSortInfo joinInfo;
+    joinInfo.findJoinSortOrders(expr, false);
+    if (joinInfo.hasOptionalEqualities())
         throwError(HQLERR_KeyedDistributeNoSubstringJoin);
 
     unsigned numUnsortedFields = numPayloadFields(right);
     unsigned numKeyedFields = getFlatFieldCount(indexRecord)-numUnsortedFields;
-    if (match || (!expr->hasProperty(firstAtom) && (leftSorts.ordinality() != numKeyedFields)))
+    if (joinInfo.extraMatch || (!expr->hasAttribute(firstAtom) && (joinInfo.queryLeftReq().ordinality() != numKeyedFields)))
         throwError(HQLERR_MustMatchExactly);    //Should already be caught in parser
 
     KeyedJoinInfo info(*this, expr, false);
@@ -1554,15 +1561,15 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyedDistribute(BuildCtx & ctx
     TableProjectMapper mapper(expandedIndex);
 
     HqlExprArray normalizedRight;
-    ForEachItemIn(i, rightSorts)
+    ForEachItemIn(i, joinInfo.queryRightReq())
     {
-        IHqlExpression & curRight = rightSorts.item(i);
+        IHqlExpression & curRight = joinInfo.queryRightReq().item(i);
         normalizedRight.append(*mapper.expandFields(&curRight, oldSelector, newSelector));
     }
     DatasetReference    leftDs(left, no_activetable, seq);
     DatasetReference    rightDs(rawIndex, no_activetable, seq);
 
-    doCompareLeftRight(instance->nestedctx, "CompareRowKey", leftDs, rightDs, leftSorts, normalizedRight);
+    doCompareLeftRight(instance->nestedctx, "CompareRowKey", leftDs, rightDs, joinInfo.queryLeftReq(), normalizedRight);
 
     buildFormatCrcFunction(instance->classctx, "getFormatCrc", info.queryRawKey(), info.queryRawKey(), 1);
     buildSerializedLayoutMember(instance->classctx, indexRecord, "getIndexLayout", numKeyedFields);
@@ -1595,12 +1602,14 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyDiff(BuildCtx & ctx, IHqlEx
 
     //virtual unsigned getFlags() = 0;
     StringBuffer flags;
-    if (expr->hasProperty(overwriteAtom))
+    if (expr->hasAttribute(overwriteAtom))
         flags.append("|KDPoverwrite");
-    else if (expr->hasProperty(noOverwriteAtom))
+    else if (expr->hasAttribute(noOverwriteAtom))
         flags.append("|KDPnooverwrite");
     if (!output->isConstant())
         flags.append("|KDPvaroutputname");
+    if (expr->hasAttribute(expireAtom))
+        flags.append("|KDPexpires");
 
     if (flags.length())
         doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
@@ -1619,7 +1628,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyDiff(BuildCtx & ctx, IHqlEx
     //virtual int getSequence() = 0;
     doBuildSequenceFunc(instance->classctx, querySequence(expr), false);
 
-    buildExpiryHelper(instance->createctx, expr->queryProperty(expireAtom));
+    buildExpiryHelper(instance->createctx, expr->queryAttribute(expireAtom));
 
     buildInstanceSuffix(instance);
     return instance->getBoundActivity();
@@ -1640,12 +1649,14 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyPatch(BuildCtx & ctx, IHqlE
 
     //virtual unsigned getFlags() = 0;
     StringBuffer flags;
-    if (expr->hasProperty(overwriteAtom))
+    if (expr->hasAttribute(overwriteAtom))
         flags.append("|KDPoverwrite");
-    else if (expr->hasProperty(noOverwriteAtom))
+    else if (expr->hasAttribute(noOverwriteAtom))
         flags.append("|KDPnooverwrite");
     if (!output->isConstant())
         flags.append("|KDPvaroutputname");
+    if (expr->hasAttribute(expireAtom))
+        flags.append("|KDPexpires");
     if (flags.length())
         doBuildUnsignedFunction(instance->classctx, "getFlags", flags.str()+1);
 
@@ -1662,7 +1673,7 @@ ABoundActivity * HqlCppTranslator::doBuildActivityKeyPatch(BuildCtx & ctx, IHqlE
     //virtual int getSequence() = 0;
     doBuildSequenceFunc(instance->classctx, querySequence(expr), false);
 
-    buildExpiryHelper(instance->createctx, expr->queryProperty(expireAtom));
+    buildExpiryHelper(instance->createctx, expr->queryAttribute(expireAtom));
 
     buildInstanceSuffix(instance);
     return instance->getBoundActivity();
@@ -1718,7 +1729,7 @@ IHqlExpression * HqlCppTranslator::getBlobRowSelector(BuildCtx & ctx, IHqlExpres
 
     //MORE: Need to clone the dataset attributes. Really they should be included in the type somehow: via modifiers?
     //or give an error if blob used on alien with ref/
-    OwnedHqlExpr field = createField(unnamedAtom, expr->getType(), NULL, NULL); 
+    OwnedHqlExpr field = createField(unnamedId, expr->getType(), NULL, NULL);
     HqlExprArray fields;
     fields.append(*LINK(field));
     OwnedHqlExpr record = createRecord(fields);
@@ -1733,7 +1744,7 @@ IHqlExpression * HqlCppTranslator::getBlobRowSelector(BuildCtx & ctx, IHqlExpres
         HqlExprArray args;
         args.append(*LINK(helper));
         args.append(*LINK(boundId.expr));
-        OwnedHqlExpr call = bindTranslatedFunctionCall(lookupBlobAtom, args);
+        OwnedHqlExpr call = bindTranslatedFunctionCall(lookupBlobId, args);
         ctx.addAssign(boundRow, call);
 
         bindRow(ctx, row, boundRow);
@@ -1790,5 +1801,5 @@ void HqlCppTranslator::doBuildExprBlobToId(BuildCtx & ctx, IHqlExpression * expr
     args.append(*LINK(helper));
     args.append(*LINK(boundSize.expr));
     args.append(*LINK(boundAddress.expr));
-    tgt.expr.setown(bindTranslatedFunctionCall(createBlobAtom, args));
+    tgt.expr.setown(bindTranslatedFunctionCall(createBlobId, args));
 }

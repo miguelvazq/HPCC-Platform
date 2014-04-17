@@ -1,19 +1,18 @@
 /*##############################################################################
 
-    Copyright (C) 2012 HPCC Systems.
+    HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems.
 
-    All rights reserved. This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+       http://www.apache.org/licenses/LICENSE-2.0
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
 ############################################################################## */
 
 #include "referencedfilelist.hpp"
@@ -22,6 +21,7 @@
 #include "workunit.hpp"
 #include "eclhelper.hpp"
 #include "dautils.hpp"
+#include "dasds.hpp"
 #include "dadfs.hpp"
 #include "dasess.hpp"
 
@@ -35,6 +35,21 @@ bool getIsOpt(const IPropertyTree &graphNode)
         return graphNode.getPropBool("att[@name='_isIndexOpt']/@value", false);
 }
 
+bool checkForeign(const char *lfn)
+{
+    if (*lfn=='~')
+        lfn++;
+    static size_t l = strlen("foreign");
+    if (strnicmp("foreign", lfn, l)==0)
+    {
+        lfn+=l;
+        while (isspace(*lfn))
+            lfn++;
+        if (lfn[0]==':' && lfn[1]==':')
+            return true;
+    }
+    return false;
+}
 const char *skipForeign(const char *name, StringBuffer *ip)
 {
     if (*name=='~')
@@ -64,19 +79,59 @@ const char *skipForeign(const char *name, StringBuffer *ip)
     return name;
 }
 
+void splitDfsLocation(const char *address, StringBuffer &cluster, StringBuffer &ip, StringBuffer &prefix, const char *defaultCluster)
+{
+    if (!address || !*address)
+    {
+        cluster.append(defaultCluster);
+        return;
+    }
+
+    const char *s=strchr(address, '@');
+    if (s)
+    {
+        cluster.append(s - address, address);
+        address = s + 1;
+    }
+    else if (defaultCluster && *defaultCluster)
+        cluster.append(defaultCluster);
+    s=strchr(address, '/');
+    if (!s)
+        ip.append(address);
+    else
+    {
+        ip.append(s - address, address);
+        prefix.append(s+1);
+    }
+}
+
+void splitDerivedDfsLocation(const char *address, StringBuffer &cluster, StringBuffer &ip, StringBuffer &prefix, const char *defaultCluster, const char *baseCluster, const char *baseIP, const char *basePrefix)
+{
+    if (address && *address)
+    {
+        splitDfsLocation(address, cluster, ip, prefix, defaultCluster);
+        return;
+    }
+    ip.append(baseIP);
+    cluster.append(baseCluster);
+    prefix.append(basePrefix);
+}
+
 class ReferencedFileList;
 
 class ReferencedFile : public CInterface, implements IReferencedFile
 {
 public:
     IMPLEMENT_IINTERFACE;
-    ReferencedFile(const char *name, bool isSubFile=false, unsigned _flags=0) : flags(_flags)
+    ReferencedFile(const char *lfn, const char *sourceIP, const char *srcCluster, const char *prefix, bool isSubFile, unsigned _flags, const char *_pkgid) : flags(_flags), pkgid(_pkgid)
     {
-        StringBuffer ip;
-        StringBuffer lc(skipForeign(name, &ip));
-        logicalName.set(lc.toLowerCase());
-        if (ip.length())
-            foreignNode.setown(createINode(ip.str()));
+        logicalName.set(skipForeign(lfn, &daliip)).toLowerCase();
+        if (daliip.length())
+            flags |= RefFileForeign;
+        else
+            daliip.set(sourceIP);
+        fileSrcCluster.set(srcCluster);
+        filePrefix.set(prefix);
         if (isSubFile)
             flags |= RefSubFile;
     }
@@ -85,25 +140,37 @@ public:
     {
         flags &= RefSubFile;
     }
-    IPropertyTree *getForeignOrRemoteFileTree(IUserDescriptor *user, INode *remote);
 
-    void processLocalFileInfo(IDistributedFile *df, const char *cluster, StringArray *subfiles);
-    void processRemoteFileTree(IPropertyTree *tree, bool foreign, StringArray *subfiles);
+    IPropertyTree *getRemoteFileTree(IUserDescriptor *user, INode *remote, const char *remotePrefix);
+    IPropertyTree *getSpecifiedOrRemoteFileTree(IUserDescriptor *user, INode *remote, const char *remotePrefix);
 
-    void resolveLocal(const char *cluster, IUserDescriptor *user, StringArray *subfiles);
-    void resolveRemote(IUserDescriptor *user, INode *remote, const char *cluster, bool checkLocalFirst, StringArray *subfiles);
-    void resolve(const char *cluster, IUserDescriptor *user, INode *remote, bool checkLocalFirst, StringArray *subfiles);
+    void processLocalFileInfo(IDistributedFile *df, const char *dstCluster, const char *srcCluster, StringArray *subfiles);
+    void processRemoteFileTree(IPropertyTree *tree, const char *srcCluster, StringArray *subfiles);
 
-    virtual const char *getLogicalName() const {return logicalName.get();}
+    void resolveLocal(const char *dstCluster, const char *srcCluster, IUserDescriptor *user, StringArray *subfiles);
+    void resolveRemote(IUserDescriptor *user, INode *remote, const char *remotePrefix, const char *dstCluster, const char *srcCluster, bool checkLocalFirst, StringArray *subfiles, bool resolveForeign=false);
+    void resolve(const char *dstCluster, const char *srcCluster, IUserDescriptor *user, INode *remote, const char *remotePrefix, bool checkLocalFirst, StringArray *subfiles, bool resolveForeign=false);
+
+    virtual const char *getLogicalName() const {return logicalName.str();}
     virtual unsigned getFlags() const {return flags;}
-    virtual const SocketEndpoint &getForeignIP() const {return foreignNode->endpoint();}
-    virtual void cloneInfo(IDFUhelper *helper, IUserDescriptor *user, INode *remote, const char *cluster, bool overwrite=false);
+    virtual const SocketEndpoint &getForeignIP(SocketEndpoint &ep) const
+    {
+        if (flags & RefFileForeign && daliip.length())
+            ep.set(daliip.str());
+        else
+            ep.set(NULL);
+        return ep;
+    }
+    virtual void cloneInfo(IDFUhelper *helper, IUserDescriptor *user, const char *dstCluster, const char *srcCluster, bool overwrite=false, bool cloneForeign=false);
     void cloneSuperInfo(ReferencedFileList *list, IUserDescriptor *user, INode *remote, bool overwrite);
+    virtual const char *queryPackageId() const {return pkgid.get();}
 
 public:
-    StringAttr logicalName;
-    Owned<INode> foreignNode;
-
+    StringBuffer logicalName;
+    StringAttr pkgid;
+    StringBuffer daliip;
+    StringBuffer filePrefix;
+    StringAttr fileSrcCluster;
     unsigned flags;
 };
 
@@ -111,7 +178,7 @@ class ReferencedFileList : public CInterface, implements IReferencedFileList
 {
 public:
     IMPLEMENT_IINTERFACE;
-    ReferencedFileList(const char *username, const char *pw)
+    ReferencedFileList(const char *username, const char *pw, bool allowForeignFiles) : allowForeign(allowForeignFiles)
     {
         if (username && pw)
         {
@@ -120,32 +187,41 @@ public:
         }
     }
 
-    void ensureFile(const char *ln, unsigned flags);
+    void ensureFile(const char *ln, unsigned flags, const char *pkgid, const char *daliip=NULL, const char *srcCluster=NULL, const char *remotePrefix=NULL);
 
-    virtual void addFile(const char *ln);
+    virtual void addFile(const char *ln, const char *daliip=NULL, const char *srcCluster=NULL, const char *remotePrefix=NULL);
     virtual void addFiles(StringArray &files);
     virtual void addFilesFromWorkUnit(IConstWorkUnit *cw);
     virtual void addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackageMap *pm, const char *queryid);
+    virtual void addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackage *pkg);
+    virtual void addFilesFromPackageMap(IPropertyTree *pm);
+
+    void addFileFromSubFile(IPropertyTree &subFile, const char *_daliip, const char *srcCluster, const char *_remotePrefix);
+    void addFilesFromSuperFile(IPropertyTree &superFile, const char *_daliip, const char *srcCluster, const char *_remotePrefix);
+    void addFilesFromPackage(IPropertyTree &package, const char *_daliip, const char *srcCluster, const char *_remotePrefix);
 
     virtual IReferencedFileIterator *getFiles();
-    virtual void cloneFileInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo);
+    virtual void cloneFileInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo, bool cloneForeign=false);
     virtual void cloneRelationships();
-    virtual void cloneAllInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo)
+    virtual void cloneAllInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo, bool cloneForeign=false)
     {
-        cloneFileInfo(helper, overwrite, cloneSuperInfo);
+        cloneFileInfo(helper, overwrite, cloneSuperInfo, cloneForeign);
         cloneRelationships();
     }
-    virtual void resolveFiles(const char *process, const char *remoteIP, bool checkLocalFirst, bool addSubFiles);
-    void resolveSubFiles(StringArray &subfiles, bool checkLocalFirst);
+    virtual void resolveFiles(const char *process, const char *remoteIP, const char *_remotePrefix, const char *srcCluster, bool checkLocalFirst, bool addSubFiles, bool resolveForeign=false);
+    void resolveSubFiles(StringArray &subfiles, bool checkLocalFirst, bool resolveForeign);
 
 public:
     Owned<IUserDescriptor> user;
     Owned<INode> remote;
     MapStringToMyClass<ReferencedFile> map;
     StringAttr process;
+    StringAttr srcCluster;
+    StringAttr remotePrefix;
+    bool allowForeign;
 };
 
-void ReferencedFile::processLocalFileInfo(IDistributedFile *df, const char *cluster, StringArray *subfiles)
+void ReferencedFile::processLocalFileInfo(IDistributedFile *df, const char *dstCluster, const char *srcCluster, StringArray *subfiles)
 {
     IDistributedSuperFile *super = df->querySuperFile();
     if (super)
@@ -165,18 +241,23 @@ void ReferencedFile::processLocalFileInfo(IDistributedFile *df, const char *clus
     }
     else
     {
-        if (!cluster || !*cluster)
+        if (!dstCluster || !*dstCluster)
             return;
-        if (df->findCluster(cluster)==NotFound)
+        if (df->findCluster(dstCluster)==NotFound)
             flags |= RefFileNotOnCluster;
+        if (fileSrcCluster.length())
+            srcCluster=fileSrcCluster;
+        if (srcCluster && *srcCluster)
+            if (NotFound == df->findCluster(srcCluster))
+                flags |= RefFileNotOnSource;
     }
 }
 
-void ReferencedFile::processRemoteFileTree(IPropertyTree *tree, bool foreign, StringArray *subfiles)
+void ReferencedFile::processRemoteFileTree(IPropertyTree *tree, const char *srcCluster, StringArray *subfiles)
 {
     flags |= RefFileRemote;
-    if (foreign)
-        flags |= RefFileForeign;
+    if (fileSrcCluster.length())
+        srcCluster = fileSrcCluster;
     if (streq(tree->queryName(), queryDfsXmlBranchName(DXB_SuperFile)))
     {
         flags |= RefFileSuper;
@@ -187,78 +268,108 @@ void ReferencedFile::processRemoteFileTree(IPropertyTree *tree, bool foreign, St
                 subfiles->append(it->query().queryProp("@name"));
         }
     }
+    else if (srcCluster && *srcCluster)
+    {
+
+        VStringBuffer xpath("Cluster[@name='%s']", srcCluster);
+        if (!tree->hasProp(xpath))
+            flags |= RefFileNotOnSource;
+    }
 
 }
 
-void ReferencedFile::resolveLocal(const char *cluster, IUserDescriptor *user, StringArray *subfiles)
+void ReferencedFile::resolveLocal(const char *dstCluster, const char *srcCluster, IUserDescriptor *user, StringArray *subfiles)
 {
     if (flags & RefFileInPackage)
         return;
     reset();
-    Owned<IDistributedFile> df = queryDistributedFileDirectory().lookup(logicalName.get(), user);
+    Owned<IDistributedFile> df = queryDistributedFileDirectory().lookup(logicalName.str(), user);
     if(df)
-        processLocalFileInfo(df, cluster, subfiles);
+        processLocalFileInfo(df, dstCluster, srcCluster, subfiles);
     else
         flags |= RefFileNotFound;
 }
 
-IPropertyTree *ReferencedFile::getForeignOrRemoteFileTree(IUserDescriptor *user, INode *remote)
+IPropertyTree *ReferencedFile::getRemoteFileTree(IUserDescriptor *user, INode *remote, const char *remotePrefix)
 {
-    IDistributedFileDirectory &dir = queryDistributedFileDirectory();
-    Owned<IPropertyTree> tree;
-    if (foreignNode)
-        tree.setown(dir.getFileTree(logicalName.get(), user, foreignNode, WF_LOOKUP_TIMEOUT, false, false));
-    if (!tree && remote)
-        tree.setown(dir.getFileTree(logicalName.get(), user, remote, WF_LOOKUP_TIMEOUT, false, false));
-    return tree.getClear();
+    if (!remote)
+        return NULL;
+    StringBuffer remoteLFN;
+    if (remotePrefix && *remotePrefix)
+        remoteLFN.append(remotePrefix).append("::").append(logicalName);
+    return queryDistributedFileDirectory().getFileTree(remoteLFN.length() ? remoteLFN : logicalName, user, remote, WF_LOOKUP_TIMEOUT, false, false);
 }
 
-void ReferencedFile::resolveRemote(IUserDescriptor *user, INode *remote, const char *cluster, bool checkLocalFirst, StringArray *subfiles)
+IPropertyTree *ReferencedFile::getSpecifiedOrRemoteFileTree(IUserDescriptor *user, INode *remote, const char *remotePrefix)
 {
+    if (daliip.length())
+    {
+        Owned<INode> daliNode;
+        daliNode.setown(createINode(daliip));
+        return getRemoteFileTree(user, daliNode, filePrefix);
+    }
+    if (!remote)
+        return NULL;
+    StringBuffer remoteLFN;
+    Owned<IPropertyTree> fileTree = getRemoteFileTree(user, remote, remotePrefix);
+    if (!fileTree)
+        return NULL;
+    remote->endpoint().getUrlStr(daliip);
+    filePrefix.set(remotePrefix);
+    return fileTree.getClear();
+}
+
+void ReferencedFile::resolveRemote(IUserDescriptor *user, INode *remote, const char *remotePrefix, const char *dstCluster, const char *srcCluster, bool checkLocalFirst, StringArray *subfiles, bool resolveForeign)
+{
+    if ((flags & RefFileForeign) && !resolveForeign)
+        return;
     if (flags & RefFileInPackage)
         return;
     reset();
     if (checkLocalFirst)
     {
-        Owned<IDistributedFile> df = queryDistributedFileDirectory().lookup(logicalName.get(), user);
+        Owned<IDistributedFile> df = queryDistributedFileDirectory().lookup(logicalName.str(), user);
         if(df)
         {
-            processLocalFileInfo(df, cluster, subfiles);
+            processLocalFileInfo(df, dstCluster, NULL, subfiles);
             return;
         }
     }
-    Owned<IPropertyTree> tree = getForeignOrRemoteFileTree(user, remote);
+    Owned<IPropertyTree> tree = getSpecifiedOrRemoteFileTree(user, remote, remotePrefix);
     if (tree)
-        processRemoteFileTree(tree, false, subfiles);
+        processRemoteFileTree(tree, srcCluster, subfiles);
     else
         flags |= RefFileNotFound;
 }
 
-void ReferencedFile::resolve(const char *cluster, IUserDescriptor *user, INode *remote, bool checkLocalFirst, StringArray *subfiles)
+void ReferencedFile::resolve(const char *dstCluster, const char *srcCluster, IUserDescriptor *user, INode *remote, const char *remotePrefix, bool checkLocalFirst, StringArray *subfiles, bool resolveForeign)
 {
-    if (foreignNode || remote)
-        resolveRemote(user, remote, cluster, checkLocalFirst, subfiles);
+    if (daliip.length() || remote)
+        resolveRemote(user, remote, remotePrefix, dstCluster, srcCluster, checkLocalFirst, subfiles, resolveForeign);
     else
-        resolveLocal(cluster, user, subfiles);
+        resolveLocal(dstCluster, srcCluster, user, subfiles);
 }
 
-void ReferencedFile::cloneInfo(IDFUhelper *helper, IUserDescriptor *user, INode *remote, const char *cluster, bool overwrite)
+void ReferencedFile::cloneInfo(IDFUhelper *helper, IUserDescriptor *user, const char *dstCluster, const char *srcCluster, bool overwrite, bool cloneForeign)
 {
     if ((flags & RefFileCloned) || (flags & RefFileSuper) || (flags & RefFileInPackage))
         return;
+    if ((flags & RefFileForeign) && !cloneForeign)
+        return;
     if (!(flags & (RefFileRemote | RefFileForeign | RefFileNotOnCluster)))
         return;
-
-    StringBuffer addr;
-    if (flags & RefFileForeign)
-        foreignNode->endpoint().getUrlStr(addr);
-    else if (remote)
-        remote->endpoint().getUrlStr(addr);
+    if (fileSrcCluster.length())
+        srcCluster = fileSrcCluster;
 
     try
     {
-        helper->createSingleFileClone(logicalName.get(), logicalName.get(), cluster,
-            DFUcpdm_c_replicated_by_d, true, NULL, user, addr.str(), NULL, overwrite, false);
+        StringBuffer srcLFN;
+        if (filePrefix.length())
+            srcLFN.append(filePrefix.str()).append("::");
+        srcLFN.append(logicalName.str());
+
+        helper->createSingleFileClone(srcLFN, srcCluster, logicalName, dstCluster, filePrefix,
+            DFUcpdm_c_replicated_by_d, true, NULL, user, daliip, NULL, overwrite, false);
         flags |= RefFileCloned;
     }
     catch (IException *e)
@@ -270,7 +381,7 @@ void ReferencedFile::cloneInfo(IDFUhelper *helper, IUserDescriptor *user, INode 
     catch (...)
     {
         flags |= RefFileCopyInfoFailed;
-        DBGLOG("Unknown error copying file info for %s, from %s", logicalName.sget(), addr.str());
+        DBGLOG("Unknown error copying file info for [%s::] %s, from %s on dfs-dali %s", filePrefix.str(), logicalName.str(), fileSrcCluster.length() ? fileSrcCluster.get() : "*", daliip.str());
     }
 }
 
@@ -281,12 +392,12 @@ void ReferencedFile::cloneSuperInfo(ReferencedFileList *list, IUserDescriptor *u
 
     try
     {
-        Owned<IPropertyTree> tree = getForeignOrRemoteFileTree(user, remote);
+        Owned<IPropertyTree> tree = getSpecifiedOrRemoteFileTree(user, remote, NULL);
         if (!tree)
             return;
 
         IDistributedFileDirectory &dir = queryDistributedFileDirectory();
-        Owned<IDistributedFile> df = dir.lookup(logicalName.get(), user);
+        Owned<IDistributedFile> df = dir.lookup(logicalName.str(), user);
         if(df)
         {
             if (!overwrite)
@@ -295,7 +406,7 @@ void ReferencedFile::cloneSuperInfo(ReferencedFileList *list, IUserDescriptor *u
             df.clear();
         }
 
-        Owned<IDistributedSuperFile> superfile = dir.createSuperFile(logicalName.get(),user, true, false);
+        Owned<IDistributedSuperFile> superfile = dir.createSuperFile(logicalName.str(),user, true, false);
         flags |= RefFileCloned;
         Owned<IPropertyTreeIterator> subfiles = tree->getElements("SubFile");
         ForEach(*subfiles)
@@ -321,7 +432,7 @@ void ReferencedFile::cloneSuperInfo(ReferencedFileList *list, IUserDescriptor *u
     catch (...)
     {
         flags |= RefFileCopyInfoFailed;
-        DBGLOG("Unknown error copying superfile info for %s", logicalName.get());
+        DBGLOG("Unknown error copying superfile info for %s", logicalName.str());
     }
 }
 
@@ -363,9 +474,12 @@ public:
     Owned<HashIterator> iter;
 };
 
-void ReferencedFileList::ensureFile(const char *ln, unsigned flags)
+void ReferencedFileList::ensureFile(const char *ln, unsigned flags, const char *pkgid, const char *daliip, const char *srcCluster, const char *prefix)
 {
-    Owned<ReferencedFile> file = new ReferencedFile(ln, false, flags);
+    if (!allowForeign && checkForeign(ln))
+        throw MakeStringException(-1, "Foreign file not allowed%s: %s", (flags & RefFileInPackage) ? " (declared in package)" : "", ln);
+
+    Owned<ReferencedFile> file = new ReferencedFile(ln, daliip, srcCluster, prefix, false, flags, pkgid);
     if (!file->logicalName.length())
         return;
     ReferencedFile *existing = map.getValue(file->getLogicalName());
@@ -378,9 +492,9 @@ void ReferencedFileList::ensureFile(const char *ln, unsigned flags)
     }
 }
 
-void ReferencedFileList::addFile(const char *ln)
+void ReferencedFileList::addFile(const char *ln, const char *daliip, const char *srcCluster, const char *prefix)
 {
-    ensureFile(ln, 0);
+    ensureFile(ln, 0, NULL, daliip, srcCluster, prefix);
 }
 
 void ReferencedFileList::addFiles(StringArray &files)
@@ -389,12 +503,53 @@ void ReferencedFileList::addFiles(StringArray &files)
         addFile(files.item(i));
 }
 
-void ReferencedFileList::addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackageMap *pm, const char *queryid)
+void ReferencedFileList::addFileFromSubFile(IPropertyTree &subFile, const char *ip, const char *cluster, const char *prefix)
 {
-    const IHpccPackage *pkg = NULL;
-    if (pm && queryid && *queryid)
-        pkg = pm->matchPackage(queryid);
+    addFile(subFile.queryProp("@value"), ip, cluster, prefix);
+}
 
+void ReferencedFileList::addFilesFromSuperFile(IPropertyTree &superFile, const char *_ip, const char *_cluster, const char *_prefix)
+{
+    StringBuffer ip;
+    StringBuffer cluster;
+    StringBuffer prefix;
+    splitDerivedDfsLocation(superFile.queryProp("@daliip"), cluster, ip, prefix, NULL, _cluster, _ip, _prefix);
+    if (superFile.hasProp("@sourceCluster"))
+        cluster.set(superFile.queryProp("@sourceCluster"));
+
+    Owned<IPropertyTreeIterator> subFiles = superFile.getElements("SubFile[@value]");
+    ForEach(*subFiles)
+        addFileFromSubFile(subFiles->query(), ip, cluster, prefix);
+}
+
+void ReferencedFileList::addFilesFromPackage(IPropertyTree &package, const char *_ip, const char *_cluster, const char *_prefix)
+{
+    StringBuffer ip;
+    StringBuffer cluster;
+    StringBuffer prefix;
+    splitDerivedDfsLocation(package.queryProp("@daliip"), cluster, ip, prefix, NULL, _cluster, _ip, _prefix);
+    if (package.hasProp("@sourceCluster"))
+        cluster.set(package.queryProp("@sourceCluster"));
+
+    Owned<IPropertyTreeIterator> supers = package.getElements("SuperFile");
+    ForEach(*supers)
+        addFilesFromSuperFile(supers->query(), ip, cluster, prefix);
+}
+
+void ReferencedFileList::addFilesFromPackageMap(IPropertyTree *pm)
+{
+    StringBuffer ip;
+    StringBuffer cluster;
+    StringBuffer prefix;
+    const char *srcCluster = pm->queryProp("@sourceCluster");
+    splitDerivedDfsLocation(pm->queryProp("@daliip"), cluster, ip, prefix, srcCluster, srcCluster, NULL, NULL);
+    Owned<IPropertyTreeIterator> packages = pm->getElements("Package");
+    ForEach(*packages)
+        addFilesFromPackage(packages->query(), ip, cluster, prefix);
+}
+
+void ReferencedFileList::addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackage *pkg)
+{
     Owned<IConstWUGraphIterator> graphs = &cw->getGraphs(GraphTypeActivities);
     ForEach(*graphs)
     {
@@ -416,24 +571,38 @@ void ReferencedFileList::addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackag
                 node.getPropBool("att[@name='_isTransformSpill']/@value"))
                 continue;
             unsigned flags = 0;
-            if (pkg && pkg->hasSuperFile(logicalName))
+            if (pkg)
             {
-                flags |= (RefFileSuper | RefFileInPackage);
-                Owned<ISimpleSuperFileEnquiry> ssfe = pkg->resolveSuperFile(logicalName);
-                if (ssfe && ssfe->numSubFiles()>0)
+                const char *pkgid = pkg->locateSuperFile(logicalName);
+                if (pkgid)
                 {
-                    unsigned count = ssfe->numSubFiles();
-                    while (count--)
+                    flags |= (RefFileSuper | RefFileInPackage);
+                    Owned<ISimpleSuperFileEnquiry> ssfe = pkg->resolveSuperFile(logicalName);
+                    if (ssfe && ssfe->numSubFiles()>0)
                     {
-                        StringBuffer subfile;
-                        ssfe->getSubFileName(count, subfile);
-                        ensureFile(subfile, RefSubFile | RefFileInPackage);
+                        unsigned count = ssfe->numSubFiles();
+                        while (count--)
+                        {
+                            StringBuffer subfile;
+                            ssfe->getSubFileName(count, subfile);
+                            ensureFile(subfile, RefSubFile | RefFileInPackage, pkgid);
+                        }
                     }
                 }
+                ensureFile(logicalName, flags, pkgid);
             }
-            ensureFile(logicalName, flags);
+            else
+                ensureFile(logicalName, flags, NULL);
         }
     }
+}
+
+void ReferencedFileList::addFilesFromQuery(IConstWorkUnit *cw, const IHpccPackageMap *pm, const char *queryid)
+{
+    const IHpccPackage *pkg = NULL;
+    if (pm && queryid && *queryid)
+        pkg = pm->matchPackage(queryid);
+    addFilesFromQuery(cw, pkg);
 }
 
 void ReferencedFileList::addFilesFromWorkUnit(IConstWorkUnit *cw)
@@ -441,42 +610,49 @@ void ReferencedFileList::addFilesFromWorkUnit(IConstWorkUnit *cw)
     addFilesFromQuery(cw, NULL, NULL);
 }
 
-void ReferencedFileList::resolveSubFiles(StringArray &subfiles, bool checkLocalFirst)
+void ReferencedFileList::resolveSubFiles(StringArray &subfiles, bool checkLocalFirst, bool resolveForeign)
 {
     StringArray childSubFiles;
     ForEachItemIn(i, subfiles)
     {
-        Owned<ReferencedFile> file = new ReferencedFile(subfiles.item(i), true);
+        const char *lfn = subfiles.item(i);
+        if (!allowForeign && checkForeign(lfn))
+            throw MakeStringException(-1, "Foreign sub file not allowed: %s", lfn);
+
+        Owned<ReferencedFile> file = new ReferencedFile(lfn, NULL, NULL, NULL, true, 0, NULL);
         if (file->logicalName.length() && !map.getValue(file->getLogicalName()))
         {
-            file->resolve(process.get(), user, remote, checkLocalFirst, &childSubFiles);
+            file->resolve(process.get(), srcCluster, user, remote, remotePrefix, checkLocalFirst, &childSubFiles, resolveForeign);
             const char *ln = file->getLogicalName();
             map.setValue(ln, file.getClear());
         }
     }
     if (childSubFiles.length())
-        resolveSubFiles(childSubFiles, checkLocalFirst);
+        resolveSubFiles(childSubFiles, checkLocalFirst, resolveForeign);
 }
 
-void ReferencedFileList::resolveFiles(const char *_process, const char *remoteIP, bool checkLocalFirst, bool expandSuperFiles)
+void ReferencedFileList::resolveFiles(const char *_process, const char *remoteIP, const char *_remotePrefix, const char *_srcCluster, bool checkLocalFirst, bool expandSuperFiles, bool resolveForeign)
 {
     process.set(_process);
     remote.setown((remoteIP && *remoteIP) ? createINode(remoteIP, 7070) : NULL);
+    srcCluster.set(_srcCluster);
+    remotePrefix.set(_remotePrefix);
+
     StringArray subfiles;
     {
         ReferencedFileIterator files(this);
         ForEach(files)
-            files.queryObject().resolve(process, user, remote, checkLocalFirst, expandSuperFiles ? &subfiles : NULL);
+            files.queryObject().resolve(process, srcCluster, user, remote, remotePrefix, checkLocalFirst, expandSuperFiles ? &subfiles : NULL, resolveForeign);
     }
     if (expandSuperFiles)
-        resolveSubFiles(subfiles, checkLocalFirst);
+        resolveSubFiles(subfiles, checkLocalFirst, resolveForeign);
 }
 
-void ReferencedFileList::cloneFileInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo)
+void ReferencedFileList::cloneFileInfo(IDFUhelper *helper, bool overwrite, bool cloneSuperInfo, bool cloneForeign)
 {
     ReferencedFileIterator files(this);
     ForEach(files)
-        files.queryObject().cloneInfo(helper, user, remote, process, overwrite);
+        files.queryObject().cloneInfo(helper, user, process, srcCluster, overwrite, cloneForeign);
     if (cloneSuperInfo)
         ForEach(files)
             files.queryObject().cloneSuperInfo(this, user, remote, overwrite);
@@ -522,7 +698,7 @@ IReferencedFileIterator *ReferencedFileList::getFiles()
     return new ReferencedFileIterator(this);
 }
 
-IReferencedFileList *createReferencedFileList(const char *user, const char *pw)
+IReferencedFileList *createReferencedFileList(const char *user, const char *pw, bool allowForeignFiles)
 {
-    return new ReferencedFileList(user, pw);
+    return new ReferencedFileList(user, pw, allowForeignFiles);
 }

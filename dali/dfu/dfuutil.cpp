@@ -126,11 +126,14 @@ static bool getFileInfo(RemoteFilename &fn, Owned<IFile> &f, offset_t &size,CDat
 
 class CFileCloner
 {
+public:
     StringAttr nameprefix;
     Owned<INode> foreigndalinode;
     Linked<IUserDescriptor> userdesc;
     Linked<IUserDescriptor> foreignuserdesc;
+    StringAttr srcCluster;
     StringAttr cluster1;
+    StringAttr prefix;
     Owned<IGroup> grp1;
     ClusterPartDiskMapSpec spec1;
     StringAttr cluster2;
@@ -402,7 +405,39 @@ class CFileCloner
             throw afor2.exc.getClear();
     }
 
-    void cloneSubFile(IPropertyTree *ftree,const char *destfilename, INode *srcdali)   // name already has prefix added
+    void updateCloneFrom(IFileDescriptor *srcfdesc, IFileDescriptor *dstfdesc, INode *srcdali, const char *srcCluster)
+    {
+        if (!srcdali || srcdali->endpoint().isNull())
+            dstfdesc->queryProperties().setProp("@cloneFromPeerCluster", srcCluster);
+        else
+        {
+            StringBuffer s;
+            dstfdesc->queryProperties().setProp("@cloneFrom", srcdali->endpoint().getUrlStr(s).str());
+            dstfdesc->queryProperties().setProp("@cloneFromDir", srcfdesc->queryDefaultDir());
+            if (srcCluster && *srcCluster) //where to copy from has been explicity set to a remote location, don't copy from local sources
+                dstfdesc->queryProperties().setProp("@cloneFromPeerCluster", "-");
+            if (prefix.length())
+                dstfdesc->queryProperties().setProp("@cloneFromPrefix", prefix.get());
+
+            while(dstfdesc->queryProperties().removeProp("cloneFromGroup"));
+
+            unsigned numClusters = srcfdesc->numClusters();
+            for (unsigned clusterNum = 0; clusterNum < numClusters; clusterNum++)
+            {
+                StringBuffer sourceGroup;
+                srcfdesc->getClusterGroupName(clusterNum, sourceGroup, NULL);
+                if (srcCluster && *srcCluster && !streq(sourceGroup, srcCluster))
+                    continue;
+                Owned<IPropertyTree> groupInfo = createPTree("cloneFromGroup");
+                groupInfo->setProp("@groupName", sourceGroup);
+                ClusterPartDiskMapSpec &spec = srcfdesc->queryPartDiskMapping(clusterNum);
+                spec.toProp(groupInfo);
+                dstfdesc->queryProperties().addPropTree("cloneFromGroup", groupInfo.getClear());
+            }
+        }
+    }
+
+    void cloneSubFile(IPropertyTree *ftree,const char *destfilename, INode *srcdali, const char *srcCluster)   // name already has prefix added
     {
         Owned<IFileDescriptor> srcfdesc = deserializeFileDescriptorTree(ftree, NULL, 0);
         const char * kind = srcfdesc->queryProperties().queryProp("@kind");
@@ -450,22 +485,7 @@ class CFileCloner
             physicalReplicateFile(dstfdesc,destfilename);
         }
 
-        if (srcdali && !srcdali->endpoint().isNull())
-        {
-            StringBuffer s;
-            dstfdesc->queryProperties().setProp("@cloneFrom", srcdali->endpoint().getUrlStr(s).str());
-            unsigned numClusters = srcfdesc->numClusters();
-            for (unsigned clusterNum = 0; clusterNum < numClusters; clusterNum++)
-            {
-                StringBuffer sourceGroup;
-                srcfdesc->getClusterGroupName(clusterNum, sourceGroup, NULL);
-                Owned<IPropertyTree> groupInfo = createPTree("cloneFromGroup");
-                groupInfo->setProp("@groupName", sourceGroup);
-                ClusterPartDiskMapSpec &spec = srcfdesc->queryPartDiskMapping(clusterNum);
-                spec.toProp(groupInfo);
-                dstfdesc->queryProperties().addPropTree("cloneFromGroup", groupInfo.getClear());
-            }
-        }
+        updateCloneFrom(srcfdesc, dstfdesc, srcdali, srcCluster);
 
         Owned<IDistributedFile> dstfile = fdir->createNew(dstfdesc);
         dstfile->attach(destfilename,userdesc);
@@ -479,7 +499,7 @@ class CFileCloner
         Owned<IDistributedFile> dfile = fdir->lookup(dstlfn,userdesc,true);
         if (dfile) {
             ClusterPartDiskMapSpec spec = spec1;
-            const char * kind = ftree->queryProp("@kind");
+            const char * kind = ftree->queryProp("Attr/@kind");
             bool iskey = kind&&(strcmp(kind,"key")==0);
             if (iskey&&repeattlk)
                 spec.setRepeatedCopies(CPDMSRP_lastRepeated,false);
@@ -538,7 +558,8 @@ public:
             break;
         }
         StringBuffer defdir1;
-        grp1.setown(queryNamedGroupStore().lookup(_cluster1,defdir1));
+        GroupType groupType;
+        grp1.setown(queryNamedGroupStore().lookup(_cluster1, defdir1, groupType));
         if (!grp1)
             throw MakeStringException(-1,"Cannot find cluster %s",_cluster1);
         if (defdir1.length())
@@ -547,7 +568,7 @@ public:
             spec2 = spec1;
             cluster2.set(_cluster2);
             StringBuffer defdir2;
-            grp2.setown(queryNamedGroupStore().lookup(_cluster2,defdir2));
+            grp2.setown(queryNamedGroupStore().lookup(_cluster2, defdir2, groupType));
             if (!grp2)
                 throw MakeStringException(-1,"Cannot find cluster %s",_cluster2);
             spec2.setRepeatedCopies(CPDMSRP_lastRepeated,true); // only TLK on cluster2
@@ -614,16 +635,11 @@ public:
         if (dfile) {
             if (!overwrite)
                 throw MakeStringException(-1,"Destination file %s already exists",dlfn.get());
-            if (dfile->querySuperFile())
-                dfile->detach();
-            else {
-                dfile->detach();
-                dfile->removePhysicalPartFiles(NULL,NULL);
-            }
+            dfile->detach();
             dfile.clear();
         }
         if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_File))==0) {
-            cloneSubFile(ftree,dlfn.get(), srcdali);
+            cloneSubFile(ftree,dlfn.get(), srcdali, srcCluster);
         }
         else if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_SuperFile))==0) {
             StringArray subfiles;
@@ -670,6 +686,11 @@ public:
             StringBuffer s;
             throw MakeStringException(-1,"Source file %s could not be found in Dali %s",slfn.get(),srcdali?srcdali->endpoint().getUrlStr(s).str():"(local)");
         }
+        IPropertyTree *attsrc = ftree->queryPropTree("Attr");
+        if (!attsrc) {
+            StringBuffer s;
+            throw MakeStringException(-1,"Attributes for source file %s could not be found in Dali %s",slfn.get(),srcdali?srcdali->endpoint().getUrlStr(s).str():"(local)");
+        }
         CDfsLogicalFileName dlfn;
         dlfn.set(destfilename);
         if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_File))!=0) {
@@ -690,15 +711,22 @@ public:
         if (dfile) {
             if (!overwrite)
                 throw MakeStringException(-1,"Destination file %s already exists",dlfn.get());
-            if (dfile->querySuperFile())
-                dfile->detach();
-            else {
-                dfile->detach();
-                dfile->removePhysicalPartFiles(NULL,NULL);
+
+            IPropertyTree &attloc = dfile->queryAttributes();
+            if (dfile->numParts() == (unsigned)ftree->getPropInt("@numparts") &&
+                attsrc->getPropInt("@eclCRC") == attloc.getPropInt("@eclCRC") &&
+                attsrc->getPropInt("@totalCRC") == attloc.getPropInt64("@totalCRC"))
+            {
+                Owned<IFileDescriptor> dstfdesc=dfile->getFileDescriptor();
+                Owned<IFileDescriptor> srcfdesc = deserializeFileDescriptorTree(ftree, NULL, 0);
+                updateCloneFrom(srcfdesc, dstfdesc, srcdali, srcCluster);
+                return;
             }
+
+            dfile->detach();
             dfile.clear();
         }
-        cloneSubFile(ftree,dlfn.get(),srcdali);
+        cloneSubFile(ftree,dlfn.get(),srcdali, srcCluster);
         level--;
     }
 
@@ -746,7 +774,7 @@ public:
         Owned<IDistributedFileTransaction> transaction = createDistributedFileTransaction(user);
         // We need this here, since caching only happens with active transactions
         // MORE - abstract this with DFSAccess, or at least enable caching with a flag
-        Owned<IDistributedSuperFile> superfile = transaction->lookupSuperFileCached(superfname);
+        Owned<IDistributedSuperFile> superfile = transaction->lookupSuperFile(superfname);
 
         if (!superfile)
             throwError1(DFUERR_DSuperFileNotFound, superfname);
@@ -867,56 +895,63 @@ public:
         SocketEndpoint daliep = srcdali;
         CDfsLogicalFileName slfn;
         slfn.set(srclfn);
-        if (slfn.isForeign()) { // trying to confuse me
+        if (slfn.isForeign()) // trying to confuse me
+        {
             slfn.getEp(daliep);
             slfn.clearForeign();
         }
         if (daliep.port==0)
             daliep.port= DALI_SERVER_PORT;
         Owned<INode> srcnode = createINode(daliep);
-        if (queryCoven().inCoven(srcnode)) {
+        if (queryCoven().inCoven(srcnode))
+        {
             // if dali is local and filenames same
             CDfsLogicalFileName dlfn;
             dlfn.set(lfn);
-            if (strcmp(slfn.get(),dlfn.get())==0) {
+            if (strcmp(slfn.get(),dlfn.get())==0)
+            {
                 PROGLOG("File copy of %s not done as file local",srclfn);
                 return;
             }
         }
         Owned<IPropertyTree> ftree = queryDistributedFileDirectory().getFileTree(srclfn,srcuser,srcnode, FOREIGN_DALI_TIMEOUT, false);
-        if (!ftree.get()) {
+        if (!ftree.get())
+        {
             StringBuffer s;
             throw MakeStringException(-1,"Source file %s could not be found in Dali %s",srclfn,daliep.getUrlStr(s).str());
         }
         // first see if target exists (and remove if does and overwrite specified)
         Owned<IDistributedFile> dfile = queryDistributedFileDirectory().lookup(lfn,user,true);
-        if (dfile) {
+        if (dfile)
+        {
             if (!overwrite)
                 throw MakeStringException(-1,"Destination file %s already exists",lfn);
-            if (dfile->querySuperFile())
-                dfile->detach();
-            else {
+            if (!dfile->querySuperFile())
+            {
                 if (ftree->hasProp("Attr/@fileCrc")&&ftree->getPropInt64("Attr/@size")&&
                     ((unsigned)ftree->getPropInt64("Attr/@fileCrc")==(unsigned)dfile->queryAttributes().getPropInt64("@fileCrc"))&&
-                    (ftree->getPropInt64("Attr/@size")==dfile->getFileSize(false,false))) {
+                    (ftree->getPropInt64("Attr/@size")==dfile->getFileSize(false,false)))
+                {
                     PROGLOG("File copy of %s not done as file unchanged",srclfn);
                     return;
                 }
-                dfile->detach();
-                dfile->removePhysicalPartFiles(NULL,NULL);
             }
+            dfile->detach();
             dfile.clear();
         }
-        if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_File))==0) {
+        if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_File))==0)
+        {
             assertex(copier);
             if (!copier->copyFile(lfn,daliep,srclfn,srcuser,user))
                 throw MakeStringException(-1,"File %s could not be copied",lfn);
 
         }
-        else if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_SuperFile))==0) {
+        else if (strcmp(ftree->queryName(),queryDfsXmlBranchName(DXB_SuperFile))==0)
+        {
             StringArray subfiles;
             Owned<IPropertyTreeIterator> piter = ftree->getElements("SubFile");
-            ForEach(*piter) {
+            ForEach(*piter)
+            {
                 const char *name = piter->query().queryProp("@name");
                 CDfsLogicalFileName dlfn;
                 dlfn.set(name);
@@ -930,12 +965,11 @@ public:
             Owned<IDistributedSuperFile> sfile = queryDistributedFileDirectory().createSuperFile(lfn,user,true,false);
             if (!sfile)
                 throw MakeStringException(-1,"SuperFile %s could not be created",lfn);
-            ForEachItemIn(i,subfiles) {
+            ForEachItemIn(i,subfiles)
                 sfile->addSubFile(subfiles.item(i));
-            }
-
         }
-        else {
+        else
+        {
             StringBuffer s;
             throw MakeStringException(-1,"Source file %s in Dali %s is not a file or superfile",srclfn,daliep.getUrlStr(s).str());
         }
@@ -962,8 +996,10 @@ public:
     }
 
     void createSingleFileClone(const char *srcname,         // src LFN (can't be super)
+                         const char *srcCluster,            // optional specific cluster to copy data from
                          const char *dstname,               // dst LFN
                          const char *cluster1,              // group name of roxie cluster
+                         const char *prefix,
                          DFUclusterPartDiskMapping clustmap, // how the nodes are mapped
                          bool repeattlk,                    // repeat last part on all nodes if key
                          const char *cluster2,              // servers cluster (for just tlk)
@@ -974,8 +1010,11 @@ public:
                          bool dophysicalcopy                // NB *not* using DFU server
                          )
     {
+        DBGLOG("createSingleFileClone src=%s@%s, dst=%s@%s, prefix=%s, ow=%d, docopy=%d", srcname, srcCluster, dstname, cluster1, prefix, overwrite, dophysicalcopy);
         CFileCloner cloner;
         cloner.init(cluster1,clustmap,repeattlk,cluster2,userdesc,foreigndali,foreignuserdesc,NULL,overwrite,dophysicalcopy);
+        cloner.srcCluster.set(srcCluster);
+        cloner.prefix.set(prefix);
         cloner.cloneFile(srcname,dstname);
     }
 

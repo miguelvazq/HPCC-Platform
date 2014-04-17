@@ -24,6 +24,7 @@
 #include "jtime.ipp"
 #include "workunit.hpp"
 #include "hqlerror.hpp"
+#include "dllserver.hpp"
 
 #include <list>
 #include <vector>
@@ -117,6 +118,7 @@ private:
 #define WUINFO_IncludeSourceFiles       0x0400
 #define WUINFO_IncludeResultsViewNames  0x0800
 #define WUINFO_IncludeXmlSchema         0x1000
+#define WUINFO_IncludeResourceURLs      0x2000
 #define WUINFO_All                      0xFFFF
 
 class WsWuInfo
@@ -140,7 +142,7 @@ public:
             throw MakeStringException(ECLWATCH_CANNOT_OPEN_WORKUNIT,"Cannot open workunit %s.", wuid_);
     }
 
-    bool getResultViews(StringArray &resultViews, unsigned flags);
+    bool getResourceInfo(StringArray &viewnames, StringArray &urls, unsigned flags);
 
     void getCommon(IEspECLWorkunit &info, unsigned flags);
     void getInfo(IEspECLWorkunit &info, unsigned flags);
@@ -168,7 +170,7 @@ public:
     bool getResultEclSchemas(IConstWUResult &r, IArrayOf<IEspECLSchemaItem>& schemas);
     void getResult(IConstWUResult &r, IArrayOf<IEspECLResult>& results, unsigned flags);
 
-    void getWorkunitEclAgentLog(const char* eclAgentInstance, MemoryBuffer& buf);
+    void getWorkunitEclAgentLog(const char* eclAgentInstance, const char* agentPid, MemoryBuffer& buf);
     void getWorkunitThorLog(const char *processName, MemoryBuffer& buf);
     void getWorkunitThorSlaveLog(const char *groupName, const char *ipAddress, const char* logDate, const char* logDir, int slaveNum, MemoryBuffer& buf, bool forDownload);
     void getWorkunitResTxt(MemoryBuffer& buf);
@@ -316,9 +318,22 @@ void xsltTransform(const char* xml, const char* sheet, IProperties *params, Stri
 
 class WUSchedule : public Thread
 {
+    bool stopping;
+    Semaphore semSchedule;
     IEspContainer* m_container;
 
 public:
+    WUSchedule()
+    {
+        stopping = false;
+    }
+    ~WUSchedule()
+    {
+        stopping = true;
+        semSchedule.signal();
+        join();
+    }
+
     virtual int run();
     virtual void setContainer(IEspContainer * container)
     {
@@ -326,5 +341,75 @@ public:
     }
 };
 
+namespace WsWuHelpers
+{
+    void setXmlParameters(IWorkUnit *wu, const char *xml, bool setJobname=false);
+    void submitWsWorkunit(IEspContext& context, IConstWorkUnit* cw, const char* cluster, const char* snapshot, int maxruntime, bool compile, bool resetWorkflow, bool resetVariables,
+            const char *paramXml=NULL, IArrayOf<IConstNamedValue> *variables=NULL, IArrayOf<IConstNamedValue> *debugs=NULL);
+    void setXmlParameters(IWorkUnit *wu, const char *xml, IArrayOf<IConstNamedValue> *variables, bool setJobname=false);
+    void submitWsWorkunit(IEspContext& context, const char *wuid, const char* cluster, const char* snapshot, int maxruntime, bool compile, bool resetWorkflow, bool resetVariables,
+            const char *paramXml=NULL, IArrayOf<IConstNamedValue> *variables=NULL, IArrayOf<IConstNamedValue> *debugs=NULL);
+    void copyWsWorkunit(IEspContext &context, IWorkUnit &wu, const char *srcWuid);
+    void runWsWorkunit(IEspContext &context, StringBuffer &wuid, const char *srcWuid, const char *cluster, const char *paramXml=NULL,
+            IArrayOf<IConstNamedValue> *variables=NULL, IArrayOf<IConstNamedValue> *debugs=NULL);
+    void runWsWorkunit(IEspContext &context, IConstWorkUnit *cw, const char *srcWuid, const char *cluster, const char *paramXml=NULL,
+            IArrayOf<IConstNamedValue> *variables=NULL, IArrayOf<IConstNamedValue> *debugs=NULL);
+    IException * noteException(IWorkUnit *wu, IException *e, WUExceptionSeverity level=ExceptionSeverityError);
+    StringBuffer & resolveQueryWuid(StringBuffer &wuid, const char *queryset, const char *query, bool notSuspended=true, IWorkUnit *wu=NULL);
+    void runWsWuQuery(IEspContext &context, IConstWorkUnit *cw, const char *queryset, const char *query, const char *cluster, const char *paramXml=NULL);
+    void runWsWuQuery(IEspContext &context, StringBuffer &wuid, const char *queryset, const char *query, const char *cluster, const char *paramXml=NULL);
+    void checkAndTrimWorkunit(const char* methodName, StringBuffer& input);
+};
+
+class NewWsWorkunit : public Owned<IWorkUnit>
+{
+public:
+    NewWsWorkunit(IWorkUnitFactory *factory, IEspContext &context)
+    {
+        create(factory, context);
+    }
+
+    NewWsWorkunit(IEspContext &context)
+    {
+        Owned<IWorkUnitFactory> factory = getWorkUnitFactory(context.querySecManager(), context.queryUser());
+        create(factory, context);
+    }
+
+    ~NewWsWorkunit() { if (get()) get()->commit(); }
+
+    void create(IWorkUnitFactory *factory, IEspContext &context)
+    {
+        setown(factory->createWorkUnit(NULL, "ws_workunits", context.queryUserId()));
+        if(!get())
+          throw MakeStringException(ECLWATCH_CANNOT_CREATE_WORKUNIT,"Could not create workunit.");
+        get()->setUser(context.queryUserId());
+    }
+
+    void associateDll(const char *dllpath, const char *dllname)
+    {
+        Owned<IWUQuery> query = get()->updateQuery();
+        StringBuffer dllurl;
+        createUNCFilename(dllpath, dllurl);
+        unsigned crc = crc_file(dllpath);
+        associateLocalFile(query, FileTypeDll, dllpath, "Workunit DLL", crc);
+        queryDllServer().registerDll(dllname, "Workunit DLL", dllurl.str());
+    }
+
+    void setQueryText(const char *text)
+    {
+        if (!text || !*text)
+            return;
+        Owned<IWUQuery> query=get()->updateQuery();
+        query->setQueryText(text);
+    }
+
+    void setQueryMain(const char *s)
+    {
+        if (!s || !*s)
+            return;
+        Owned<IWUQuery> query=get()->updateQuery();
+        query->setQueryMainDefinition(s);
+    }
+};
 }
 #endif

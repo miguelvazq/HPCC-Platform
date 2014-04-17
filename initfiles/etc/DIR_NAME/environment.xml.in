@@ -33,7 +33,7 @@
   <Switch name="Switch"/>
  </Hardware>
  <Programs>
-  <Build name="${projname}_${version}-${stagever}" url="${INSTALL_DIR}">
+  <Build name="_" url="${INSTALL_DIR}">
    <BuildSet installSet="deploy_map.xml"
              name="dafilesrv"
              path="componentfiles/dafilesrv"
@@ -158,6 +158,10 @@
      <AuthenticateFeature description="Access to dkcing of key files"
                           path="FileDkcAccess"
                           resource="FileDkcAccess"
+                          service="ws_fs"/>
+     <AuthenticateFeature description="Access to file upload"
+                          path="FileUploadAccess"
+                          resource="FileUploadAccess"
                           service="ws_fs"/>
      <AuthenticateFeature description="Access to files in dropzone"
                           path="FileIOAccess"
@@ -315,7 +319,7 @@
   </Build>
  </Programs>
  <Software>
-  <DafilesrvProcess build="${projname}_${version}-${stagever}"
+  <DafilesrvProcess build="_"
                     buildSet="dafilesrv"
                     description="DaFileSrv process"
                     name="mydafilesrv"
@@ -325,7 +329,7 @@
              name="s1"
              netAddress="."/>
   </DafilesrvProcess>
-  <DaliServerProcess build="${projname}_${version}-${stagever}"
+  <DaliServerProcess build="_"
                      buildSet="dali"
                      environment="${CONFIG_DIR}/${ENV_XML_FILE}"
                      name="mydali"
@@ -336,7 +340,7 @@
              netAddress="."
              port="7070"/>
   </DaliServerProcess>
-  <DfuServerProcess build="${projname}_${version}-${stagever}"
+  <DfuServerProcess build="_"
                     buildSet="dfuserver"
                     daliServers="mydali"
                     description="DFU Server"
@@ -363,18 +367,19 @@
    <Category dir="${EXEC_PREFIX}/lib/[NAME]/hpcc-data/[COMPONENT]" name="data"/>
    <Category dir="${EXEC_PREFIX}/lib/[NAME]/hpcc-data2/[COMPONENT]" name="data2"/>
    <Category dir="${EXEC_PREFIX}/lib/[NAME]/hpcc-data3/[COMPONENT]" name="data3"/>
+   <Category dir="${EXEC_PREFIX}/lib/[NAME]/hpcc-data4/[COMPONENT]" name="data4"/>
    <Category dir="${EXEC_PREFIX}/lib/[NAME]/hpcc-mirror/[COMPONENT]" name="mirror"/>
    <Category dir="${EXEC_PREFIX}/lib/[NAME]/queries/[INST]" name="query"/>
    <Category dir="${EXEC_PREFIX}/lock/[NAME]/[INST]" name="lock"/>
   </Directories>
-  <DropZone build="${projname}_${version}-${stagever}"
+  <DropZone build="_"
             buildSet="DropZone"
             computer="localhost"
             description="DropZone process"
             directory="${RUNTIME_PATH}/mydropzone"
             name="mydropzone"/>
   <EclAgentProcess allowedPipePrograms="*"
-                   build="${projname}_${version}-${stagever}"
+                   build="_"
                    buildSet="eclagent"
                    daliServers="mydali"
                    defaultMemoryLimitMB="300"
@@ -389,7 +394,7 @@
              name="s1"
              netAddress="."/>
   </EclAgentProcess>
-  <EclCCServerProcess build="${projname}_${version}-${stagever}"
+  <EclCCServerProcess build="_"
                     buildSet="eclccserver"
                     daliServers="mydali"
                     description="EclCCServer process"
@@ -403,7 +408,7 @@
              netAddress="."/>
    <Option name="maxCompileThreads" value="2"/>
   </EclCCServerProcess>
-   <EclSchedulerProcess build="${projname}_${version}-${stagever}"
+   <EclSchedulerProcess build="_"
                 buildSet="eclscheduler"
                 daliServers="mydali"
                 description="EclScheduler process"
@@ -413,7 +418,7 @@
                name="s1"
                netAddress="."/>
   </EclSchedulerProcess>
-   <EspProcess build="${projname}_${version}-${stagever}"
+   <EspProcess build="_"
               buildSet="esp"
               componentfilesDir="${COMPONENTFILES_PATH}"
               daliServers="mydali"
@@ -520,6 +525,11 @@
                          resource="FileDkcAccess"
                          service="ws_fs"/>
     <AuthenticateFeature authenticate="Yes"
+                         description="Access to file upload"
+                         path="FileUploadAccess"
+                         resource="FileUploadAccess"
+                         service="ws_fs"/>
+    <AuthenticateFeature authenticate="Yes"
                          description="Access to files in dropzone"
                          path="FileIOAccess"
                          resource="FileIOAccess"
@@ -598,7 +608,7 @@
   </EspProcess>
   <EspService allowNewRoxieOnDemandQuery="false"
               AWUsCacheTimeout="15"
-              build="${projname}_${version}-${stagever}"
+              build="_"
               buildSet="espsmc"
               description="ESP services for SMC"
               disableUppercaseTranslation="false"
@@ -677,6 +687,10 @@
                          path="FileDkcAccess"
                          resource="FileDkcAccess"
                          service="ws_fs"/>
+    <AuthenticateFeature description="Access to file upload"
+                         path="FileUploadAccess"
+                         resource="FileUploadAccess"
+                         service="ws_fs"/>
     <AuthenticateFeature description="Access to files in dropzone"
                          path="FileIOAccess"
                          resource="FileIOAccess"
@@ -734,7 +748,7 @@
     </ProcessFilters>
    </Properties>
   </EspService>
-  <EspService build="${projname}_${version}-${stagever}"
+  <EspService build="_"
               buildSet="ws_ecl"
               description="WS ECL Service"
               name="ws_ecl">
@@ -755,7 +769,7 @@
                          service="ws_ecl"/>
    </Properties>
   </EspService>
-  <FTSlaveProcess build="${projname}_${version}-${stagever}"
+  <FTSlaveProcess build="_"
                   buildSet="ftslave"
                   description="FTSlave process"
                   name="myftslave"
@@ -767,16 +781,14 @@
              program="${EXEC_PATH}/ftslave"/>
   </FTSlaveProcess>
   <RoxieCluster allFilesDynamic="true"
-                baseDataDir="${RUNTIME_PATH}/hpcc-data/roxie"
                 blindLogging="false"
                 blobCacheMem="0"
-                build="${projname}_${version}-${stagever}"
+                build="_"
                 buildSet="roxie"
                 callbackRetries="3"
                 callbackTimeout="500"
                 checkCompleted="true"
                 checkFileDate="true"
-                checkPrimaries="true"
                 clusterWidth="1"
                 copyResources="false"
                 crcResources="false"
@@ -810,6 +822,7 @@
                 forceStdLog="false"
                 highTimeout="2000"
                 ignoreMissingFiles="false"
+                ignoreOrphans="true"
                 indexReadChunkSize="60000"
                 initIbytiDelay="100"
                 jumboFrames="false"
@@ -893,53 +906,25 @@
                 useMemoryMappedIndexes="false"
                 useRemoteResources="true"
                 useTreeCopy="false">
-   <RoxieFarmProcess 
-                     dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie"
+   <RoxieFarmProcess aclName=""
                      listenQueue="200"
                      name="farm1"
                      numThreads="30"
                      port="9876"
-                     requestArrayThreads="5">
-    <RoxieServerProcess computer="localhost" name="farm1_s1"/>
-   </RoxieFarmProcess>
-   <RoxieFarmProcess
-                      dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie"
+                     requestArrayThreads="5"/>
+   <RoxieFarmProcess  aclName=""
                       listenQueue="200"
                       name="farm2"
                       numThreads="30"
                       port="0"
-                      requestArrayThreads="5">
-      <RoxieServerProcess computer="localhost" name="farm2_s1"/>
-    </RoxieFarmProcess>
-    <RoxieServerProcess
-                       computer="localhost"
-                       dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie"
-                       listenQueue="200"
-                       name="farm1_s1"
-                       netAddress="."
-                       numThreads="30"
-                       port="9876"
-                       requestArrayThreads="5"/>
+                      requestArrayThreads="5"/>
    <RoxieServerProcess 
                        computer="localhost"
-                       dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie"
-                       listenQueue="200"
-                       name="farm2_s1"
-                       netAddress="."
-                       numThreads="30"
-                       port="0"
-                       requestArrayThreads="5"/>
-   <RoxieSlave computer="localhost" name="s1">
-    <RoxieChannel dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie" number="1"/>
-   </RoxieSlave>
-   <RoxieSlaveProcess channel="1"
-                      computer="localhost"
-                      dataDirectory="${RUNTIME_PATH}/hpcc-data/roxie"
-                      name="s1"
-                      netAddress="."/>
+                       name="s1"
+                       netAddress="."/>
   </RoxieCluster>
   <SashaServerProcess autoRestartInterval="0"
-                      build="${projname}_${version}-${stagever}"
+                      build="_"
                       buildSet="sasha"
                       cachedWUat="* * * * *"
                       cachedWUinterval="24"
@@ -993,7 +978,7 @@
              port="8877"/>
   </SashaServerProcess>
   <ThorCluster autoCopyBackup="false"
-               build="${projname}_${version}-${stagever}"
+               build="_"
                buildSet="thor"
                computer="localhost"
                daliServers="mydali"
@@ -1004,7 +989,6 @@
                pluginsPath="${PLUGINS_PATH}"
                replicateAsync="false"
                replicateOutputs="false"
-               slaves="1"
                watchdogEnabled="true"
                watchdogProgressEnabled="true">
    <Debug/>
@@ -1018,7 +1002,7 @@
    <ThorMasterProcess computer="localhost" name="m1"/>
    <ThorSlaveProcess computer="localhost" name="s1"/>
   </ThorCluster>
-  <Topology build="${projname}_${version}-${stagever}" buildSet="topology" name="topology">
+  <Topology build="_" buildSet="topology" name="topology">
    <Cluster name="hthor" prefix="hthor">
     <EclCCServerProcess process="myeclccserver"/>
     <EclSchedulerProcess process="myeclscheduler"/>
@@ -1031,6 +1015,12 @@
     <EclAgentProcess process="myeclagent"/>
    </Cluster>
    <Cluster name="roxie" prefix="roxie">
+    <EclCCServerProcess process="myeclccserver"/>
+    <EclSchedulerProcess process="myeclscheduler"/>
+    <RoxieCluster process="myroxie"/>
+   </Cluster>
+   <Cluster name="thor_roxie" prefix="thor">
+    <ThorCluster process="mythor"/>
     <EclCCServerProcess process="myeclccserver"/>
     <EclSchedulerProcess process="myeclscheduler"/>
     <RoxieCluster process="myroxie"/>

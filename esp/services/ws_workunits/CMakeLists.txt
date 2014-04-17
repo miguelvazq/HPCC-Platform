@@ -44,12 +44,13 @@ set (    SRCS
     )
 
 include_directories (
+         ${CMAKE_BINARY_DIR}
+         ${CMAKE_BINARY_DIR}/oss
          ./../../esplib
          ./../../../system/mp
          ./../../platform
          ./../../../dali/dfu
          ./../../../dali/sasha
-         ./../../../common/roxiemanager
          ./../../../common/remote
          ./../../../system/jlib
          ./../../../common/environment
@@ -101,7 +102,6 @@ target_link_libraries ( ws_workunits
          SMCLib
          schedulectrl
          roxiecommlib
-         roxiemanager
          hql
          jhtree
          fileview2

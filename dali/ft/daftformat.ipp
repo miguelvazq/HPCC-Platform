@@ -37,6 +37,8 @@ public:
     virtual void setPartitionRange(offset_t _totalSize, offset_t _thisOffset, offset_t _thisSize, unsigned _thisHeaderSize, unsigned _numParts);
     virtual void setSource(unsigned _whichInput, const RemoteFilename & _fullPath, bool compressedInput, const char *decryptKey);
     virtual void setTarget(IOutputProcessor * _target);
+    virtual void setRecordStructurePresent(bool _recordStructurePresent);
+    virtual void getRecordStructure(StringBuffer & _recordStructure);
 
 protected:
     virtual void findSplitPoint(offset_t curOffset, PartitionCursor & cursor) = 0;
@@ -140,9 +142,9 @@ public:
     virtual void setInputCRC(crc32_t value) { doInputCRC = true; inputCRC = value; }
 
 protected:
-            bool ensureBuffered(unsigned required);
+    bool ensureBuffered(unsigned required);
     virtual void findSplitPoint(offset_t curOffset, PartitionCursor & cursor);
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead) = 0;
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer) = 0;
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead) = 0;
     void seekInput(offset_t offset);
     offset_t tellInput();
@@ -152,18 +154,22 @@ protected:
         return (byte *)((bufattr.length()!=bufferSize)?bufattr.allocate(bufferSize):bufattr.bufferBase()); 
     }
     virtual void killBuffer()  { bufattr.clear(); }
+    virtual void clearBufferOverrun() { numOfBufferOverrun = 0; numOfProcessedBytes = 0; }
 protected: 
-    Owned<IFileIOStream>        inStream;
-    MemoryAttr                      bufattr;
-    size32_t                        headerSize;
-    size32_t                        blockSize;
-    size32_t                        bufferSize;
-    size32_t                        numInBuffer;
-    size32_t                        bufferOffset;
-    unsigned                    inputCRC;
-    bool                        doInputCRC;
-    static IFileIOCache *openfilecache;
+    Owned<IFileIOStream>   inStream;
+    MemoryAttr             bufattr;
+    size32_t               headerSize;
+    size32_t               blockSize;
+    size32_t               bufferSize;
+    size32_t               numInBuffer;
+    size32_t               bufferOffset;
+    unsigned               inputCRC;
+    bool                   doInputCRC;
+    static IFileIOCache    *openfilecache;
     static CriticalSection openfilecachesect;
+
+    unsigned               numOfBufferOverrun;
+    unsigned               numOfProcessedBytes;
 };
 
 
@@ -173,7 +179,7 @@ public:
     CFixedPartitioner(unsigned _recordSize);
 
 protected:
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer);
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
 
 protected:
@@ -195,7 +201,7 @@ class DALIFT_API CRECFMvbPartitioner : public CInputBasePartitioner
     bool isBlocked;
 protected:
     virtual size32_t getRecordSize(const byte * record, unsigned maxToRead);
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer);
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
 public:
     CRECFMvbPartitioner(bool blocked);
@@ -213,7 +219,7 @@ public:
     virtual void setTarget(IOutputProcessor * _target);
 
 protected:
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer);
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
     size32_t getRecordSize(const byte * record, unsigned maxToRead);
 
@@ -230,19 +236,31 @@ public:
 
     virtual void setTarget(IOutputProcessor * _target);
 
-protected:
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool ateof);
-    virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead)
-    {
-        return getSplitRecordSize(record,maxToRead,true);
-    }
+    virtual void getRecordStructure(StringBuffer & _recordStructure) { _recordStructure = recordStructure; }
+    virtual void setRecordStructurePresent( bool _isRecordStructurePresent) {isRecordStructurePresent = _isRecordStructurePresent;}
 
 protected:
-    enum { NONE=0, SEPARATOR=1, TERMINATOR=2, WHITESPACE=3, QUOTE=4 };
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer, bool ateof);
+    virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer)
+    {
+        return getSplitRecordSize(record,maxToRead,processFullBuffer,true);
+    }
+
+private:
+    void storeFieldName(const char * start, unsigned len);
+    
+protected:
+    enum { NONE=0, SEPARATOR=1, TERMINATOR=2, WHITESPACE=3, QUOTE=4, ESCAPE=5 };
     unsigned        maxElementLength;
     FileFormat      format;
     StringMatcher   matcher;
+
+    bool            isRecordStructurePresent;
+    StringBuffer    recordStructure;
+    unsigned        fieldCount;
+    Owned<KeptAtomTable> fields;
+    bool            isFirstRow;
 };
 
 
@@ -252,19 +270,7 @@ public:
     CCsvQuickPartitioner(const FileFormat & _format, bool _noTranslation) 
         : CCsvPartitioner(_format) 
     { 
-        noTranslation = _noTranslation; 
-        if (_format.quote.get()) { 
-            isquoted = false;
-            StringArray csl;
-            csl.appendList(_format.quote, ","); // OTT but catches previous kludge of ","
-            ForEachItemIn(i,csl) {
-                if (strlen(csl.item(i)))
-                isquoted = true;
-            }
-        }       
-        else // default is NULL which is quoted
-            isquoted = true;
-        isquoted = (!_format.quote.get()) || (*_format.quote.get()); // sic - null or not empty
+        noTranslation = _noTranslation;
     }
 
 protected:
@@ -273,7 +279,6 @@ protected:
 
 protected:
     bool                        noTranslation;
-    bool                        isquoted;
 };
 
 //---------------------------------------------------------------------------
@@ -284,22 +289,34 @@ public:
     CUtfPartitioner(const FileFormat & _format);
 
     virtual void setTarget(IOutputProcessor * _target);
+    
+    virtual void getRecordStructure(StringBuffer & _recordStructure) { _recordStructure = recordStructure; }
+    virtual void setRecordStructurePresent( bool _isRecordStructurePresent) {isRecordStructurePresent = _isRecordStructurePresent;}
 
 protected:
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool ateof);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer, bool ateof);
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead)
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer)
     {
-        return getSplitRecordSize(record,maxToRead,false);
+        return getSplitRecordSize(record,maxToRead,processFullBuffer,true);
     }
+    
+private:
+    void storeFieldName(const char * start, unsigned len);
 
 protected:
-    enum { NONE=0, SEPARATOR=1, TERMINATOR=2, WHITESPACE=3, QUOTE=4 };
+    enum { NONE=0, SEPARATOR=1, TERMINATOR=2, WHITESPACE=3, QUOTE=4, ESCAPE=5 };
     unsigned        maxElementLength;
     FileFormat      format;
     StringMatcher   matcher;
     unsigned        unitSize;
     UtfReader::UtfFormat utfFormat;
+    
+    bool            isRecordStructurePresent;
+    StringBuffer    recordStructure;
+    unsigned        fieldCount;
+    Owned<KeptAtomTable> fields;
+    bool            isFirstRow;
 };
 
 
@@ -371,7 +388,7 @@ public:
     virtual void setTarget(IOutputProcessor * _target);
 
 protected:
-    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead);
+    virtual size32_t getSplitRecordSize(const byte * record, unsigned maxToRead, bool processFullBuffer);
     virtual size32_t getTransformRecordSize(const byte * record, unsigned maxToRead);
 
 protected:
@@ -410,6 +427,8 @@ public:
     virtual void setPartitionRange(offset_t _totalSize, offset_t _thisOffset, offset_t _thisSize, unsigned _thisHeaderSize, unsigned _numParts);
     virtual void setSource(unsigned _whichInput, const RemoteFilename & _fullPath, bool compressedInput, const char *decryptKey);
     virtual void setTarget(IOutputProcessor * _target) { UNIMPLEMENTED; }
+    virtual void setRecordStructurePresent(bool _recordStructurePresent);
+    virtual void getRecordStructure(StringBuffer & _recordStructure);
 
 protected:
     void callRemote();

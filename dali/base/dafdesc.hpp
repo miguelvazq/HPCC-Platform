@@ -31,8 +31,11 @@ interface IPropertyTree;
 interface IFileDescriptor;
 interface IClusterInfo;
 interface IReplicatedFile;
+interface INamedGroupStore;
 
 #define SUPPORTS_MULTI_CLUSTERS  // always now set
+
+#define MAX_REPLICATION_LEVELS 4
 
 enum DFD_OS
 {
@@ -46,6 +49,9 @@ enum DFD_Replicate
     DFD_NoCopies      = 1,
     DFD_DefaultCopies = 2
 };
+
+enum GroupType { grp_thor, grp_thorspares, grp_roxie, grp_hthor, grp_unknown, __grp_size };
+
 
 // ==CLUSTER PART MAPPING ==============================================================================================
 
@@ -94,6 +100,7 @@ public:
 #define CPDMSF_repeatedPart     (0x08)      // if repeated parts included 
 #define CPDMSF_defaultBaseDir   (0x10)      // set if defaultBaseDir present
 #define CPDMSF_defaultReplicateDir  (0x20)      // set if defaultBaseDir present
+#define CPDMSF_overloadedConfig  (0x40)      // set if overloaded mode
 
 
 // ==PART DESCRIPTOR ==============================================================================================
@@ -211,8 +218,9 @@ if endCluster is not called it will assume only one cluster and not replicated
 
     virtual IGroup *getGroup() = 0;                                             // will be for first cluster
 
-    virtual unsigned numClusters()=0;
-    virtual ClusterPartDiskMapSpec &queryPartDiskMapping(unsigned clusternum)=0;
+    virtual unsigned numClusters() = 0;
+    virtual IClusterInfo *queryCluster(const char *clusterName) = 0;
+    virtual ClusterPartDiskMapSpec &queryPartDiskMapping(unsigned clusternum) = 0;
     virtual IGroup *queryClusterGroup(unsigned clusternum) = 0;                     // returns group for cluster if known
     virtual void setClusterGroup(unsigned clusternum,IGroup *grp) = 0;              // sets group for cluster
     virtual StringBuffer &getClusterGroupName(unsigned clusternum,StringBuffer &ret,IGroupResolver *resolver=NULL) = 0;                 // returns group name of cluster (if set)
@@ -226,10 +234,7 @@ if endCluster is not called it will assume only one cluster and not replicated
 
     virtual ISuperFileDescriptor *querySuperFileDescriptor() = 0;   // returns NULL if not superfile descriptor (or if superfile contained <=1 subfiles)
 
-    virtual void setClusterRoxieLabel(unsigned clusternum,const char *name) = 0;
-    virtual const char *queryClusterRoxieLabel(unsigned clusternum) = 0;            // NULL if not set
-
-    virtual StringBuffer &getClusterLabel(unsigned clusternum,StringBuffer &ret) = 0; // roxie label or node group name
+    virtual StringBuffer &getClusterLabel(unsigned clusternum,StringBuffer &ret) = 0; // node group name
 
     virtual void ensureReplicate() = 0;                                             // make sure a file can be replicated
 };
@@ -261,28 +266,25 @@ interface IClusterInfo: extends IInterface  // used by IFileDescriptor and IDist
     virtual void setGroupName(const char *name)=0;
     virtual void getBaseDir(StringBuffer &basedir, DFD_OS os)=0;
     virtual void getReplicateDir(StringBuffer &basedir, DFD_OS os)=0;
-    virtual void setRoxieLabel(const char *label)=0;
-    virtual const char *queryRoxieLabel()=0;     // for roxie (NULL otherwise)
-    virtual StringBuffer &getClusterLabel(StringBuffer &name)=0; // either roxie label or node group name
+    virtual StringBuffer &getClusterLabel(StringBuffer &name)=0; // node group name
 
 };
 
 IClusterInfo *createClusterInfo(const char *grpname,                  // NULL if roxie label set
                                 IGroup *grp,
                                 const ClusterPartDiskMapSpec &mspec,
-                                IGroupResolver *resolver=NULL,
-                                const char *roxielabel = NULL        // set for roxie 
+                                INamedGroupStore *resolver=NULL
                                 );
 IClusterInfo *createRoxieClusterInfo(const char *label,
                                 const ClusterPartDiskMapSpec &mspec
                                 );
 IClusterInfo *deserializeClusterInfo(MemoryBuffer &mb,
-                                IGroupResolver *resolver=NULL);
+                                INamedGroupStore *resolver=NULL);
 IClusterInfo *deserializeClusterInfo(IPropertyTree *pt,
-                                IGroupResolver *resolver=NULL,
+                                INamedGroupStore *resolver=NULL,
                                 unsigned flags=0);
 
-void getClusterInfo(IPropertyTree &pt, IGroupResolver *resolver, unsigned flags, IArrayOf<IClusterInfo> &clusters);
+void getClusterInfo(IPropertyTree &pt, INamedGroupStore *resolver, unsigned flags, IArrayOf<IClusterInfo> &clusters);
 
 
 
@@ -290,13 +292,13 @@ void getClusterInfo(IPropertyTree &pt, IGroupResolver *resolver, unsigned flags,
 
 
 
-// default logical to physcal filename routined
+// default logical to physical filename routines
 extern da_decl StringBuffer &makePhysicalPartName(
                                 const char *lname,                  // logical name
                                 unsigned partno,                    // part number (1..)
                                 unsigned partmax,                   // number of parts (1..)
                                 StringBuffer &result,               // result filename (or directory name if part 0)
-                                bool replicate = false,             // uses replication directory
+                                unsigned replicateLevel = 0,       // uses replication directory
                                 DFD_OS os=DFD_OSdefault,            // os must be specified if no dir specified
                                 const char *diroverride=NULL);      // override default directory
 extern da_decl StringBuffer &makeSinglePhysicalPartName(const char *lname, // single part file
@@ -307,18 +309,18 @@ extern da_decl StringBuffer &makeSinglePhysicalPartName(const char *lname, // si
                                                         );    
 
 // set/get defaults
-extern da_decl const char *queryBaseDirectory(bool replicatedir=false,DFD_OS os=DFD_OSdefault);
-extern da_decl void setBaseDirectory(const char * dir,bool replicatedir=false,DFD_OS os=DFD_OSdefault);
+extern da_decl const char *queryBaseDirectory(GroupType groupType, unsigned replicateLevel=0, DFD_OS os=DFD_OSdefault);
+extern da_decl void setBaseDirectory(const char * dir, unsigned replicateLevel=0, DFD_OS os=DFD_OSdefault);
 extern da_decl const char *queryPartMask();
 extern da_decl StringBuffer &getPartMask(StringBuffer &ret,const char *lname=NULL,unsigned partmax=0);
 extern da_decl void setPartMask(const char * mask);
-extern da_decl bool setReplicateDir(const char *name,StringBuffer &out, bool isrep=true,const char *baseDir=NULL,const char *repDir=NULL); // changes direcctory of name passed to backup directory
+extern da_decl bool setReplicateDir(const char *name,StringBuffer &out, bool isrep=true,const char *baseDir=NULL,const char *repDir=NULL); // changes directory of name passed to backup directory
 
 extern da_decl IFileDescriptor *createFileDescriptor();
 extern da_decl IFileDescriptor *createFileDescriptor(IPropertyTree *attr);      // ownership of attr tree is taken
 extern da_decl ISuperFileDescriptor *createSuperFileDescriptor(IPropertyTree *attr);        // ownership of attr tree is taken
 extern da_decl IFileDescriptor *deserializeFileDescriptor(MemoryBuffer &mb);
-extern da_decl IFileDescriptor *deserializeFileDescriptorTree(IPropertyTree *tree,IGroupResolver *resolver=NULL,unsigned flags=0);  // flags IFDSF_*
+extern da_decl IFileDescriptor *deserializeFileDescriptorTree(IPropertyTree *tree, INamedGroupStore *resolver=NULL, unsigned flags=0);  // flags IFDSF_*
 extern da_decl IFileDescriptor *createFileDescriptor(const char *lname,IGroup *grp,IPropertyTree *tree,DFD_OS os=DFD_OSdefault,unsigned width=0);  // creates default
 extern da_decl IPartDescriptor *deserializePartFileDescriptor(MemoryBuffer &mb);
 extern da_decl void deserializePartFileDescriptors(MemoryBuffer &mb,IArrayOf<IPartDescriptor> &parts);

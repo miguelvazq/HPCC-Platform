@@ -37,10 +37,11 @@ CDiskReadMasterBase::CDiskReadMasterBase(CMasterGraphElement *info) : CMasterAct
 
 void CDiskReadMasterBase::init()
 {
+    CMasterActivity::init();
     IHThorDiskReadBaseArg *helper = (IHThorDiskReadBaseArg *) queryHelper();
-    OwnedRoxieString fileName(helper->getFileName());
-    Owned<IDistributedFile> file = queryThorFileManager().lookup(container.queryJob(), fileName, 0 != ((TDXtemporary|TDXjobtemp) & helper->getFlags()), 0 != (TDRoptional & helper->getFlags()), true);
+    fileName.setown(helper->getFileName());
 
+    Owned<IDistributedFile> file = queryThorFileManager().lookup(container.queryJob(), fileName, 0 != ((TDXtemporary|TDXjobtemp) & helper->getFlags()), 0 != (TDRoptional & helper->getFlags()), true);
     if (file)
     {
         if (file->numParts() > 1)
@@ -50,15 +51,14 @@ void CDiskReadMasterBase::init()
         reInit = 0 != (helper->getFlags() & (TDXvarfilename|TDXdynamicfilename));
         if (container.queryLocal() || helper->canMatchAny()) // if local, assume may match
         {
+            bool temp = 0 != (TDXtemporary & helper->getFlags());
             bool local;
-            if (0 == (TDXtemporary & helper->getFlags())) // don't add temp files
-            {
-                queryThorFileManager().noteFileRead(container.queryJob(), file);
-                local = container.queryLocal();
-            }
-            else
+            if (temp)
                 local = false;
+            else
+                local = container.queryLocal();
             mapping.setown(getFileSlaveMaps(file->queryLogicalName(), *fileDesc, container.queryJob().queryUserDescriptor(), container.queryJob().querySlaveGroup(), local, false, hash, file->querySuperFile()));
+            addReadFile(file, temp);
         }
         if (0 != (helper->getFlags() & TDRfilenamecallback)) // only get/serialize if using virtual file name fields
         {
@@ -97,7 +97,6 @@ void CDiskReadMasterBase::init()
 void CDiskReadMasterBase::serializeSlaveData(MemoryBuffer &dst, unsigned slave)
 {
     IHThorDiskReadBaseArg *helper = (IHThorDiskReadBaseArg *) queryHelper();
-    OwnedRoxieString fileName(helper->getFileName());
     dst.append(fileName);
     dst.append(subfileLogicalFilenames.ordinality());
     if (subfileLogicalFilenames.ordinality())
@@ -109,20 +108,6 @@ void CDiskReadMasterBase::serializeSlaveData(MemoryBuffer &dst, unsigned slave)
         mapping->serializeMap(slave, dst);
     else
         CSlavePartMapping::serializeNullMap(dst);
-}
-
-void CDiskReadMasterBase::done()
-{
-    IHThorDiskReadBaseArg *helper = (IHThorDiskReadBaseArg *) queryHelper();
-    fileDesc.clear();
-    if (!abortSoon) // in case query has relinquished control of file usage to another query (e.g. perists) 
-    {
-        if (0 != (helper->getFlags() & TDXupdateaccessed))
-        {
-            OwnedRoxieString fileName(helper->getFileName());
-            queryThorFileManager().updateAccessTime(container.queryJob(), fileName);
-        }
-    }
 }
 
 void CDiskReadMasterBase::deserializeStats(unsigned node, MemoryBuffer &mb)
@@ -161,7 +146,8 @@ void CWriteMasterBase::publish()
     props.setPropInt64("@recordCount", recordsProcessed);
     if (0 == (diskHelperBase->getFlags() & TDXtemporary) || container.queryJob().queryUseCheckpoints())
     {
-        setExpiryTime(props, diskHelperBase->getExpiryDays());
+        if (0 != (diskHelperBase->getFlags() & TDWexpires))
+            setExpiryTime(props, diskHelperBase->getExpiryDays());
         if (TDWupdate & diskHelperBase->getFlags())
         {
             unsigned eclCRC;
@@ -283,6 +269,7 @@ void CWriteMasterBase::init()
             blockCompressed = true;
         if (blockCompressed)
             props.setPropBool("@blockCompressed", true);
+        props.setProp("@kind", "flat");
         if (TAKdiskwrite == container.getKind() && (0 != (diskHelperBase->getFlags() & TDXtemporary)) && container.queryOwner().queryOwner() && (!container.queryOwner().isGlobal())) // I am in a child query
         { // do early, because this will be local act. and will not come back to master until end of owning graph.
             publish();
@@ -311,6 +298,7 @@ void CWriteMasterBase::serializeSlaveData(MemoryBuffer &dst, unsigned slave)
 
 void CWriteMasterBase::done()
 {
+    CMasterActivity::done();
     publish();
     if (TAKdiskwrite == container.getKind() && (0 != (diskHelperBase->getFlags() & TDXtemporary)) && container.queryOwner().queryOwner()) // I am in a child query
     {
@@ -391,7 +379,7 @@ const void *getAggregate(CActivityBase &activity, unsigned partialResults, IRowI
         }
     }
     RtlDynamicRowBuilder result(rowIf.queryRowAllocator(), false);
-    size32_t sz;
+    size32_t sz = 0;
     bool first = true;
     _partialResults = 0;
     for (;_partialResults<partialResults; _partialResults++)

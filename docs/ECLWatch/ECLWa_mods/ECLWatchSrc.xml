@@ -65,14 +65,13 @@
 
       <para>ECL Watch provides an interface to the HPCC system and allows you
       to view information and interrogate nodes to confirm all expected
-      processes are running. This provides a simple centric view into the
-      system and a means to perform Work Unit and data files
-      maintenance.***</para>
+      processes are running. This provides a simple view into the system and a
+      means to perform Work Unit and data files maintenance.***</para>
 
       <para>Using ECL watch assumes your HPCC system is up and running, able
       to process jobs, and workunits. You would use the ECL Watch interface to
       both check the status of your jobs, and perform operations on those
-      jobs.</para>
+      jobs.***</para>
     </sect1>
 
     <sect1 id="ECLWorkunits" role="brk">
@@ -83,8 +82,19 @@
       can also perform actions on the selected workunit using the Workunit
       Action buttons.</para>
 
-      <para>Using the Navigator panel on the left, click on the <emphasis
-      role="bold">Browse Workunits </emphasis>link.</para>
+      <para>To access the workunits page click on the<emphasis role="bold">
+      ECL</emphasis> icon, then click the <emphasis
+      role="bold">Workunits</emphasis> link from the navigation sub-menu.
+      <figure>
+          <title>ECL Files</title>
+
+          <mediaobject>
+            <imageobject>
+              <imagedata fileref="../../images/ECLWA00A.jpg"
+                         vendor="eclwatchSS" />
+            </imageobject>
+          </mediaobject>
+        </figure></para>
 
       <para>The page displays the ECL workunits on your system. Choose
       the<emphasis role="bold"> Workunits</emphasis> Navigation tab to display
@@ -102,8 +112,8 @@
         </figure></para>
 
       <para>To further examine a workunit or to perform some action on it, you
-      must select it. You can select the workunit by checking the check
-      box.<figure>
+      must select it. You can select the workunit by checking the check box.
+      You can also open a work unit by double-clicking on the workunit.<figure>
           <title>Select ECL Workunit</title>
 
           <mediaobject>
@@ -175,7 +185,7 @@
         </listitem>
       </itemizedlist>
 
-      <sect2>
+      <sect2 role="brk">
         <title>Filter Options</title>
 
         <para>You can filter the workunits displayed on the Workunits tab by
@@ -216,7 +226,7 @@
 
           <listitem>
             <para><emphasis role="bold">Cluster</emphasis> - filter workunits
-            by cluster. Select the cluster from the drop list. </para>
+            by cluster. Select the cluster from the drop list.</para>
           </listitem>
 
           <listitem>
@@ -329,7 +339,7 @@
 
             <mediaobject>
               <imageobject>
-                <imagedata fileref="../../images/ECLW402.jpg"
+                <imagedata fileref="../../images/ECLWA402.jpg"
                            vendor="eclwatchSS" />
               </imageobject>
             </mediaobject>
@@ -395,12 +405,21 @@
       <para>The DFU Workunits page contains a list of all the DFU workunits on
       your system. It provides access to more details about the workunits. You
       can also perform actions on the selected workunit using the Workunit
-      Action buttons.</para>
+      Action buttons. <figure>
+          <title>Files Link</title>
 
-      <para>In the Navigator panel of the ECL Watch, click on the<emphasis
-      role="bold"> Browse </emphasis>link under <emphasis role="bold">DFU
-      Workunits</emphasis> header. This opens the DFU Workunits page. The page
-      displays the DFU Workunits on your system.</para>
+          <mediaobject>
+            <imageobject>
+              <imagedata fileref="../../images/ECLWA00D.jpg" />
+            </imageobject>
+          </mediaobject>
+        </figure></para>
+
+      <para>To access the DFU workunits page, click on the<emphasis
+      role="bold"> Files </emphasis>link on the navigation pane, then click
+      the <emphasis role="bold">Workunits</emphasis> link from the navigation
+      sub-menu. This action opens the DFU Workunits page. The page displays
+      the DFU Workunits on your system.</para>
 
       <para><figure>
           <title>Browse DFU Workunits</title>
@@ -477,7 +496,7 @@
       You can also double-click on a particular workunit to open the details
       tab.</para>
 
-      <sect2>
+      <sect2 role="brk">
         <title>DFU Filter Options</title>
 
         <para>You can filter the workunits displayed on the Workunits tab by
@@ -513,12 +532,12 @@
 
           <listitem>
             <para><emphasis role="bold">Cluster</emphasis> - filter workunits
-            by cluster. Select the cluster from the drop list. </para>
+            by cluster. Select the cluster from the drop list.</para>
           </listitem>
 
           <listitem>
             <para><emphasis role="bold">State</emphasis> - filter workunits by
-            state. Select the state from the drop list. </para>
+            state. Select the state from the drop list.</para>
           </listitem>
 
           <listitem>
@@ -555,7 +574,7 @@
         </sect3>
       </sect2>
 
-      <sect2>
+      <sect2 role="brk">
         <title>DFU Workunit Details Page</title>
 
         <para>When you open the selected workunit(s) you will see the workunit
@@ -619,17 +638,17 @@
       also perform actions on selected files using the Workunit Action
       buttons.</para>
 
-      <para>In the Navigator panel of ECL Watch, click on the <emphasis
-      role="bold">Browse Logical Files </emphasis>link under the <emphasis
-      role="bold">DFU Files</emphasis> header. This will open the Logical
-      Files page.</para>
+      <para>To access the Logical Files page click on the <emphasis
+      role="bold">Files </emphasis>icon, then click the <emphasis
+      role="bold">Logical Files</emphasis> link from the navigation
+      sub-menu.</para>
 
       <para><figure>
-          <title>Browse Logical Files</title>
+          <title>Logical Files</title>
 
           <mediaobject>
             <imageobject>
-              <imagedata fileref="../../images/CSimg14.jpg"
+              <imagedata fileref="../../images/ECLWA430.jpg"
                          vendor="eclwatchSS" />
             </imageobject>
           </mediaobject>
@@ -727,7 +746,7 @@
       <para>You can press the <emphasis role="bold">Open</emphasis> button to
       open a tab with the details for each selected file.</para>
 
-      <sect2>
+      <sect2 role="brk">
         <title>Logical Files Filter Options</title>
 
         <para>You can filter the logIcal files displayed on the Logical Files
@@ -768,7 +787,7 @@
 
           <listitem>
             <para><emphasis role="bold">Cluster</emphasis> - filter files by
-            cluster. Select the cluster from the drop list. </para>
+            cluster. Select the cluster from the drop list.</para>
           </listitem>
 
           <listitem>
@@ -925,6 +944,275 @@
           </listitem>
         </itemizedlist>
       </sect2>
+    </sect1>
+
+    <sect1 id="Landing_Zones" vendor="eclwatchSS">
+      <title>Landing Zones</title>
+
+      <para>The Landing Zone Page shows you each landing zone you have
+      configured for your cluster and its contents. <figure>
+          <title>Landing Zone Page</title>
+
+          <mediaobject>
+            <imageobject>
+              <imagedata fileref="../../images/ECLWA440.jpg"
+                         vendor="eclwatchSS" />
+            </imageobject>
+          </mediaobject>
+        </figure></para>
+
+      <para>Click on the arrow next to a drop zone container to expand. The
+      files on the drop zone display. You can choose to upload, download, or
+      delete any files on the drop zone using the landing zone action buttons.
+      You can also spray files to a cluster from this page.</para>
+
+      <sect2 id="Upload_Files">
+        <title>Upload files</title>
+
+        <para>You can upload files to your landing zone from the Landing Zone
+        page.</para>
+
+        <orderedlist>
+          <listitem>
+            <para>Press the <emphasis role="bold">Upload</emphasis> action
+            button.<informaltable colsep="1" frame="all" rowsep="1">
+                <?dbfo keep-together="always"?>
+
+                <tgroup cols="2">
+                  <colspec colwidth="49.50pt" />
+
+                  <colspec />
+
+                  <tbody>
+                    <row>
+                      <entry><inlinegraphic
+                      fileref="../../images/tip.jpg" /></entry>
+
+                      <entry>The upload utility in ECL Watch is limited by the
+                      browser's file size limitation. This is typically 4 GB.
+                      For production systems, we recommend a secure copy
+                      protocol (scp) utility.</entry>
+                    </row>
+                  </tbody>
+                </tgroup>
+              </informaltable></para>
+          </listitem>
+
+          <listitem>
+            <para>Choose the file from the window that displays.</para>
+          </listitem>
+
+          <listitem>
+            <para>Verify the file and dropzone are correct in the <emphasis
+            role="bold">Info Dialog</emphasis> that displays. <figure>
+                <title>Info Dialog</title>
+
+                <mediaobject>
+                  <imageobject>
+                    <imagedata fileref="../../images/ECLWA440b.jpg"
+                               vendor="eclwatchSS" />
+                  </imageobject>
+                </mediaobject>
+              </figure></para>
+          </listitem>
+
+          <listitem>
+            <para>Press the <emphasis role="bold">Start</emphasis> button to
+            begin the upload.</para>
+
+            <para>The file progress indicator shows as the file uploads. When
+            upload is complete, the window closes.</para>
+          </listitem>
+        </orderedlist>
+
+        <para></para>
+      </sect2>
+
+      <sect2 id="Download_Files">
+        <title>Download files</title>
+
+        <para>You can download files from your landing zone to your computer.
+        <orderedlist>
+            <listitem>
+              <para>From the Landing Zone page, select a file (or files) to
+              download by checking the box next to it.</para>
+            </listitem>
+
+            <listitem>
+              <para>Press the <emphasis role="bold">Download</emphasis> button
+              to download the file.</para>
+            </listitem>
+          </orderedlist>The file will download to your browser's download
+        directory as specified in your browser settings.</para>
+      </sect2>
+
+      <sect2 id="Delete_Files">
+        <title>Delete files</title>
+
+        <para>You can delete files from your landing zone. <orderedlist>
+            <listitem>
+              <para>From the Landing Zone page, select a file (or files) to
+              delete by checking the box next to it.</para>
+            </listitem>
+
+            <listitem>
+              <para>Press the <emphasis role="bold">Delete</emphasis> action
+              button to delete the file from your landing zone.</para>
+            </listitem>
+          </orderedlist></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>Hex Preview</title>
+
+        <para>You can view a Hexadecimal representation of files on the
+        landing zone. <orderedlist>
+            <listitem>
+              <para>Select a file by checking the box next to it.</para>
+            </listitem>
+
+            <listitem>
+              <para>Press the<emphasis role="bold">Hex Preview</emphasis>
+              action button to display the selected file(s) in a hex
+              format.</para>
+            </listitem>
+          </orderedlist></para>
+
+        <para><figure>
+            <title>Hex Preview</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="../../images/ECLWA440h.jpg" />
+              </imageobject>
+            </mediaobject>
+          </figure></para>
+
+        <para>You can adjust the width of the view on the hex preview page
+        using the spinbox controls on the <emphasis
+        role="bold">Width</emphasis> box.</para>
+
+        <para>If you have an EBCDIC file check the box next to <emphasis
+        role="bold">EBCDIC:</emphasis> for it to display properly.</para>
+      </sect2>
+
+      <sect2 id="LZ_Spray">
+        <title>Spray Files</title>
+
+        <para>You can spray files to your clusters from the Landing Zone page.
+        <orderedlist>
+            <listitem>
+              <para>Select the file from your drop zone by checking the box
+              next to it.</para>
+            </listitem>
+
+            <listitem>
+              <para>Select the appropriate drop menu option for the type of
+              spray you want.</para>
+
+              <para>For example, to spray a delimited file, select the
+              <emphasis role="bold">Delimited</emphasis> drop menu
+              option.</para>
+
+              <para><figure>
+                  <title>Landing Zone Spray</title>
+
+                  <mediaobject>
+                    <imageobject>
+                      <imagedata fileref="../../images/ECLWA441.jpg" />
+                    </imageobject>
+                  </mediaobject>
+                </figure></para>
+            </listitem>
+
+            <listitem>
+              <para>Fill in the values as appropriate for the spray.</para>
+            </listitem>
+
+            <listitem>
+              <para>Press the <emphasis role="bold">Spray</emphasis> button to
+              spray the file.</para>
+            </listitem>
+          </orderedlist></para>
+      </sect2>
+    </sect1>
+
+    <sect1 id="Pub_Query">
+      <title>Published Queries</title>
+
+      <para>The Queries page provides access to published Queries on all
+      clusters in an environment. To access the Queries page click the
+      Published Queries link from the Navigation pane in ECL Watch.</para>
+
+      <sect2>
+        <title>Queries</title>
+
+        <para>Click on any link from the <emphasis
+        role="bold">Targets</emphasis> page to displays that target page. The
+        Target page has two tabs, one for all target queries, and another tab
+        for only active queries. From this page you can get more information
+        about the specific published queries.</para>
+
+        <para><figure>
+            <title>Target Queries</title>
+
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="../../images/ECLW006.jpg"
+                           vendor="eclwatchSS" />
+              </imageobject>
+            </mediaobject>
+          </figure>Select the queries by clicking on them or shift+click to
+        select multiple queries. Press the buttons for the desired
+        activity.</para>
+
+        <para><variablelist>
+            <varlistentry>
+              <term>Delete</term>
+
+              <listitem>
+                <para>Deletes the selected query (or queries).</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>Toggle Suspend</term>
+
+              <listitem>
+                <para>Toggles between suspending or unsuspending the selected
+                query (or queries).</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>Activate</term>
+
+              <listitem>
+                <para>Activates the selected query (or queries).</para>
+              </listitem>
+            </varlistentry>
+
+            <varlistentry>
+              <term>Query Details</term>
+
+              <listitem>
+                <para>Links to a page with the details for the selected
+                query.</para>
+              </listitem>
+            </varlistentry>
+          </variablelist></para>
+      </sect2>
+    </sect1>
+
+    <sect1 id="Operations">
+      <title>Operations</title>
+
+      <para>The Operations page provides access to several system
+      administrator tasks you can perform on your HPCC system. To access the
+      Operations page click the Operations link from the Navigation pane in
+      ECL Watch.</para>
+
+      <para>More to come...</para>
     </sect1>
   </chapter>
 </book>

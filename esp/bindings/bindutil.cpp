@@ -643,43 +643,11 @@ StringBuffer &Utils::url_encode(const char* url, StringBuffer& encoded_url)
     return encoded_url;
 }
 
-static char translateHex(char hex) {
-    if(hex >= 'A')
-        return (hex & 0xdf) - 'A' + 10;
-    else
-        return hex - '0';
-}
-
 int Utils::url_decode(const char* url, StringBuffer& result)
 {
-    if(!url || !*url)
-        return 0;
-
-    const char *finger = url;
-    while (*finger)
-    {
-        char c = *finger++;
-        if (c == '+')
-            c = ' ';
-        else if (c == '%')
-        {
-            if(*finger != '\0')
-            {
-                c = translateHex(*finger);
-                finger++;
-            }
-            if(*finger != '\0')
-            {
-                c = (char)(c*16 + translateHex(*finger));
-                finger++;
-            }
-        }
-        result.append(c);
-    }
-
+    appendDecodedURL(result, url);
     return 0;
 }
-
 
 void Utils::SplitURL(const char* url, StringBuffer& protocol,StringBuffer& UserName,StringBuffer& Password,StringBuffer& host, StringBuffer& port, StringBuffer& path)
 {
@@ -817,3 +785,62 @@ void xslTransformHelper(IXslProcessor *xslp, const char* xml, const char* xslFil
     }
 }
 
+const char *mimeTypeFromFileExt(const char *ext)
+{
+    if (!ext)
+        return "application/octet-stream";
+    if (*ext=='.')
+        ext++;
+    if (strieq(ext, "html") || strieq(ext, "htm"))
+        return "text/html";
+    if (strieq(ext, "xml") || strieq(ext, "xsl") || strieq(ext, "xslt"))
+       return "application/xml";
+    if (strieq(ext, "js"))
+       return "text/javascript";
+    if (strieq(ext, "css"))
+       return "text/css";
+    if (strieq(ext, "jpeg") || strieq(ext, "jpg"))
+       return "image/jpeg";
+    if (strieq(ext, "gif"))
+       return "image/gif";
+    if (strieq(ext, "png"))
+       return "image/png";
+    if (strieq(ext, "svg"))
+       return "image/svg+xml";
+    if (strieq(ext, "txt") || strieq(ext, "text"))
+       return "text/plain";
+    if (strieq(ext, "zip"))
+       return "application/zip";
+    if (strieq(ext, "pdf"))
+       return "application/pdf";
+    if (strieq(ext, "xpi"))
+       return "application/x-xpinstall";
+    if (strieq(ext, "exe") || strieq(ext, "class"))
+       return "application/octet-stream";
+    return "application/octet-stream";
+}
+
+class CEspHttpException: public CInterface, public IEspHttpException
+{
+public:
+    IMPLEMENT_IINTERFACE;
+
+    CEspHttpException(int code, const char *_msg, const char* _httpstatus) : errcode(code), msg(_msg), httpstatus(_httpstatus){ };
+    int errorCode() const { return (errcode); };
+    StringBuffer &  errorMessage(StringBuffer &str) const
+    {
+        return str.append("CEspHttpException: (").append(msg).append(")");
+    };
+    MessageAudience errorAudience() const { return (MSGAUD_user); };
+    virtual const char* getHttpStatus() {return httpstatus.get(); }
+
+private:
+    int errcode;
+    StringAttr msg;
+    StringAttr httpstatus;
+};
+
+IEspHttpException* createEspHttpException(int code, const char *_msg, const char* _httpstatus)
+{
+    return new CEspHttpException(code, _msg, _httpstatus);
+}

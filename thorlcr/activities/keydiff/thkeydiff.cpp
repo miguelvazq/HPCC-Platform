@@ -41,11 +41,9 @@ public:
         width = 0;
         copyTlk = globals->getPropBool("@diffCopyTlk", true); // because tlk can have meta data and diff/patch does not support
     }
-    ~CKeyDiffMaster()
+    virtual void init()
     {
-    }
-    void init()
-    {
+        CMasterActivity::init();
         helper = (IHThorKeyDiffArg *)queryHelper();
         OwnedRoxieString origName(helper->getOriginalName());
         OwnedRoxieString updatedName(helper->getUpdatedName());
@@ -69,15 +67,15 @@ public:
         if (width > container.queryJob().querySlaves())
             throw MakeActivityException(this, 0, "Unsupported: keydiff(%s, %s) - Cannot diff a key that's wider(%d) than the target cluster size(%d)", originalIndexFile->queryLogicalName(), newIndexFile->queryLogicalName(), width, container.queryJob().querySlaves());
 
-        queryThorFileManager().noteFileRead(container.queryJob(), originalIndexFile);
-        queryThorFileManager().noteFileRead(container.queryJob(), newIndexFile);
-
         IArrayOf<IGroup> groups;
         OwnedRoxieString outputName(helper->getOutputName());
         fillClusterArray(container.queryJob(), outputName, clusters, groups);
         patchDesc.setown(queryThorFileManager().create(container.queryJob(), outputName, clusters, groups, 0 != (KDPoverwrite & helper->getFlags()), 0, !local, width));
+        patchDesc->queryProperties().setProp("@kind", "keydiff");
+        addReadFile(originalIndexFile);
+        addReadFile(newIndexFile);
     }
-    void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
+    virtual void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
     {
         if (slave < width) // if false - due to mismatch width fitting - fill in with a blank entry
         {
@@ -106,7 +104,7 @@ public:
         else
             dst.append(false); // no part
     }
-    void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
+    virtual void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
     {
         if (mb.length()) // if 0 implies aborted out from this slave.
         {
@@ -148,7 +146,7 @@ public:
             }
         }
     }
-    void done()
+    virtual void done()
     {
         StringBuffer scopedName;
         OwnedRoxieString outputName(helper->getOutputName());
@@ -161,7 +159,8 @@ public:
         wu.clear();
 
         IPropertyTree &patchProps = patchDesc->queryProperties();
-        setExpiryTime(patchProps, helper->getExpiryDays());
+        if (0 != (helper->getFlags() & KDPexpires))
+            setExpiryTime(patchProps, helper->getExpiryDays());
         IPropertyTree &originalProps = originalDesc->queryProperties();;
         if (originalProps.queryProp("ECL"))
             patchProps.setProp("ECL", originalProps.queryProp("ECL"));
@@ -198,8 +197,9 @@ public:
         index->setProp("@name", originalIndexFile->queryLogicalName());
         if (originalIndexFile->getFileCheckSum(checkSum))
             index->setPropInt64("@checkSum", checkSum);
+        CMasterActivity::done();
     }
-    void preStart(size32_t parentExtractSz, const byte *parentExtract)
+    virtual void preStart(size32_t parentExtractSz, const byte *parentExtract)
     {
         CMasterActivity::preStart(parentExtractSz, parentExtract);
         IHThorKeyDiffArg *helper = (IHThorKeyDiffArg *) queryHelper();
@@ -212,7 +212,7 @@ public:
                 throw MakeActivityException(this, TE_OverwriteNotSpecified, "Cannot write %s, file already exists (missing OVERWRITE attribute?)", file->queryLogicalName());
         }
     }
-    void kill()
+    virtual void kill()
     {
         CMasterActivity::kill();
         originalIndexFile.clear();

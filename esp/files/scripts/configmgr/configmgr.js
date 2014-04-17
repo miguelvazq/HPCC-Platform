@@ -29,7 +29,7 @@ function createTablesForComp(compName, rows) {
 
   for (var i = 0; i < compTabs[compName].length; i++) {
     if (compTabs[compName][i] !== 'Servers' &&
-        compTabs[compName][i] !== 'Agents' &&
+        compTabs[compName][i] !== 'Ports' &&
         compTabs[compName][i] !== 'Topology')
       createTable(rows[compTabs[compName][i]], compTabs[compName][i], i, compName);
   }
@@ -699,21 +699,18 @@ function createDivsInTabsForComp(tabName, compType) {
   return htmlString;
 }
 
-function initItemForRoxieSlaves(item) {
+function initItemForRoxieServers(item) {
   item.depth = 0;
-  item.name = "Roxie Cluster";
+  item.name = "Roxie Servers";
   item.name_extra = "";
   item.name_ctrlType = 0;
   item.parent = -1;
+  item.computer = "";
+  item.computer_extra = "";
+  item.computer_ctrlType = 0;
   item.netAddress = "";
   item.netAddress_extra = "";
   item.netAddress_ctrlType = 0;
-  item.dataDirectory = "";
-  item.dataDirectory_extra = "";
-  item.dataDirectory_ctrlType = 0;
-  item.itemType = "";
-  item.itemType_extra = "";
-  item.itemType_ctrlType = 0;
   item.compType = "";
 }
 
@@ -733,21 +730,15 @@ function initItemForThorTopology(item) {
   item._processId = "";
 }
 
-function initItemForRoxieServers(item) {
+function initItemForRoxiePorts(item) {
   item.depth = 0;
-  item.name = "Roxie Cluster";
+  item.name = "Roxie Ports";
   item.name_extra = "";
   item.name_ctrlType = 0;
   item.parent = -1;
-  item.netAddress = "";
-  item.netAddress_extra = "";
-  item.netAddress_ctrlType = 0;
   item.port = "";
   item.port_extra = "";
   item.port_ctrlType = 0;
-  item.dataDirectory = "";
-  item.dataDirectory_extra = "";
-  item.dataDirectory_ctrlType = 0;
   item.listenQueue = "";
   item.listenQueue_extra = "";
   item.listenQueue_ctrlType = 0;
@@ -877,13 +868,13 @@ function handleConfigCellClickEvent(oArgs, caller, isComplex) {
       }
     }
 
-    if (bldSet === "roxie" && attrName === "dataDirectory") {
+    if (bldSet === "roxie" && attrName === "level") {
       if (newValue === '') {
         alert('Roxie data directory cannot be empty');
         return;
       }
 
-      if (!confirm("The primary data directory for other farms and agents will be changed to the same value. Do you want to continue?")) {
+      if (!confirm("The level for other farms and agents will be changed to the same value. Do you want to continue?")) {
         for (i = 1; i < 7; i++)
           if (caller.editors[i].isActive)
           caller.editors[i].cancel();
@@ -1282,13 +1273,12 @@ function createMultiColTreeCtrlForComp(rows, compName, subRecordIndex) {
           if (i === 'icon')
             myColumnDefs[0] = { key: "icon", label: "" };
           else if (i === 'name')
-            myColumnDefs[colIndex[i + compName]] = { key: "name", resizeable: true, width: 250, maxAutoWidth: 250, formatter: function(el, oRecord, oColumn, oData) {
+            myColumnDefs[colIndex1++] = { key: "name", resizeable: true, width: 250, maxAutoWidth: 250, formatter: function(el, oRecord, oColumn, oData) {
               el.innerHTML = "<div id='depth" + oRecord.getData('depth') + "'>" + oData + "</div>";
-              Dom.addClass(el, 'yui-dt-liner depth' + oRecord.getData('depth'));
             }, scrollable: true
             };
           else
-            myColumnDefs[colIndex[i + compName]] = { key: i, resizeable: true, formatter: formatterDispatcher, editor: new YAHOO.widget.BaseCellEditor() };
+            myColumnDefs[colIndex1++] = { key: i, resizeable: true, formatter: formatterDispatcher, editor: new YAHOO.widget.BaseCellEditor() };
         }
         columnFields[colIndex2++] = i;
       }
@@ -2346,10 +2336,10 @@ function createEnvXmlView(allrows, compName, subRecordIndex) {
 function initRowsForComplexComps(rows, compName) {
   var item = {};
   item.id = 0;
-  if (compName === 'RoxieServers')
-    initItemForRoxieServers(item);
+  if (compName === 'RoxiePorts')
+    initItemForRoxiePorts(item);
   else if (compName === 'RoxieSlaves')
-    initItemForRoxieSlaves(item);
+    initItemForRoxieServers(item);
   else if (compName === 'Topology')
     initItemForThorTopology(item);
 
@@ -2357,7 +2347,7 @@ function initRowsForComplexComps(rows, compName) {
 }
 
 function setParentIds(item, rows, parentIds) {
-  if (item.depth > rows[parentIds[parentIds.length - 1]].depth)
+  if (rows.length < 1 || item.depth > rows[parentIds[parentIds.length - 1]].depth)
     parentIds[parentIds.length] = item.id;
   else if (item.depth === rows[parentIds[parentIds.length - 1]].depth) {
     item.parent = parentIds[parentIds.length - 2];
@@ -2438,6 +2428,16 @@ function onMenuItemClickDelete(p_sType, p_aArgs, p_oValue) {
     top.document.startWait(document);
     var compName = top.document.navDT.getRecord(top.document.navDT.getSelectedRows()[0]).getData('Name');
     var xmlStr = roxieSelectionToXML(this.parent.dt, "RoxieFarm", selRows, compName);
+    var cmd = "";
+
+    if (top.document.RightTabView.get("activeTab")._configs.label.value == "Servers" && selRows[0] == top.document.RightTabView.get("activeTab").dt._sFirstTrId)
+    {
+        cmd = 'Cmd=DeleteRoxieServers&XmlArgs='
+    }
+    else
+    {
+        cmd = 'Cmd=DeleteRoxieFarm&XmlArgs=';
+    }
 
     YAHOO.util.Connect.asyncRequest('POST', '/WsDeploy/HandleRoxieOperation', {
       success: function(o) {
@@ -2452,7 +2452,7 @@ function onMenuItemClickDelete(p_sType, p_aArgs, p_oValue) {
       },
       scope: this
     },
-      top.document.navDT.getFileName(true) + 'Cmd=DeleteRoxieFarm&XmlArgs=' + xmlStr);
+    top.document.navDT.getFileName(true) + cmd + xmlStr);
   }
 }
 
@@ -2632,22 +2632,15 @@ function onContextMenuBeforeShow(p_sType, p_aArgs) {
   if (!this.configContextMenuItems) {
     this.configContextMenuItems = {
       "Roxie Cluster": [
-                                { text: "Add Farm", onclick: { fn: onMenuItemClickAddFarm} }
+                                { text: "Add Ports", onclick: { fn: onMenuItemClickAddFarm} }
                                 ],
       "RoxieFarmProcess": [
-      //{text: "AddFarm", onclick: { fn: onMenuItemClickAddFarm}},
-                                {text: "Add Servers", onclick: { fn: onMenuItemClickAddServers}}//,
-                                //{ text: "Replace...", onclick: { fn: onMenuItemClickFarmReplace}}//,
-                                //{text: "ImportServers...", onclick: { fn: onMenuItemClickImportServers}},
-                                //{text: "ExportServers...", onclick: { fn: onMenuItemClickExportServers}}
-                            ],
+                                {text: "Add Port", onclick: { fn: onMenuItemClickAddFarm} }                            ],
       "RoxieServerProcess": [
-                                { text: "Replace...", onclick: { fn: onMenuItemClickFarmReplace}}//,
-                                //{text: "ImportServers", onclick: { fn: onMenuItemClickImportServers}},
-                                //{text: "ExportServers", onclick: { fn: onMenuItemClickExportServers}}
+                                { text: "Replace...", onclick: { fn: onMenuItemClickFarmReplace}}
                             ],
       "RoxieSlave": [
-                                { text: "Reconfigure Agents...", onclick: { fn: onMenuItemClickSlaveConfig}}
+                                { text: "Reconfigure Servers", onclick: { fn: onMenuItemClickSlaveConfig}}
                             ],
       "Delete": [
                                 { text: "Delete", onclick: { fn: onMenuItemClickDelete} }
@@ -2708,12 +2701,13 @@ function onContextMenuBeforeShow(p_sType, p_aArgs) {
     var dt = this.dt;
     var recSet = dt.getRecordSet();
     var record = recSet.getRecord(oSelectedTR.id);
-    var parentName = record.getData('compType');
+
+    var parentName = (record == null) ? "" : record.getData('compType');
 
     if (parentName.length <= 0) {
-      if (dt.configs.element === "AgentsTab")
+      if (dt.configs.element === "ServersTab")
         parentName = "RoxieSlave";
-      else if (dt.configs.element === "ServersTab")
+      else if (dt.configs.element === "PortsTab")
         parentName = "Roxie Cluster";
     }
     else if (parentName === "Topology") {
@@ -2768,10 +2762,7 @@ function onContextMenuBeforeShow(p_sType, p_aArgs) {
           var r = recSet.getRecord(cIdx);
           if (r.getData('parent') === record.getData('id'))
           {
-            if (r.getData('name').indexOf('ThorCluster') == 0) {
-              this.getItem(5).cfg.setProperty("disabled", true);
-            }
-            else if (r.getData('name').indexOf('RoxieCluster') == 0) {
+            if (r.getData('name').indexOf('RoxieCluster') == 0) {
               this.getItem(4).cfg.setProperty("disabled", true);
               this.getItem(0).cfg.setProperty("disabled", true);
             }

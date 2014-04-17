@@ -112,9 +112,9 @@ struct DFUcmdStruct { int val; const char *str; } DFUcmds[] =
 };
 
 
-
-struct DFUsortField { int val; const char *str; } DFUsortfields[] = 
+struct DFUsortField { int val; const char *str; } DFUsortfields[] =
 {
+    {DFUsf_wuid,                    "@"}, //This duplicated item is added for getDFUSortFieldXPath()
     {DFUsf_user,                    "@submitID"},
     {DFUsf_cluster,                 "@cluster"},
     {DFUsf_state,                   "Progress/@state"},
@@ -125,6 +125,13 @@ struct DFUsortField { int val; const char *str; } DFUsortfields[] =
     {DFUsf_protected,               "@protected"},
     {DFUsf_term,                    ""}
 };
+
+const char *getDFUSortFieldXPath(DFUsortfield sortField)
+{
+    if (sortField < sizeof(DFUsortfields)/sizeof(DFUsortField))
+        return DFUsortfields[sortField].str;
+    return NULL;
+}
 
 DFUcmd decodeDFUcommand(const char * str)
 {
@@ -1337,7 +1344,7 @@ public:
             t->setProp("@csvSeparate",separate);
         if (terminate && *terminate)
             t->setProp("@csvTerminate",terminate);
-        if (quote && *quote)
+        if (quote)  //Enable to pass zero string to override default quote
             t->setProp("@csvQuote",quote);
         if (escape && *escape)
             t->setProp("@csvEscape",escape);
@@ -1677,11 +1684,6 @@ class CDFUoptions: public CLinkedDFUWUchild, implements IDFUoptions
 {
 public:
     IMPLEMENT_DFUWUCHILD;
-
-    bool getNoDelete() const
-    {
-        return queryRoot()->getPropInt("@nodelete")!=0;
-    }
 
     bool getNoSplit() const
     {
@@ -2023,6 +2025,25 @@ public:
         return false;
     }
 
+    bool getFailIfNoSourceFile() const
+    {
+        return queryRoot()->getPropBool("@failIfNoSourceFile");
+    }
+
+    void setFailIfNoSourceFile(bool val)
+    {
+        queryRoot()->setPropBool("@failIfNoSourceFile",val);
+    }
+
+    bool getRecordStructurePresent() const
+    {
+        return queryRoot()->getPropBool("@recordStructurePresent");
+    }
+
+    void setRecordStructurePresent(bool val)
+    {
+        queryRoot()->setPropBool("@recordStructurePresent",val);
+    }
 };
 
 class CExceptionIterator: public CInterface, implements IExceptionIterator
@@ -2970,21 +2991,61 @@ public:
                                                     __int64 *cachehint,
                                                     unsigned *total)
     {
+        class CDFUWorkUnitsPager : public CSimpleInterface, implements IElementsPager
+        {
+            StringAttr xPath;
+            StringAttr sortOrder;
+            StringAttr nameFilterLo;
+            StringAttr nameFilterHi;
+            StringArray unknownAttributes;
+
+        public:
+            IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
+
+            CDFUWorkUnitsPager(const char* _xPath, const char *_sortOrder, const char* _nameFilterLo, const char* _nameFilterHi, StringArray& _unknownAttributes)
+                : xPath(_xPath), sortOrder(_sortOrder), nameFilterLo(_nameFilterLo), nameFilterHi(_nameFilterHi)
+            {
+                ForEachItemIn(x, _unknownAttributes)
+                    unknownAttributes.append(_unknownAttributes.item(x));
+            }
+            virtual IRemoteConnection* getElements(IArrayOf<IPropertyTree> &elements)
+            {
+                Owned<IRemoteConnection> conn = querySDS().connect("DFU/WorkUnits", myProcessSession(), 0, SDS_LOCK_TIMEOUT);
+                if (!conn)
+                    return NULL;
+                Owned<IPropertyTreeIterator> iter = conn->getElements(xPath);
+                if (!iter)
+                    return NULL;
+                sortElements(iter, sortOrder.get(), nameFilterLo.get(), nameFilterHi.get(), unknownAttributes, elements);
+                return conn.getClear();
+            }
+        };
+
         StringBuffer query("*");
         StringBuffer so;
         const char *field;
         StringBuffer sf;
         StringAttr namefilterlo;
         StringAttr namefilterhi;
-        if (filters) {
+        StringArray unknownAttributes;
+        if (filters)
+        {
             const char *fv = (const char *)filterbuf;
-            for (unsigned i=0;filters[i]!=DFUsf_term;i++) {
+            for (unsigned i=0;filters[i]!=DFUsf_term;i++)
+            {
                 DFUsortfield fmt = filters[i];
                 if (fmt==DFUsf_wuid) 
                     namefilterlo.set(fv);
                 else if (fmt==DFUsf_wuidhigh) 
                     namefilterhi.set(fv);
-                else {
+                else if (!fv || !*fv)
+                {
+                    const char* attr = getDFUSortFieldXPath(fmt);
+                    if (attr && *attr)
+                        unknownAttributes.append(attr);
+                }
+                else
+                {
                     field = encodeDFUsortfield(fmt,sf.clear(),false).str();
                     query.append('[').append(field).append('=');
                     if (((int)fmt)&DFUsf_nocase)
@@ -2996,8 +3057,10 @@ public:
                 fv += strlen(fv)+1;
             }
         }
-        if (sortorder) {
-            for (unsigned i=0;sortorder[i]!=DFUsf_term;i++) {
+        if (sortorder)
+        {
+            for (unsigned i=0;sortorder[i]!=DFUsf_term;i++)
+            {
                 field = encodeDFUsortfield(sortorder[0],sf.clear(),true).str();
                 if (so.length())
                     so.append(',');
@@ -3005,8 +3068,8 @@ public:
             }
         }
         IArrayOf<IPropertyTree> results;
-        Owned<IRemoteConnection> conn=getElementsPaged( "DFU/WorkUnits", query.str(), so.length()?so.str():NULL,startoffset,maxnum,
-            NULL,queryowner,cachehint,namefilterlo.get(),namefilterhi.get(),results,total);
+        Owned<IElementsPager> elementsPager = new CDFUWorkUnitsPager(query.str(), so.length()?so.str():NULL, namefilterlo.get(), namefilterhi.get(), unknownAttributes);
+        Owned<IRemoteConnection> conn=getElementsPaged(elementsPager,startoffset,maxnum,NULL,queryowner,cachehint,results,total);
         return new CConstDFUWUArrayIterator(this,conn,results);
     }
 

@@ -303,6 +303,13 @@ ecl deploy --target=roxie --name=FindPersonService libW20120224-125557.so
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -384,6 +391,7 @@ ecl deploy --target=roxie --name=FindPersonService libW20120224-125557.so
 ecl publish --target=roxie --name=FindPersonService -A libW20120224-125557.so
 ecl publish --target=roxie --name=FindPersonService -A ArchiveQuery.xml
 ecl publish --target=roxie --name=FindPersonService --activate findperson.ecl
+ecl publish --target=roxie --name=FindPersonService --activate --no-files findperson.ecl
 ecl publish --target=roxie --name=FindPersonService --no-activate findperson.ecl
 </programlisting>
 
@@ -424,7 +432,7 @@ ecl publish --target=roxie --name=FindPersonService --no-activate findperson.ecl
                 <row>
                   <entry>archive</entry>
 
-                  <entry>TheECL archive to deploy</entry>
+                  <entry>The ECL archive to deploy</entry>
                 </row>
 
                 <row>
@@ -463,9 +471,37 @@ ecl publish --target=roxie --name=FindPersonService --no-activate findperson.ecl
                 </row>
 
                 <row>
+                  <entry>-sp, --suspend-prev</entry>
+
+                  <entry>Suspend previously active query</entry>
+                </row>
+
+                <row>
+                  <entry>-dp, --delete-prev</entry>
+
+                  <entry>Delete previously active query</entry>
+                </row>
+
+                <row>
+                  <entry>--no-files</entry>
+
+                  <entry>Does not copy DFU file information for files
+                  referenced by the query</entry>
+                </row>
+
+                <row>
                   <entry>--no-reload</entry>
 
-                  <entry>Specifies to not reload the target cluster</entry>
+                  <entry>Specifies to not request a reload of the Roxie
+                  cluster</entry>
+                </row>
+
+                <row>
+                  <entry>--allow-foreign</entry>
+
+                  <entry>Specifies to allow the use of foreign files in a
+                  Roxie query. If a Roxie query references foreign files and
+                  this is not enabled, publish will fail.</entry>
                 </row>
 
                 <row>
@@ -514,6 +550,13 @@ ecl publish --target=roxie --name=FindPersonService --no-activate findperson.ecl
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -639,6 +682,13 @@ ecl unpublish roxie "FindpersonService*"
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -789,6 +839,13 @@ ecl run --target=thor --input="&lt;request&gt;&lt;LName&gt;JONES&lt;/LName&gt;&l
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -926,6 +983,13 @@ ecl run --target=thor --input="&lt;request&gt;&lt;LName&gt;JONES&lt;/LName&gt;&l
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -1006,6 +1070,13 @@ ecl run --target=thor --input="&lt;request&gt;&lt;LName&gt;JONES&lt;/LName&gt;&l
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -1141,6 +1212,13 @@ ecl queries list roxie --target=roxie --show=A </programlisting>
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -1243,6 +1321,14 @@ ecl queries copy //192.168.1.10:8010/thor/findperson thor
                 </row>
 
                 <row>
+                  <entry>--allow-foreign</entry>
+
+                  <entry>Specifies to allow the use of foreign files in a
+                  Roxie query. If a Roxie query references foreign files and
+                  this is not enabled, copy will fail.</entry>
+                </row>
+
+                <row>
                   <entry>-O, --overwrite</entry>
 
                   <entry>Whether to overwrite existing information - true if
@@ -1295,6 +1381,13 @@ ecl queries copy //192.168.1.10:8010/thor/findperson thor
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -1421,6 +1514,13 @@ ecl queries copy //192.168.1.10:8010/thor/findperson thor
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -1516,6 +1616,14 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 </row>
 
                 <row>
+                  <entry>--allow-foreign</entry>
+
+                  <entry>Specifies to allow the use of foreign files. If a
+                  packagemap references foreign files and this is not enabled,
+                  packagemap add will fail.</entry>
+                </row>
+
+                <row>
                   <entry>--pmid=&lt;packagemapid&gt;</entry>
 
                   <entry>id of package map - defaults to filename if not
@@ -1539,6 +1647,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -1614,6 +1729,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -1700,6 +1822,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -1779,6 +1908,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -1867,6 +2003,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -1950,6 +2093,13 @@ ecl packagemap add roxie mypackagemap.pkg --daliip=192.168.11.11
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -2092,6 +2242,13 @@ ecl packagemap validate roxie --active</programlisting>
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -2157,6 +2314,13 @@ ecl packagemap validate roxie --active</programlisting>
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -2175,7 +2339,7 @@ ecl packagemap validate roxie --active</programlisting>
       <sect2 role="brk">
         <title>ecl roxie detach</title>
 
-        <para><emphasis role="bold">ecl roxie attach
+        <para><emphasis role="bold">ecl roxie detach
         &lt;processName&gt;</emphasis></para>
 
         <para>Examples:</para>
@@ -2193,7 +2357,7 @@ ecl packagemap validate roxie --active</programlisting>
 
               <tbody>
                 <row>
-                  <entry>ecl roxie attach</entry>
+                  <entry>ecl roxie detach</entry>
 
                   <entry>Detach the roxie from Dali</entry>
                 </row>
@@ -2219,6 +2383,13 @@ ecl packagemap validate roxie --active</programlisting>
                   <entry>--port</entry>
 
                   <entry>The eclwatch services port (Default is 8010)</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
                 </row>
 
                 <row>
@@ -2287,6 +2458,13 @@ ecl packagemap validate roxie --active</programlisting>
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>-u, --username</entry>
 
                   <entry>The username (if necessary)</entry>
@@ -2325,7 +2503,7 @@ ecl packagemap validate roxie --active</programlisting>
                 <row>
                   <entry>ecl roxie check</entry>
 
-                  <entry>Checks the state of the roxie process </entry>
+                  <entry>Checks the state of the roxie process</entry>
                 </row>
 
                 <row>
@@ -2352,9 +2530,457 @@ ecl packagemap validate roxie --active</programlisting>
                 </row>
 
                 <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
                   <entry>--wait=<emphasis>&lt;ms&gt;</emphasis></entry>
 
                   <entry>Max time to wait in milliseconds</entry>
+                </row>
+
+                <row>
+                  <entry>-u, --username</entry>
+
+                  <entry>The username (if necessary)</entry>
+                </row>
+
+                <row>
+                  <entry>-pw, --password</entry>
+
+                  <entry>The password (if necessary)</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable><parameter></parameter></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle depends</title>
+
+        <para><emphasis role="bold">ecl bundle depends
+        &lt;bundleName&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle depends mybundle
+ecl bundle depends mybundle --version=2</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle depends</entry>
+
+                  <entry>Shows the dependencies of a bundle</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;bundleName&gt;</entry>
+
+                  <entry>The name of a bundle file or installed bundle</entry>
+                </row>
+
+                <row>
+                  <entry>--recurse</entry>
+
+                  <entry>Displays indirect dependencies</entry>
+                </row>
+
+                <row>
+                  <entry>--version</entry>
+
+                  <entry>Specify a version of the bundle</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle info</title>
+
+        <para><emphasis role="bold">ecl bundle info
+        &lt;bundleName&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle info mybundle
+ecl bundle info mybundle --version=2</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle info</entry>
+
+                  <entry>Lists information about a bundle</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;bundleName&gt;</entry>
+
+                  <entry>A bundle filename, a bundle folder, or a bundle
+                  name.</entry>
+                </row>
+
+                <row>
+                  <entry>--version</entry>
+
+                  <entry>Specify a version of the bundle</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle install</title>
+
+        <para><emphasis role="bold">ecl bundle install
+        &lt;bundleName&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle install mybundle
+ecl bundle install mybundle --dryrun
+ecl bundle install mybundle --update
+ecl bundle install mybundle --keepprior</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle install</entry>
+
+                  <entry>Installs a bundle</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;bundleName&gt;</entry>
+
+                  <entry>A bundle filename or a bundle folder.</entry>
+                </row>
+
+                <row>
+                  <entry>--dryrun</entry>
+
+                  <entry>List what would be installed, but do not copy</entry>
+                </row>
+
+                <row>
+                  <entry>--force</entry>
+
+                  <entry>Install even if required dependencies missing</entry>
+                </row>
+
+                <row>
+                  <entry>--keepprior</entry>
+
+                  <entry>Do not remove any previous versions of the
+                  bundle</entry>
+                </row>
+
+                <row>
+                  <entry>--update</entry>
+
+                  <entry>Update an existing installed bundle</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle uninstall</title>
+
+        <para><emphasis role="bold">ecl bundle uninstall
+        &lt;bundleName&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle uninstall mybundle
+ecl bundle install mybundle --dryrun
+ecl bundle install mybundle --update
+ecl bundle install mybundle --keepprior</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle install</entry>
+
+                  <entry>Installs a bundle</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;bundleName&gt;</entry>
+
+                  <entry>The name of an installed bundle</entry>
+                </row>
+
+                <row>
+                  <entry>--dryrun</entry>
+
+                  <entry>List what would be removed, but do not remove
+                  them</entry>
+                </row>
+
+                <row>
+                  <entry>--force</entry>
+
+                  <entry>Uninstall even if other bundles are dependent on
+                  this</entry>
+                </row>
+
+                <row>
+                  <entry>--version</entry>
+
+                  <entry>Specify a version of the bundle</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle list</title>
+
+        <para><emphasis role="bold">ecl bundle list
+        &lt;pattern&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle list
+ecl bundle list myb*
+</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle list</entry>
+
+                  <entry>Lists bundles matching specified pattern</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;pattern&gt;</entry>
+
+                  <entry>A pattern specifying bundles to list. If omitted, all
+                  bundles are listed</entry>
+                </row>
+
+                <row>
+                  <entry>--details</entry>
+
+                  <entry>Report details of each installed bundle</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl bundle use</title>
+
+        <para><emphasis role="bold">ecl bundle use &lt;bundleName&gt;
+        &lt;version&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl bundle use myBundle
+ecl bundle use myBundle 2
+</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl bundle use</entry>
+
+                  <entry>Makes a specified version of a bundle active</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>&lt;bundleName&gt;</entry>
+
+                  <entry>The name of a bundle file</entry>
+                </row>
+
+                <row>
+                  <entry>--version</entry>
+
+                  <entry>The version of the bundle to make active, or
+                  "none"</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+              </tbody>
+            </tgroup>
+          </informaltable></para>
+      </sect2>
+
+      <sect2 role="brk">
+        <title>ecl roxie unused-files</title>
+
+        <para><emphasis role="bold">ecl roxie unused-files
+        &lt;processName&gt;</emphasis></para>
+
+        <para>Examples:</para>
+
+        <programlisting>ecl roxie unused-files myroxie
+</programlisting>
+
+        <para></para>
+
+        <para><informaltable colsep="0" frame="none" rowsep="0">
+            <tgroup cols="2">
+              <colspec align="left" colwidth="125.55pt" />
+
+              <colspec colwidth="384.85pt" />
+
+              <tbody>
+                <row>
+                  <entry>ecl roxie unused-files</entry>
+
+                  <entry>Finds files in the DFS for the given roxie process
+                  that are not currently used by queries on that
+                  roxie.</entry>
+                </row>
+
+                <row>
+                  <entry><emphasis role="bold">Options</emphasis></entry>
+                </row>
+
+                <row>
+                  <entry>--check-packagemaps</entry>
+
+                  <entry>Exclude files referenced in active
+                  packagemaps</entry>
+                </row>
+
+                <row>
+                  <entry>-v, --verbose</entry>
+
+                  <entry>Output additional tracing information</entry>
+                </row>
+
+                <row>
+                  <entry>-s, --server</entry>
+
+                  <entry>The IP Address or hostname of ESP server running
+                  eclwatch services</entry>
+                </row>
+
+                <row>
+                  <entry>-ssl</entry>
+
+                  <entry>Use SSL to secure the connection to the
+                  server.</entry>
+                </row>
+
+                <row>
+                  <entry>--port</entry>
+
+                  <entry>The eclwatch services port (Default is 8010)</entry>
                 </row>
 
                 <row>

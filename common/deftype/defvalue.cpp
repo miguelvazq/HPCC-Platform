@@ -36,8 +36,8 @@
 
 BoolValue *BoolValue::trueconst;
 BoolValue *BoolValue::falseconst;
-static _ATOM asciiAtom;
-static _ATOM ebcdicAtom;
+static IAtom * asciiAtom;
+static IAtom * ebcdicAtom;
 
 MODULE_INIT(INIT_PRIORITY_DEFVALUE)
 {
@@ -446,7 +446,7 @@ void MemoryValue::deserialize(MemoryBuffer &src)
     void *mem = checked_malloc(size, DEFVALUE_MALLOC_FAILED);
     assertex(mem);
     src.read(size, mem);
-    val.set(size, mem);
+    val.setOwn(size, mem);
 }
 
 int MemoryValue::rangeCompare(ITypeInfo * targetType)
@@ -566,7 +566,7 @@ IValue *createStringValue(const char *val, ITypeInfo *type)
     return new StringValue(val, type);
 }
 
-IValue *createStringValue(const char *val, ITypeInfo *type, int srcLength, ICharsetInfo *srcCharset)
+IValue *createStringValue(const char *val, ITypeInfo *type, size32_t srcLength, ICharsetInfo *srcCharset)
 {
     ITranslationInfo * translation = queryDefaultTranslation(type->queryCharset(), srcCharset);
     size32_t tgtLength = type->getSize();
@@ -624,8 +624,10 @@ const char *UnicodeValue::generateECL(StringBuffer &out)
 {
     char * buff;
     unsigned bufflen;
-    rtlUnicodeToQuotedUTF8X(bufflen, buff, type->getStringLen(), (UChar const *)val.get());
-    out.append("U'").append(bufflen, buff).append('\'');
+    rtlUnicodeToUtf8X(bufflen, buff, type->getStringLen(), (UChar const *)val.get());
+    out.append("U'");
+    appendUtf8AsECL(out, rtlUtf8Size(bufflen, buff), buff);
+    out.append('\'');
     rtlFree(buff);
     return out.str();
 }
@@ -737,6 +739,25 @@ IValue *createUnicodeValue(char const * value, unsigned size, char const * local
     return ret;
 }
 
+IValue *createUtf8Value(size32_t len, char const * value, char const * locale, bool unescape)
+{
+    if (unescape)
+    {
+        rtlDataAttr temp;
+        size32_t newlen = 0;
+        size32_t size = rtlUtf8Size(len, value);
+        rtlCodepageToUtf8XUnescape(newlen, temp.refstr(), size, value, "UTF-8");
+
+        ITypeInfo * type = makeUtf8Type(newlen, createLowerCaseAtom(locale));
+        return createUtf8Value(temp.getstr(), type);
+    }
+    else
+    {
+        ITypeInfo * type = makeUtf8Type(len, createLowerCaseAtom(locale));
+        return createUtf8Value(value, type);
+    }
+}
+
 IValue *createUnicodeValue(char const * value, ITypeInfo * type)
 {
     if(type->getSize() == UNKNOWN_LENGTH)
@@ -799,6 +820,12 @@ void UnicodeAttr::set(UChar const * _text, unsigned _len)
     text[_len] = 0x0000;
 }
 
+void UnicodeAttr::setown(UChar * _text)
+{
+    free(text);
+    text = _text;
+}
+
 VarUnicodeValue::VarUnicodeValue(unsigned len, const UChar * v, ITypeInfo * _type) : CValue(_type)
 {
     unsigned typeLen = type->getStringLen();
@@ -831,8 +858,10 @@ const char * VarUnicodeValue::generateECL(StringBuffer & out)
 {
     char * buff;
     unsigned bufflen;
-    rtlUnicodeToQuotedUTF8X(bufflen, buff, val.length(), val.get());
-    out.append("U'").append(bufflen, buff).append('\'');
+    rtlUnicodeToUtf8X(bufflen, buff, val.length(), val.get());
+    out.append("U'");
+    appendUtf8AsECL(out, rtlUtf8Size(bufflen, buff), buff);
+    out.append('\'');
     rtlFree(buff);
     return out.str();
 }
@@ -954,7 +983,7 @@ void VarUnicodeValue::deserialize(MemoryBuffer & src)
     src.read(len);
     UChar * buff = (UChar *) checked_malloc(len*2, DEFVALUE_MALLOC_FAILED);
     src.read(len*2, buff);
-    val.set(buff, len);
+    val.setown(buff);
 }
 
 IValue *createVarUnicodeValue(char const * value, unsigned size, char const * locale, bool utf8, bool unescape)
@@ -2381,7 +2410,7 @@ IValue *createValueFromMem(ITypeInfo *type, const void *mem)
     {
         RealUnion u;
         memcpy(&u, mem, size);
-        double val;
+        double val = 0;
         switch (size)
         {
         case 4:
@@ -2446,7 +2475,7 @@ IValue * addValues(IValue * left, IValue * right)
             break;
         }
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -2488,7 +2517,7 @@ IValue * subtractValues(IValue * left, IValue * right)
             break;
         }
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -2519,7 +2548,7 @@ IValue * multiplyValues(IValue * left, IValue * right)
             break;
         }
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -2580,7 +2609,7 @@ IValue * divideValues(IValue * left, IValue * right, byte dbz)
         return createDecimalValueFromStack(pnt);
     }
     default:
-        assertThrow(false);
+        throwUnexpected();
         return NULL;
     }
 }
@@ -2640,7 +2669,7 @@ IValue * modulusValues(IValue * left, IValue * right, byte dbz)
         return createDecimalValueFromStack(pnt);
     }
     default:
-        assertThrow(false);
+        throwUnexpected();
         return NULL;
     }
 }
@@ -2670,7 +2699,7 @@ IValue * powerValues(IValue * left, IValue * right)
 */
     default:
         pnt->Release();
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -2693,7 +2722,7 @@ IValue * negateValue(IValue * v)
             return ((CDecimalTypeInfo*)v->queryType())->createValueFromStack();
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2721,7 +2750,7 @@ IValue * roundUpValue(IValue * v)
             return createDecimalValueFromStack(resultType);
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2744,7 +2773,7 @@ IValue * roundValue(IValue * v)
             return createDecimalValueFromStack(resultType);
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2767,7 +2796,7 @@ IValue * roundToValue(IValue * v, int places)
             return createDecimalValueFromStack(resultType);
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2790,7 +2819,7 @@ IValue * truncateValue(IValue * v)
             return createDecimalValueFromStack(resultType);
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2867,7 +2896,7 @@ IValue * sqrtValue(IValue * v)
         //MORE: This should probably do this more accurately.
         return createRealValue(rtlSqrt(v->getRealValue()), 8);
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2898,7 +2927,7 @@ IValue * absValue(IValue * v)
             return ((CDecimalTypeInfo*)v->queryType())->createValueFromStack();
         }
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 
@@ -2910,7 +2939,7 @@ IValue * substringValue(IValue * v, IValue * lower, IValue * higher)
     unsigned low = lower ? (unsigned)lower->getIntValue() : 0;
     unsigned high = higher ? (unsigned)higher->getIntValue() : srcLen;
 
-    unsigned retLen;
+    unsigned retLen = 0;
     void * retPtr;
     ITypeInfo * retType = NULL;
     switch (type->getTypeCode())
@@ -2938,6 +2967,8 @@ IValue * substringValue(IValue * v, IValue * lower, IValue * higher)
     case type_utf8:
         rtlUtf8SubStrFTX(retLen, *(char * *)&retPtr, srcLen, (const char *)raw, low, high);
         break;
+    default:
+        UNIMPLEMENTED;
     }
 
     if (retType == NULL)
@@ -3121,7 +3152,7 @@ IValue * binaryAndValues(IValue * left, IValue * right)
         ret = createTruncIntValue(left->getIntValue() & right->getIntValue(), pnt.getClear());
         break;
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -3141,7 +3172,7 @@ IValue * binaryOrValues(IValue * left, IValue * right)
         ret = createTruncIntValue(left->getIntValue() | right->getIntValue(), pnt.getClear());
         break;
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -3159,7 +3190,7 @@ IValue * binaryXorValues(IValue * left, IValue * right)
         ret = createTruncIntValue(left->getIntValue() ^ right->getIntValue(), pnt);
         break;
     default:
-        assertThrow(false);
+        throwUnexpected();
     }
     return ret;
 }
@@ -3173,7 +3204,7 @@ IValue * binaryNotValues(IValue * v)
     case type_packedint:
         return createTruncIntValue(~v->getIntValue(), v->getType());
     }
-    assertThrow(false);
+    throwUnexpected();
     return NULL;
 }
 

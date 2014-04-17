@@ -51,8 +51,7 @@ public:
 private:
     void addMapping(IHqlExpression * field, IHqlExpression * expr);
 
-    inline void ensureMapping()                                 { if (targets.ordinality() == 0) initMapping(); }
-    void initMapping();
+    bool ensureMapping();
 
     void setRecord(IHqlExpression * record, IHqlExpression * selector);
     void setRecord(IHqlExpression * record);
@@ -160,7 +159,7 @@ protected:
 
 
 extern HQL_API IHqlExpression * createRecordMappingTransform(node_operator op, IHqlExpression * targetRecord, IHqlExpression * sourceSelector);
-extern HQL_API IHqlExpression * replaceMemorySelectorWithSerializedSelector(IHqlExpression * expr, IHqlExpression * memoryRecord, node_operator side, IHqlExpression * selSeq, _ATOM serializeVariety);
+extern HQL_API IHqlExpression * replaceMemorySelectorWithSerializedSelector(IHqlExpression * expr, IHqlExpression * memoryRecord, node_operator side, IHqlExpression * selSeq, IAtom * serializeVariety);
 
 extern HQL_API TableProjectMapper * createProjectMapper(IHqlExpression * expr);
 extern HQL_API TableProjectMapper * createProjectMapper(IHqlExpression * mapping, IHqlExpression * parent);
@@ -178,14 +177,13 @@ extern HQL_API IHqlExpression * replaceSelfRefSelector(IHqlExpression * expr, IH
 extern HQL_API bool isNullProject(IHqlExpression * expr, bool canIgnorePayload, bool canLoseFieldsFromEnd);
 extern HQL_API bool isSimpleProject(IHqlExpression * expr);                             // Restriction or rearrangement only
 extern HQL_API bool leftRecordIsSubsetOfRight(IHqlExpression * left, IHqlExpression * right);
-extern HQL_API IHqlExpression * transformTrivialSelectProject(IHqlExpression * select);
 extern HQL_API bool transformReturnsSide(IHqlExpression * expr, node_operator side, unsigned inputIndex);
 
 extern HQL_API bool sortDistributionMatches(IHqlExpression * dataset, bool isLocal);
 
-extern HQL_API IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * field);
+extern HQL_API IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * field, bool okToSkipRow);
 //Find the assignment that corresponds to select (with selector "selector") and return the assigned value
-extern HQL_API IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * selector, IHqlExpression * select);
+extern HQL_API IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * selector, IHqlExpression * select, bool okToSkipRow);
 extern HQL_API IHqlExpression * getParentDatasetSelector(IHqlExpression * ds);
 //return all selects from the expression that refer to a particular selector
 extern HQL_API void gatherSelects(HqlExprCopyArray & selectors, IHqlExpression * expr, IHqlExpression * selector);

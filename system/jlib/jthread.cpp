@@ -150,7 +150,7 @@ void *Thread::_threadmain(void *v)
 }
 
 // JCSMORE - should have a setPriority(), unsupported under _WIN32
-void Thread::adjustPriority(char delta)
+void Thread::adjustPriority(int delta)
 {
     if (delta < -2)
         prioritydelta = -2;
@@ -223,8 +223,13 @@ void Thread::adjustNiceLevel()
 #endif
 }
 
+bool Thread::isCurrentThread() const
+{
+    return GetCurrentThreadId() == threadid;
+}
+
 // _nicelevel ranges from -20 to 19, the higher the nice level, the less cpu time the thread will get.
-void Thread::setNice(char _nicelevel)
+void Thread::setNice(int _nicelevel)
 {
     if (_nicelevel < -20 || _nicelevel > 19)
         throw MakeStringException(0, "nice level should be between -20 and 19");
@@ -583,7 +588,7 @@ void CThreadedPersistent::start()
         VStringBuffer msg("CThreadedPersistent::start(%s) - not ready", athread.getName());
         WARNLOG("%s", msg.str());
         PrintStackReport();
-        throw MakeStringException(-1, "%s", msg.str());
+        throw MakeStringExceptionDirect(-1, msg.str());
     }
     sem.signal();
 }
@@ -1253,6 +1258,9 @@ class CWindowsPipeProcess: public CInterface, implements IPipeProcess
     CriticalSection sect;
     bool aborted;
     StringAttr allowedprogs;
+    StringArray envVars;
+    StringArray envValues;
+
 public:
     IMPLEMENT_IINTERFACE;
 
@@ -1329,6 +1337,9 @@ public:
         StartupInfo.hStdInput  = hasinput?hProgInput:GetStdHandle(STD_INPUT_HANDLE);
         
         PROCESS_INFORMATION ProcessInformation;
+
+        // MORE - should create a new environment block that is copy of parent's, then set all the values in envVars/envValues, and pass it
+
         if (!CreateProcess(NULL, (char *)prog, NULL,NULL,TRUE,0,NULL, dir&&*dir?dir:NULL, &StartupInfo,&ProcessInformation)) {
             if (_title) {
                 StringBuffer errstr;
@@ -1347,6 +1358,16 @@ public:
             CloseHandle(hProgError);
         return true;
     }
+
+    virtual void setenv(const char *var, const char *value)
+    {
+        assertex(var);
+        if (!value)
+            value = "";
+        envVars.append(var);
+        envValues.append(value);
+    }
+
     size32_t read(size32_t sz, void *buf)
     {
         DWORD sizeRead;
@@ -1581,6 +1602,7 @@ public:
         sigemptyset(&blockset);
         act.sa_mask = blockset;
         act.sa_handler = SIG_IGN;
+        act.sa_flags = 0;
         sigaction(SIGPIPE, &act, NULL);
     }
 
@@ -1691,6 +1713,16 @@ class CLinuxPipeProcess: public CInterface, implements IPipeProcess
                 }
 
             }
+            if (hError!=(HANDLE)-1) { // hmm who did that
+                fcntl(hError,F_SETFL,0); // read any remaining data in blocking mode
+                while (bufsize<buf.length()) {
+                    size32_t sizeRead = (size32_t)::read(hError, (byte *)buf.bufferBase()+bufsize, buf.length()-bufsize);
+                    if ((int)sizeRead>0)
+                        bufsize += sizeRead;
+                    else
+                        break;
+                }
+            }
             return 0;
         }
         void stop() 
@@ -1737,6 +1769,8 @@ protected: friend class PipeWriterThread;
     MemoryBuffer stderrbuf;
     size32_t stderrbufsize;
     StringAttr allowedprogs;
+    StringArray envVars;
+    StringArray envValues;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -1861,6 +1895,10 @@ public:
                 if (chdir(dir) == -1)
                     throw MakeStringException(-1, "CLinuxPipeProcess::run: could not change dir to %s", dir.get());
             }
+            ForEachItemIn(idx, envVars)
+            {
+                ::setenv(envVars.item(idx), envValues.item(idx), 1);
+            }
             execvp(argv[0],argv);
             _exit(START_FAILURE);    // must be _exit!!     
         }
@@ -1925,6 +1963,15 @@ public:
             stderrbufferthread->start();
         }
         return true;
+    }
+
+    virtual void setenv(const char *var, const char *value)
+    {
+        assertex(var);
+        if (!value)
+            value = "";
+        envVars.append(var);
+        envValues.append(value);
     }
     
     size32_t read(size32_t sz, void *buf)
@@ -2028,6 +2075,8 @@ public:
     unsigned wait()
     {
         CriticalBlock block(sect); 
+        if (stderrbufferthread)
+            stderrbufferthread->stop();
         if (forkthread) {
             {
                 CriticalUnblock unblock(sect);

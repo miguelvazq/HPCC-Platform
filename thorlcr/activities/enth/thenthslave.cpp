@@ -85,11 +85,12 @@ public:
     {
         ActivityTimer s(totalCycles, timeActivities, NULL);
         IHThorEnthArg *helper = static_cast <IHThorEnthArg *> (queryHelper());
+        counter = 0;
         denominator = validRC(helper->getProportionDenominator());
         numerator = validRC(helper->getProportionNumerator());
         input.set(inputs.item(0));
         startInput(input);
-        dataLinkStart("ENTH", container.queryId());
+        dataLinkStart();
 
         if (localCountReq)
         {

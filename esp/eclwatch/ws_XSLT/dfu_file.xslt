@@ -97,7 +97,11 @@
                          {
                             if (button == "Delete")
                             {
-                                if (confirm("Are you sure you want to delete "+ filename+ "?"))
+                                var val = filename;
+                                var pt = val.indexOf("@");
+                                if (pt > 0)
+                                    val = val.substring(0, pt);
+                                if (confirm("Are you sure you want to delete "+ val+ "?"))
                                 {
                                     document.location.href="/WsDFU/DFUArrayAction?Type=Delete&LogicalFiles_i0=" + filename;
                                     return true;
@@ -225,7 +229,7 @@
                     <tr><th>Job Name:</th><td><xsl:value-of select="JobName"/></td></tr>
                 </xsl:if>
                 <tr><th>Size:</th><td><xsl:value-of select="Filesize"/>
-                    <xsl:if test="number(ZipFile)">
+                    <xsl:if test="IsCompressed=1">
                         (This is a compressed file.)
                     </xsl:if>
                 </td></tr>
@@ -311,7 +315,7 @@
                     <col span="3" class="number"/>
                 </colgroup>
                 <tr class="grey"><th>Number</th><th>IP</th><th>Size</th><xsl:if test="string-length($actualSize)"><th>Actual Size</th></xsl:if></tr>
-                <xsl:apply-templates select="DFUFileParts/DFUPart">
+                <xsl:apply-templates select="DFUFilePartsOnClusters/DFUFilePartsOnCluster/DFUFileParts/DFUPart">
                     <xsl:sort select="Id" data-type="number"/>
                     <xsl:sort select="Copy" data-type="number"/>
                 </xsl:apply-templates>
@@ -353,13 +357,13 @@
     </xsl:template>
 
     <xsl:template match="DFUPart">
-    <xsl:if test="Copy mod  2 > 0">
+        <xsl:if test="Copy=1"> <!-- Copy=1: display primary copy only -->
             <tr>
-        <td><xsl:value-of select="Id"/></td>
-        <td><xsl:value-of select="Ip"/></td>
-        <td class="number"><xsl:value-of select="Partsize"/></td>
-        <xsl:if test="string-length($actualSize)"><td class="number"><xsl:value-of select="ActualSize"/></td></xsl:if>
-        </tr>
+                <td><xsl:value-of select="Id"/></td>
+                <td><xsl:value-of select="Ip"/></td>
+                <td class="number"><xsl:value-of select="Partsize"/></td>
+                <xsl:if test="string-length($actualSize)"><td class="number"><xsl:value-of select="ActualSize"/></td></xsl:if>
+            </tr>
         </xsl:if>
     </xsl:template>
 

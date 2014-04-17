@@ -34,7 +34,7 @@
 
 #define USE_JLOG
 
-extern bool outputPartsFiles(const char *daliserver,const char *cluster,const char *outdir,StringBuffer &errstr);
+extern bool outputPartsFiles(const char *daliserver,const char *cluster,const char *outdir,StringBuffer &errstr,bool verbose);
 extern void applyPartsFile(IFileIO *in,void (* applyfn)(const char *,const char *));
 
 
@@ -695,6 +695,7 @@ int main(int argc, const char *argv[])
             sigemptyset(&blockset);
             act.sa_mask = blockset;
             act.sa_handler = SIG_IGN;
+            act.sa_flags = 0;
             sigaction(SIGINT, &act, NULL);
 #endif
             waitSlaves(args.item(1),numSlaves,slaveIP);
@@ -706,8 +707,8 @@ int main(int argc, const char *argv[])
                 if (!silent)
                     println("Creating part lists, please wait...");
                 StringBuffer errstr;
-                if (!outputPartsFiles(args.item(0),args.item(1),args.item(2),errstr))
-                    throw MakeStringException(-1, "%s", errstr.str());
+                if (!outputPartsFiles(args.item(0),args.item(1),args.item(2),errstr,verbose))
+                    throw MakeStringExceptionDirect(-1, errstr.str());
             }
         }
         else

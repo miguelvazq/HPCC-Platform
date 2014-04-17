@@ -26,121 +26,8 @@
 #include "eclcmd_common.hpp"
 #include "eclcmd_core.hpp"
 
-class ConvertEclParameterToArchive
-{
-public:
-    ConvertEclParameterToArchive(EclCmdWithEclTarget &_cmd) : cmd(_cmd)
-    {
-    }
 
-    void appendOptPath(StringBuffer &cmdLine, const char opt, const char *path)
-    {
-        if (!path || !*path)
-            return;
-        if (*path==';')
-            path++;
-        cmdLine.append(" -").append(opt).append(path);
-    }
-
-    void buildCmd(StringBuffer &cmdLine)
-    {
-        cmdLine.set("eclcc -E");
-        appendOptPath(cmdLine, 'I', cmd.optImpPath.str());
-        appendOptPath(cmdLine, 'L', cmd.optLibPath.str());
-        if (cmd.optManifest.length())
-            cmdLine.append(" -manifest ").append(cmd.optManifest.get());
-        if (streq(cmd.optObj.value.sget(), "stdin"))
-            cmdLine.append(" - ");
-        else
-            cmdLine.append(" ").append(cmd.optObj.value.get());
-    }
-
-    bool eclcc(StringBuffer &out)
-    {
-        StringBuffer cmdLine;
-        buildCmd(cmdLine);
-
-        Owned<IPipeProcess> pipe = createPipeProcess();
-        bool hasInput = streq(cmd.optObj.value.sget(), "stdin");
-        pipe->run(cmd.optVerbose ? "EXEC" : NULL, cmdLine.str(), NULL, hasInput, true, true);
-
-        StringBuffer errors;
-        Owned<EclCmdErrorReader> errorReader = new EclCmdErrorReader(pipe, errors);
-        errorReader->start();
-
-        if (pipe->hasInput())
-        {
-            pipe->write(cmd.optObj.mb.length(), cmd.optObj.mb.toByteArray());
-            pipe->closeInput();
-        }
-        if (pipe->hasOutput())
-        {
-           byte buf[4096];
-           loop
-           {
-                size32_t read = pipe->read(sizeof(buf),buf);
-                if (!read)
-                    break;
-                out.append(read, (const char *) buf);
-            }
-        }
-        int retcode = pipe->wait();
-        errorReader->join();
-
-        if (errors.length())
-            fprintf(stderr, "%s\n", errors.str());
-
-        return (retcode == 0);
-    }
-
-    bool process()
-    {
-        if (cmd.optObj.type!=eclObjSource || cmd.optObj.value.isEmpty())
-            return false;
-
-        StringBuffer output;
-        if (eclcc(output) && output.length() && isArchiveQuery(output.str()))
-        {
-            cmd.optObj.type = eclObjArchive;
-            cmd.optObj.mb.clear().append(output.str());
-            return true;
-        }
-        fprintf(stderr,"\nError creating archive\n");
-        return false;
-    }
-
-private:
-    EclCmdWithEclTarget &cmd;
-
-    class EclCmdErrorReader : public Thread
-    {
-    public:
-        EclCmdErrorReader(IPipeProcess *_pipe, StringBuffer &_errs)
-            : Thread("EclToArchive::ErrorReader"), pipe(_pipe), errs(_errs)
-        {
-        }
-
-        virtual int run()
-        {
-           byte buf[4096];
-           loop
-           {
-                size32_t read = pipe->readError(sizeof(buf), buf);
-                if (!read)
-                    break;
-                errs.append(read, (const char *) buf);
-            }
-            return 0;
-        }
-    private:
-        IPipeProcess *pipe;
-        StringBuffer &errs;
-    };
-};
-
-
-
-bool doDeploy(EclCmdWithEclTarget &cmd, IClientWsWorkunits *client, const char *cluster, const char *name, StringBuffer *wuid, bool noarchive, bool displayWuid=true)
+bool doDeploy(EclCmdWithEclTarget &cmd, IClientWsWorkunits *client, const char *cluster, const char *name, StringBuffer *wuid, StringBuffer *wucluster, bool noarchive, bool displayWuid=true)
 {
     StringBuffer s;
     if (cmd.optVerbose)
@@ -196,7 +83,9 @@ bool doDeploy(EclCmdWithEclTarget &cmd, IClientWsWorkunits *client, const char *
     if (w && *w)
     {
         if (wuid)
-            wuid->append(w);
+            wuid->clear().append(w);
+        if (wucluster)
+            wucluster->clear().append(resp->getWorkunit().getCluster());
         fprintf(stdout, "\n");
         if (cmd.optVerbose)
             fprintf(stdout, "Deployed\n   wuid: ");
@@ -275,7 +164,7 @@ public:
     virtual int processCMD()
     {
         Owned<IClientWsWorkunits> client = createCmdClient(WsWorkunits, *this);
-        return doDeploy(*this, client, optTargetCluster.get(), optName.get(), NULL, optNoArchive) ? 0 : 1;
+        return doDeploy(*this, client, optTargetCluster.get(), optName.get(), NULL, NULL, optNoArchive) ? 0 : 1;
     }
     virtual void usage()
     {
@@ -305,7 +194,8 @@ private:
 class EclCmdPublish : public EclCmdWithEclTarget
 {
 public:
-    EclCmdPublish() : optNoActivate(false), activateSet(false), optNoReload(false), optDontCopyFiles(false), optMsToWait(10000)
+    EclCmdPublish() : optNoActivate(false), optSuspendPrevious(false), optDeletePrevious(false),
+        activateSet(false), optNoReload(false), optDontCopyFiles(false), optMsToWait(10000), optAllowForeign(false)
     {
         optObj.accept = eclObjWuid | eclObjArchive | eclObjSharedObject;
         optTimeLimit = (unsigned) -1;
@@ -327,6 +217,8 @@ public:
                 continue;
             if (iter.matchOption(optDaliIP, ECLOPT_DALIIP))
                 continue;
+            if (iter.matchOption(optSourceProcess, ECLOPT_SOURCE_PROCESS))
+                continue;
             if (iter.matchOption(optMsToWait, ECLOPT_WAIT))
                 continue;
             if (iter.matchOption(optTimeLimit, ECLOPT_TIME_LIMIT))
@@ -340,6 +232,8 @@ public:
             if (iter.matchOption(optComment, ECLOPT_COMMENT))
                 continue;
             if (iter.matchFlag(optDontCopyFiles, ECLOPT_DONT_COPY_FILES))
+                continue;
+            if (iter.matchFlag(optAllowForeign, ECLOPT_ALLOW_FOREIGN))
                 continue;
             if (iter.matchFlag(optNoActivate, ECLOPT_NO_ACTIVATE))
             {
@@ -355,6 +249,10 @@ public:
                 optNoActivate=!activate;
                 continue;
             }
+            if (iter.matchFlag(optSuspendPrevious, ECLOPT_SUSPEND_PREVIOUS)||iter.matchFlag(optSuspendPrevious, ECLOPT_SUSPEND_PREVIOUS_S))
+                continue;
+            if (iter.matchFlag(optDeletePrevious, ECLOPT_DELETE_PREVIOUS)||iter.matchFlag(optDeletePrevious, ECLOPT_DELETE_PREVIOUS_S))
+                continue;
             if (EclCmdWithEclTarget::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
         }
@@ -369,6 +267,22 @@ public:
             bool activate;
             if (extractEclCmdOption(activate, globals, ECLOPT_ACTIVATE_ENV, ECLOPT_ACTIVATE_INI, true))
                 optNoActivate=!activate;
+        }
+        if (optNoActivate && (optSuspendPrevious || optDeletePrevious))
+        {
+            fputs("invalid --suspend-prev and --delete-prev require activation.\n\n", stderr);
+            return false;
+        }
+        if (!optSuspendPrevious && !optDeletePrevious)
+        {
+            extractEclCmdOption(optDeletePrevious, globals, ECLOPT_DELETE_PREVIOUS_ENV, ECLOPT_DELETE_PREVIOUS_INI, false);
+            if (!optDeletePrevious)
+                extractEclCmdOption(optSuspendPrevious, globals, ECLOPT_SUSPEND_PREVIOUS_ENV, ECLOPT_SUSPEND_PREVIOUS_INI, false);
+        }
+        if (optSuspendPrevious && optDeletePrevious)
+        {
+            fputs("invalid --suspend-prev and --delete-prev are mutually exclusive options.\n\n", stderr);
+            return false;
         }
         if (optMemoryLimit.length() && !isValidMemoryValue(optMemoryLimit))
         {
@@ -388,7 +302,7 @@ public:
         StringBuffer wuid;
         if (optObj.type==eclObjWuid)
             wuid.set(optObj.value.get());
-        else if (!doDeploy(*this, client, optTargetCluster.get(), optName.get(), &wuid, optNoArchive))
+        else if (!doDeploy(*this, client, optTargetCluster.get(), optName.get(), &wuid, NULL, optNoArchive))
             return 1;
 
         StringBuffer descr;
@@ -397,15 +311,23 @@ public:
 
         Owned<IClientWUPublishWorkunitRequest> req = client->createWUPublishWorkunitRequest();
         req->setWuid(wuid.str());
-        req->setActivate(!optNoActivate);
+        if (optDeletePrevious)
+            req->setActivate(CWUQueryActivationMode_ActivateDeletePrevious);
+        else if (optSuspendPrevious)
+            req->setActivate(CWUQueryActivationMode_ActivateSuspendPrevious);
+        else
+            req->setActivate(optNoActivate ? CWUQueryActivationMode_NoActivate : CWUQueryActivationMode_Activate);
+
         if (optName.length())
             req->setJobName(optName.get());
         if (optTargetCluster.length())
             req->setCluster(optTargetCluster.get());
         req->setRemoteDali(optDaliIP.get());
+        req->setSourceProcess(optSourceProcess);
         req->setWait(optMsToWait);
         req->setNoReload(optNoReload);
         req->setDontCopyFiles(optDontCopyFiles);
+        req->setAllowForeignFiles(optAllowForeign);
 
         if (optTimeLimit != (unsigned) -1)
             req->setTimeLimit(optTimeLimit);
@@ -457,10 +379,14 @@ public:
             "                          (defaults to cluster defined inside workunit)\n"
             "   -n, --name=<val>       query name to use for published workunit\n"
             "   -A, --activate         Activate query when published (default)\n"
+            "   -sp, --suspend-prev    Suspend previously active query\n"
+            "   -dp, --delete-prev     Delete previously active query\n"
             "   -A-, --no-activate     Do not activate query when published\n"
             "   --no-reload            Do not request a reload of the (roxie) cluster\n"
             "   --no-files             Do not copy files referenced by query\n"
+            "   --allow-foreign        Do not fail if foreign files are used in query (roxie)\n"
             "   --daliip=<IP>          The IP of the DALI to be used to locate remote files\n"
+            "   --source-process       Process cluster to copy files from\n"
             "   --timeLimit=<ms>       Value to set for query timeLimit configuration\n"
             "   --warnTimeLimit=<ms>   Value to set for query warnTimeLimit configuration\n"
             "   --memoryLimit=<mem>    Value to set for query memoryLimit configuration\n"
@@ -475,6 +401,7 @@ public:
 private:
     StringAttr optName;
     StringAttr optDaliIP;
+    StringAttr optSourceProcess;
     StringAttr optMemoryLimit;
     StringAttr optPriority;
     StringAttr optComment;
@@ -485,6 +412,9 @@ private:
     bool activateSet;
     bool optNoReload;
     bool optDontCopyFiles;
+    bool optSuspendPrevious;
+    bool optDeletePrevious;
+    bool optAllowForeign;
 };
 
 class EclCmdRun : public EclCmdWithEclTarget
@@ -546,6 +476,7 @@ public:
         req->setNoRootTag(optNoRoot);
 
         StringBuffer wuid;
+        StringBuffer wuCluster;
         StringBuffer queryset;
         StringBuffer query;
 
@@ -565,14 +496,16 @@ public:
         else
         {
             req->setCloneWorkunit(false);
-            if (!doDeploy(*this, client, optTargetCluster.get(), optName.get(), &wuid, optNoArchive, optVerbose))
+            if (!doDeploy(*this, client, optTargetCluster.get(), optName.get(), &wuid, &wuCluster, optNoArchive, optVerbose))
                 return 1;
             req->setWuid(wuid.str());
             if (optVerbose)
                 fprintf(stdout, "Running deployed workunit %s\n", wuid.str());
         }
 
-        if (optTargetCluster.length())
+        if (wuCluster.length())
+            req->setCluster(wuCluster.str());
+        else if (optTargetCluster.length())
             req->setCluster(optTargetCluster.get());
         req->setWait((int)optWaitTime);
         if (optInput.length())

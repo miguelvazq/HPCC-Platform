@@ -40,6 +40,7 @@ unsigned channels[MAX_CLUSTER_SIZE];
 unsigned channelCount;
 unsigned subChannels[MAX_CLUSTER_SIZE];
 unsigned numSlaves[MAX_CLUSTER_SIZE];
+unsigned replicationLevel[MAX_CLUSTER_SIZE];
 unsigned IBYTIDelays[MAX_CLUSTER_SIZE]; // MORE: this will cover only 2 slaves per channel, change to cover all. 
 
 SpinLock suspendCrit;
@@ -87,13 +88,38 @@ void joinMulticastChannel(unsigned channel)
     {
         IpAddress multicastIp;
         getChannelIp(multicastIp, channel);
-        SocketEndpoint ep(CCD_MULTICAST_PORT, multicastIp);
+        SocketEndpoint ep(ccdMulticastPort, multicastIp);
         StringBuffer epStr;
         ep.getUrlStr(epStr);
         if (!multicastSocket->join_multicast_group(ep))
             throw MakeStringException(ROXIE_MULTICAST_ERROR, "Failed to join multicast channel %d (%s)", channel, epStr.str());
         if (traceLevel)
             DBGLOG("Joined multicast channel %d (%s)", channel, epStr.str());
+    }
+}
+
+void openMulticastSocket()
+{
+    if (!multicastSocket)
+    {
+        multicastSocket.setown(ISocket::udp_create(ccdMulticastPort));
+        multicastSocket->set_receive_buffer_size(udpMulticastBufferSize);
+        size32_t actualSize = multicastSocket->get_receive_buffer_size();
+        if (actualSize < udpMulticastBufferSize)
+        {
+            DBGLOG("Roxie: multicast socket buffer size could not be set (requested=%d actual %d", udpMulticastBufferSize, actualSize);
+            throwUnexpected();
+        }
+        if (traceLevel)
+            DBGLOG("Roxie: multicast socket created port=%d sockbuffsize=%d actual %d", ccdMulticastPort, udpMulticastBufferSize, actualSize);
+        Owned<IPropertyTreeIterator> it = ccdChannels->getElements("RoxieSlaveProcess");
+        ForEach(*it)
+        {
+            unsigned channel = it->query().getPropInt("@channel", 0);
+            assertex(channel);
+            joinMulticastChannel(channel);
+        }
+        joinMulticastChannel(0); // all slaves also listen on channel 0
     }
 }
 
@@ -108,21 +134,8 @@ void addEndpoint(unsigned channel, const IpAddress &slaveIp, unsigned port)
         multicastIp = slaveIp;
     if (!isSlaveEndpoint(channel, multicastIp))
     {
-        SocketEndpoint &ep = *new SocketEndpoint(CCD_MULTICAST_PORT, multicastIp);
+        SocketEndpoint &ep = *new SocketEndpoint(ccdMulticastPort, multicastIp);
         slaveEndpoints[channel].append(ep);
-        if (!multicastSocket)
-        {
-            multicastSocket.setown(ISocket::udp_create(CCD_MULTICAST_PORT));
-            multicastSocket->set_receive_buffer_size(udpMulticastBufferSize);
-            size32_t actualSize = multicastSocket->get_receive_buffer_size();
-            if (actualSize < udpMulticastBufferSize)
-            {
-                DBGLOG("Roxie: multicast socket buffer size could not be set (requested=%d actual %d", udpMulticastBufferSize, actualSize);
-                throwUnexpected();
-            }
-            if (traceLevel)
-                DBGLOG("Roxie: multicast socket created port=%d sockbuffsize=%d actual %d", CCD_MULTICAST_PORT, udpMulticastBufferSize, actualSize);
-        }
     }
     if (channel)
         addEndpoint(0, slaveIp, port);
@@ -139,6 +152,7 @@ size32_t channelWrite(unsigned channel, void const* buf, size32_t size)
 {
     size32_t minwrote = 0;
     SocketEndpointArray &eps = slaveEndpoints[channel]; // if multicast is enabled, this will have a single multicast endpoint in it.
+    assertex(eps.ordinality());
     ForEachItemIn(idx, eps)
     {
         size32_t wrote = multicastSocket->udp_write_to(eps.item(idx), buf, size);
@@ -200,8 +214,6 @@ StringBuffer &RoxiePacketHeader::toString(StringBuffer &ret) const
     }
     return ret;
 }
-
-unsigned myNodeIndex = (unsigned) -1; // fill in later!
 
 class CRoxieQueryPacket : public CInterface, implements IRoxieQueryPacket
 {
@@ -453,6 +465,7 @@ void SlaveContextLogger::set(IRoxieQueryPacket *packet)
     anyOutput = false;
     intercept = false;
     debuggerActive = false;
+    checkingHeap = false;
     traceActivityTimes = false;
     start = msTick();
     if (packet)
@@ -477,6 +490,8 @@ void SlaveContextLogger::set(IRoxieQueryPacket *packet)
                 traceActivityTimes = true;
             if (loggingFlags & LOGGING_BLIND)
                 blind = true;
+            if (loggingFlags & LOGGING_CHECKINGHEAP)
+                checkingHeap = true;
             if (loggingFlags & LOGGING_DEBUGGERACTIVE)
             {
                 assertex(traceLength > sizeof(unsigned short));
@@ -485,15 +500,18 @@ void SlaveContextLogger::set(IRoxieQueryPacket *packet)
                 traceInfo += debugLen + sizeof(unsigned short);
                 traceLength -= debugLen + sizeof(unsigned short);
             }
-            // Passing the wuid via the logging context is a bit of a hack...
-            unsigned wuidLen = 0;
-            while (wuidLen < traceLength)
+            // Passing the wuid via the logging context prefix is a bit of a hack...
+            if (loggingFlags & LOGGING_WUID)
             {
-                if (traceInfo[wuidLen]=='@')
-                    break;
-                wuidLen++;
+                unsigned wuidLen = 0;
+                while (wuidLen < traceLength)
+                {
+                    if (traceInfo[wuidLen]=='@')
+                        break;
+                    wuidLen++;
+                }
+                wuid.set((const char *) traceInfo, wuidLen);
             }
-            wuid.set((const char *) traceInfo, wuidLen);
         }
         channel = header.channel;
         StringBuffer s(traceLength, (const char *) traceInfo);
@@ -1271,8 +1289,11 @@ public:
             }
             catch(...)
             {
-                LOG(MCinternalError, unknownJob, "Unexpected exception in Roxie worker thread");
                 CriticalBlock b(actCrit);
+                Owned<IException> E = MakeStringException(ROXIE_INTERNAL_ERROR, "Unexpected exception in Roxie worker thread");
+                EXCLOG(E);
+                if (packet)
+                    throwRemoteException(E.getClear(), NULL, packet, false);
                 packet.clear();
             }
         }
@@ -1681,7 +1702,6 @@ public:
 
 class RoxieSocketQueueManager : public RoxieReceiverBase
 {
-    Owned<ISocket> sock;
     unsigned maxPacketSize;
     bool running;
     Linked<ISendManager> sendManager;
@@ -1716,8 +1736,7 @@ public:
 #else
         bool udpResendEnabled = false;  // As long as it is known to be broken, we don't want it accidentally enabled in any release version
 #endif
-        openReceiveSocket();
-        maxPacketSize = sock->get_max_send_size();
+        maxPacketSize = multicastSocket->get_max_send_size();
         if ((maxPacketSize==0)||(maxPacketSize>65535))
             maxPacketSize = 65535;
         if (topology->getPropInt("@sendMaxRate", 0))
@@ -1732,14 +1751,13 @@ public:
         getChannelIp(snifferIp, snifferChannel);
         if (udpMaxSlotsPerClient > udpQueueSize)
             udpMaxSlotsPerClient = udpQueueSize;
-        receiveManager.setown(createReceiveManager(CCD_SERVER_FLOW_PORT, CCD_DATA_PORT, CCD_CLIENT_FLOW_PORT, CCD_SNIFFER_PORT, snifferIp, udpQueueSize, udpMaxSlotsPerClient, myNodeIndex));
-        sendManager.setown(createSendManager(CCD_SERVER_FLOW_PORT, CCD_DATA_PORT, CCD_CLIENT_FLOW_PORT, CCD_SNIFFER_PORT, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, udpResendEnabled ? udpMaxSlotsPerClient : 0, bucket, myNodeIndex));
+        unsigned serverFlowPort = topology->getPropInt("@serverFlowPort", CCD_SERVER_FLOW_PORT);
+        unsigned dataPort = topology->getPropInt("@dataPort", CCD_DATA_PORT);
+        unsigned clientFlowPort = topology->getPropInt("@clientFlowPort", CCD_CLIENT_FLOW_PORT);
+        unsigned snifferPort = topology->getPropInt("@snifferPort", CCD_SNIFFER_PORT);
+        receiveManager.setown(createReceiveManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpQueueSize, udpMaxSlotsPerClient, myNodeIndex));
+        sendManager.setown(createSendManager(serverFlowPort, dataPort, clientFlowPort, snifferPort, snifferIp, udpSendQueueSize, fastLaneQueue ? 3 : 2, udpResendEnabled ? udpMaxSlotsPerClient : 0, bucket, myNodeIndex));
         running = false;
-    }
-
-    void openReceiveSocket()
-    {
-        sock.set(multicastSocket);
     }
 
     CriticalSection crit;
@@ -1893,7 +1911,7 @@ public:
         {
             IpAddress peer;
             StringBuffer s, s1;
-            sock->getPeerAddress(peer).getIpText(s);
+            multicastSocket->getPeerAddress(peer).getIpText(s);
             header.toString(s1);
             DBGLOG("doIBYTI %s from %s", s1.str(), s.str());
             DBGLOG("header.retries=%x header.getSubChannelMask(header.channel)=%x", header.retries, header.getSubChannelMask(header.channel));
@@ -2072,7 +2090,7 @@ public:
                 // NOTE - this thread needs to do as little as possible - just read packets and queue them up - otherwise we can get packet loss due to buffer overflow
                 // DO NOT put tracing on this thread except at very high tracelevels!
                 unsigned l;
-                sock->read(mb.reserve(maxPacketSize), sizeof(RoxiePacketHeader), maxPacketSize, l, 5);
+                multicastSocket->read(mb.reserve(maxPacketSize), sizeof(RoxiePacketHeader), maxPacketSize, l, 5);
                 mb.setLength(l);
                 atomic_inc(&packetsReceived);
                 RoxiePacketHeader &header = *(RoxiePacketHeader *) mb.toByteArray();
@@ -2114,9 +2132,12 @@ public:
                         E->Release();
                         // MORE: Protect with try logic, in case udp_create throws exception ?
                         //       What to do if create fails (ie exception is caught) ?
-                        sock->close();
-                        sock.clear();
-                        openReceiveSocket();
+                        if (multicastSocket)
+                        {
+                            multicastSocket->close();
+                            multicastSocket.clear();
+                            openMulticastSocket();
+                        }
                     }
                 
                 }
@@ -2142,7 +2163,7 @@ public:
         if (running)
         {
             running = false;
-            sock->close();
+            multicastSocket->close();
         }
         RoxieReceiverBase::stop();
     }

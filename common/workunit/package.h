@@ -27,16 +27,20 @@
 #define PACKAGE_MISSING_ID            PACKAGE_ERROR_START+1
 #define PACKAGE_NO_SUBFILES           PACKAGE_ERROR_START+2
 #define PACKAGE_NOT_FOUND             PACKAGE_ERROR_START+3
+#define PACKAGE_QUERY_NOT_FOUND           PACKAGE_ERROR_START+4
 
 
 interface IHpccPackage : extends IInterface
 {
     virtual ISimpleSuperFileEnquiry *resolveSuperFile(const char *superFileName) const = 0;
     virtual bool hasSuperFile(const char *superFileName) const = 0;
+    virtual const char *locateSuperFile(const char *superFileName) const = 0;
+
     virtual const char *queryEnv(const char *varname) const = 0;
     virtual bool getEnableFieldTranslation() const = 0;
     virtual const IPropertyTree *queryTree() const = 0;
     virtual hash64_t queryHash() const = 0;
+    virtual const char *queryId() const = 0;
 };
 
 interface IHpccPackageMap : extends IInterface
@@ -45,7 +49,8 @@ interface IHpccPackageMap : extends IInterface
     virtual const IHpccPackage *matchPackage(const char *name) const = 0;
     virtual const char *queryPackageId() const = 0;
     virtual bool isActive() const = 0;
-    virtual bool validate(const char *queryid, StringArray &warn, StringArray &err, StringArray &unmatchedQueries, StringArray &unusedPackages, StringArray &unmatchedFiles) const = 0;
+    virtual bool validate(StringArray &queriesToVerify, StringArray &warn, StringArray &err, StringArray &unmatchedQueries, StringArray &unusedPackages, StringArray &unmatchedFiles) const = 0;
+    virtual void gatherFileMappingForQuery(const char *queryname, IPropertyTree *fileInfo) const = 0;
 };
 
 interface IHpccPackageSet : extends IInterface
@@ -58,8 +63,10 @@ extern WORKUNIT_API IHpccPackageMap *createPackageMapFromPtree(IPropertyTree *t,
 
 extern WORKUNIT_API IHpccPackageSet *createPackageSet(const char *process);
 extern WORKUNIT_API IPropertyTree * getPackageMapById(const char * id, bool readonly);
+extern WORKUNIT_API IPropertyTree * getPackageMapById(const char *target, const char * id, bool readonly);
 extern WORKUNIT_API IPropertyTree * getPackageSetById(const char * id, bool readonly);
 extern WORKUNIT_API IPropertyTree * resolvePackageSetRegistry(const char *process, bool readonly);
+extern WORKUNIT_API IPropertyTree * resolveActivePackageMap(const char *process, const char *target, bool readonly);
 extern WORKUNIT_API hash64_t pkgHash64Data(size32_t len, const void *buf, hash64_t hval);
 
 

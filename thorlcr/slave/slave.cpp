@@ -52,6 +52,7 @@ MODULE_INIT(INIT_PRIORITY_STANDARD)
 ProcessSlaveActivity::ProcessSlaveActivity(CGraphElementBase *container) : CSlaveActivity(container), threaded("ProcessSlaveActivity", this)
 {
     processed = 0;
+    lastCycles = 0;
 }
 
 ProcessSlaveActivity::~ProcessSlaveActivity()
@@ -140,12 +141,11 @@ void ProcessSlaveActivity::main()
         exception.setown(MakeThorFatal(NULL, TE_UnknownException, "FATAL: Unknown exception thrown by ProcessThread"));
     }
     try { endProcess(); }
-    catch (IException *_e)
+    catch (IException *e)
     {
-        ActPrintLog(_e, "Exception calling activity endProcess");
-        fireException(_e);
-        exception.set(_e);
-        _e->Release();
+        ActPrintLog(e, "Exception calling activity endProcess");
+        fireException(e);
+        exception.setown(e);
     }
 }
 
@@ -206,7 +206,6 @@ void ProcessSlaveActivity::done()
 #include "join/thjoinslave.ipp"
 #include "keyedjoin/thkeyedjoinslave.ipp"
 #include "limit/thlimitslave.ipp"
-#include "lookupjoin/thlookupjoinslave.ipp"
 #include "merge/thmergeslave.ipp"
 #include "msort/thgroupsortslave.ipp"
 #include "msort/thmsortslave.ipp"
@@ -232,6 +231,8 @@ void ProcessSlaveActivity::done()
 #include "wuidwrite/thwuidwriteslave.ipp"
 #include "xmlwrite/thxmlwriteslave.ipp"
 
+CActivityBase *createLookupJoinSlave(CGraphElementBase *container);
+CActivityBase *createAllJoinSlave(CGraphElementBase *container);
 CActivityBase *createXmlParseSlave(CGraphElementBase *container);
 CActivityBase *createKeyDiffSlave(CGraphElementBase *container);
 CActivityBase *createKeyPatchSlave(CGraphElementBase *container);
@@ -254,7 +255,6 @@ CActivityBase *createChildAggregateSlave(CGraphElementBase *container);
 CActivityBase *createChildGroupAggregateSlave(CGraphElementBase *container);
 CActivityBase *createChildThroughNormalizeSlave(CGraphElementBase *container);
 CActivityBase *createWhenSlave(CGraphElementBase *container);
-CActivityBase *createIfActionSlave(CGraphElementBase *container);
 CActivityBase *createDictionaryWorkunitWriteSlave(CGraphElementBase *container);
 CActivityBase *createDictionaryResultWriteSlave(CGraphElementBase *container);
 
@@ -438,9 +438,16 @@ public:
                 ret = createHashJoinSlave(this);
                 break;
             case TAKlookupjoin:
+            case TAKlookupdenormalize:
+            case TAKlookupdenormalizegroup:
+            case TAKsmartjoin:
+            case TAKsmartdenormalize:
+            case TAKsmartdenormalizegroup:
                 ret = createLookupJoinSlave(this);
                 break;
             case TAKalljoin:
+            case TAKalldenormalize:
+            case TAKalldenormalizegroup:
                 ret = createAllJoinSlave(this);
                 break;
             case TAKselfjoin:
@@ -490,6 +497,9 @@ public:
             case TAKhashdistribute:
                 ret = createHashDistributeSlave(this);
                 break;
+            case TAKdistributed:
+                ret = createHashDistributedSlave(this);
+                break;
             case TAKhashdistributemerge:
                 ret = createHashDistributeMergeSlave(this);
                 break;
@@ -533,14 +543,6 @@ public:
             case TAKnwaymergejoin:
             case TAKnwayjoin:
                 ret = createNWayMergeJoinActivity(this);
-                break;
-            case TAKalldenormalize:
-            case TAKalldenormalizegroup:
-                ret = createAllDenormalizeSlave(this);
-                break;
-            case TAKlookupdenormalize:
-            case TAKlookupdenormalizegroup:
-                ret = createLookupDenormalizeSlave(this);
                 break;
             case TAKchilddataset:
                 UNIMPLEMENTED;
@@ -618,6 +620,7 @@ public:
                 break;
             case TAKcase:
             case TAKif:
+            case TAKifaction:
                 throwUnexpected();
                 break;
             case TAKwhen_dataset:
@@ -682,8 +685,6 @@ public:
             case TAKsoap_datasetaction:
                 ret = createSoapDatasetActionSlave(this);
                 break;
-            case TAKcountdisk:
-                return new CSlaveActivity(this); 
             case TAKkeydiff:
                 ret = createKeyDiffSlave(this);
                 break;
@@ -739,9 +740,6 @@ public:
                 break;
             case TAKstreamediterator:
                 ret = createStreamedIteratorSlave(this);
-                break;
-            case TAKifaction:
-                ret = createIfActionSlave(this);
                 break;
             default:
                 throw MakeStringException(TE_UnsupportedActivityKind, "Unsupported activity kind: %s", activityKindStr(kind));

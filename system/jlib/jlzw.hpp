@@ -90,6 +90,8 @@ extern jlib_decl void decompressToBuffer(MemoryBuffer & out, const void * src);
 extern jlib_decl void decompressToBuffer(MemoryBuffer & out, MemoryBuffer & in);
 extern jlib_decl void decompressToAttr(MemoryAttr & out, const void * src);
 extern jlib_decl void decompressToBuffer(MemoryAttr & out, MemoryBuffer & in);
+extern jlib_decl void appendToBuffer(MemoryBuffer & out, size32_t len, const void * src); //format as failed compression
+
 
 #define COMPRESS_METHOD_ROWDIF 1
 #define COMPRESS_METHOD_LZW    2
@@ -103,12 +105,12 @@ interface ICompressedFileIO: extends IFileIO
     virtual size32_t blockSize()=0;                 // block size used
     virtual void setBlockSize(size32_t size)=0;     // only callable before any writes
     virtual bool readMode()=0;                      // true if created using createCompressedFileReader
-    virtual unsigned method()=0;                    
+    virtual unsigned method()=0;
 };
 
-extern jlib_decl ICompressedFileIO *createCompressedFileReader(IFile *file,IExpander *expander=NULL, bool memorymapped=false);
+extern jlib_decl ICompressedFileIO *createCompressedFileReader(IFile *file,IExpander *expander=NULL, bool memorymapped=false, IFEflags extraFlags=IFEnone);
 extern jlib_decl ICompressedFileIO *createCompressedFileReader(IFileIO *fileio,IExpander *expander=NULL);
-extern jlib_decl ICompressedFileIO *createCompressedFileWriter(IFile *file,size32_t recordsize,bool append=false,bool setcrc=true,ICompressor *compressor=NULL,bool fast=false);
+extern jlib_decl ICompressedFileIO *createCompressedFileWriter(IFile *file,size32_t recordsize,bool append=false,bool setcrc=true,ICompressor *compressor=NULL,bool fast=false, IFEflags extraFlags=IFEnone);
 extern jlib_decl ICompressedFileIO *createCompressedFileWriter(IFileIO *fileio,size32_t recordsize,bool setcrc=true,ICompressor *compressor=NULL,bool fast=false);
 
 #define COMPRESSEDFILECRC (~0U)

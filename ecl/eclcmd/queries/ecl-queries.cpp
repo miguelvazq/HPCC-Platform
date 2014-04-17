@@ -271,14 +271,14 @@ public:
             "\n"
             "ecl queries list [<target>][--show=<flags>]\n\n"
             " Options:\n"
-            "   <target>               name of target cluster to get list of queries for\n"
-            "   --show=<flags>         show only queries with matching flags\n"
-            "   --inactive             show only queries that do not have an active alias\n"
+            "   <target>               Name of target cluster to get list of queries for\n"
+            "   --show=<flags>         Show only queries with matching flags\n"
+            "   --inactive             Show only queries that do not have an active alias\n"
             " Flags:\n"
-            "   A                      query is active\n"
-            "   S                      query is suspended in queryset\n"
-//not yet   "   X                      query is suspended on selected cluster\n"
-            "   U                      query with no flags set\n"
+            "   A                      Query is active\n"
+            "   S                      Query is suspended in queryset\n"
+//not yet   "   X                      Query is suspended on selected cluster\n"
+            "   U                      Query with no flags set\n"
             " Common Options:\n",
             stdout);
         EclCmdCommon::usage();
@@ -292,7 +292,7 @@ private:
 class EclCmdQueriesCopy : public EclCmdCommon
 {
 public:
-    EclCmdQueriesCopy() : optActivate(false), optNoReload(false), optMsToWait(10000), optDontCopyFiles(false), optOverwrite(false)
+    EclCmdQueriesCopy() : optActivate(false), optNoReload(false), optMsToWait(10000), optDontCopyFiles(false), optOverwrite(false), optAllowForeign(false)
     {
         optTimeLimit = (unsigned) -1;
         optWarnTimeLimit = (unsigned) -1;
@@ -323,6 +323,8 @@ public:
             }
             if (iter.matchOption(optDaliIP, ECLOPT_DALIIP))
                 continue;
+            if (iter.matchOption(optSourceProcess, ECLOPT_SOURCE_PROCESS))
+                continue;
             if (iter.matchFlag(optActivate, ECLOPT_ACTIVATE)||iter.matchFlag(optActivate, ECLOPT_ACTIVATE_S))
                 continue;
             if (iter.matchFlag(optNoReload, ECLOPT_NORELOAD))
@@ -332,6 +334,8 @@ public:
             if (iter.matchOption(optTargetCluster, ECLOPT_TARGET)||iter.matchOption(optTargetCluster, ECLOPT_TARGET_S))
                 continue;
             if (iter.matchFlag(optDontCopyFiles, ECLOPT_DONT_COPY_FILES))
+                continue;
+            if (iter.matchFlag(optAllowForeign, ECLOPT_ALLOW_FOREIGN))
                 continue;
             if (iter.matchOption(optMsToWait, ECLOPT_WAIT))
                 continue;
@@ -346,6 +350,8 @@ public:
             if (iter.matchOption(optComment, ECLOPT_COMMENT))
                 continue;
             if (iter.matchFlag(optOverwrite, ECLOPT_OVERWRITE)||iter.matchFlag(optOverwrite, ECLOPT_OVERWRITE_S))
+                continue;
+            if (iter.matchOption(optName, ECLOPT_NAME)||iter.matchOption(optName, ECLOPT_NAME_S))
                 continue;
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
@@ -383,11 +389,13 @@ public:
         req->setTarget(optTargetCluster.get());
         req->setCluster(optTargetCluster.get());
         req->setDaliServer(optDaliIP.get());
+        req->setSourceProcess(optSourceProcess);
         req->setActivate(optActivate);
         req->setOverwrite(optOverwrite);
         req->setDontCopyFiles(optDontCopyFiles);
         req->setWait(optMsToWait);
         req->setNoReload(optNoReload);
+        req->setAllowForeignFiles(optAllowForeign);
 
         if (optTimeLimit != (unsigned) -1)
             req->setTimeLimit(optTimeLimit);
@@ -397,6 +405,8 @@ public:
             req->setMemoryLimit(optMemoryLimit);
         if (!optPriority.isEmpty())
             req->setPriority(optPriority);
+        if (!optName.isEmpty())
+            req->setDestName(optName);
         if (optComment.get()) //allow empty
             req->setComment(optComment);
 
@@ -423,23 +433,26 @@ public:
             "ecl queries copy queryset/query <target> [--activate]\n"
             "\n"
             " Options:\n"
-            "   <source_query_path>    path of query to copy\n"
+            "   <source_query_path>    Path of query to copy\n"
             "                          in the form: //ip:port/queryset/query\n"
             "                          or: queryset/query\n"
-            "   <target>               name of target cluster to copy the query to\n"
+            "   <target>               Name of target cluster to copy the query to\n"
             "   --no-files             Do not copy files referenced by query\n"
             "   --daliip=<ip>          For file copying if remote version < 3.8\n"
+            "   --source-process       Process cluster to copy files from\n"
             "   -A, --activate         Activate the new query\n"
             "   --no-reload            Do not request a reload of the (roxie) cluster\n"
             "   -O, --overwrite        Overwrite existing files\n"
+            "   --allow-foreign        Do not fail if foreign files are used in query (roxie)\n"
             "   --wait=<ms>            Max time to wait in milliseconds\n"
             "   --timeLimit=<sec>      Value to set for query timeLimit configuration\n"
             "   --warnTimeLimit=<sec>  Value to set for query warnTimeLimit configuration\n"
             "   --memoryLimit=<mem>    Value to set for query memoryLimit configuration\n"
             "                          format <mem> as 500000B, 550K, 100M, 10G, 1T etc.\n"
-            "   --priority=<val>       set the priority for this query. Value can be LOW,\n"
+            "   --priority=<val>       Set the priority for this query. Value can be LOW,\n"
             "                          HIGH, SLA, NONE. NONE will clear current setting.\n"
             "   --comment=<string>     Set the comment associated with this query\n"
+            "   -n, --name=<val>       Destination query name for the copied query\n"
             " Common Options:\n",
             stdout);
         EclCmdCommon::usage();
@@ -449,9 +462,11 @@ private:
     StringAttr optTargetQuerySet;
     StringAttr optTargetCluster;
     StringAttr optDaliIP;
+    StringAttr optSourceProcess;
     StringAttr optMemoryLimit;
     StringAttr optPriority;
     StringAttr optComment;
+    StringAttr optName;
     unsigned optMsToWait;
     unsigned optTimeLimit;
     unsigned optWarnTimeLimit;
@@ -459,6 +474,7 @@ private:
     bool optNoReload;
     bool optOverwrite;
     bool optDontCopyFiles;
+    bool optAllowForeign;
 };
 
 class EclCmdQueriesConfig : public EclCmdCommon
@@ -583,7 +599,7 @@ public:
             "   --warnTimeLimit=<sec>  Value to set for query warnTimeLimit configuration\n"
             "   --memoryLimit=<mem>    Value to set for query memoryLimit configuration\n"
             "                          format <mem> as 500000B, 550K, 100M, 10G, 1T etc.\n"
-            "   --priority=<val>       set the priority for this query. Value can be LOW,\n"
+            "   --priority=<val>       Set the priority for this query. Value can be LOW,\n"
             "                          HIGH, SLA, NONE. NONE will clear current setting.\n"
             "   --comment=<string>     Set the comment associated with this query\n"
             " Common Options:\n",

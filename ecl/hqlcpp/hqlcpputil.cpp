@@ -278,7 +278,7 @@ IHqlExpression * addExpressionModifier(IHqlExpression * expr, typemod_t modifier
 
 
 
-static void expandFieldNames(StringBuffer & out, IHqlExpression * record, StringBuffer & prefix, const char * sep, IHqlExpression * formatFunc)
+static void expandFieldNames(IErrorReceiver & errorProcessor, StringBuffer & out, IHqlExpression * record, StringBuffer & prefix, const char * sep, IHqlExpression * formatFunc)
 {
     ForEachChild(i, record)
     {
@@ -286,10 +286,10 @@ static void expandFieldNames(StringBuffer & out, IHqlExpression * record, String
         switch (cur->getOperator())
         {
         case no_record:
-            expandFieldNames(out, cur, prefix, sep, formatFunc);
+            expandFieldNames(errorProcessor, out, cur, prefix, sep, formatFunc);
             break;
         case no_ifblock:
-            expandFieldNames(out, cur->queryChild(1), prefix, sep, formatFunc);
+            expandFieldNames(errorProcessor, out, cur->queryChild(1), prefix, sep, formatFunc);
             break;
         case no_field:
             {
@@ -300,7 +300,7 @@ static void expandFieldNames(StringBuffer & out, IHqlExpression * record, String
                     HqlExprArray args;
                     args.append(*createConstant(lowerName.str()));
                     OwnedHqlExpr bound = createBoundFunction(NULL, formatFunc, args, NULL, true);
-                    OwnedHqlExpr folded = foldHqlExpression(bound, NULL, HFOthrowerror|HFOfoldimpure|HFOforcefold);
+                    OwnedHqlExpr folded = foldHqlExpression(errorProcessor, bound, NULL, HFOthrowerror|HFOfoldimpure|HFOforcefold);
                     assertex(folded->queryValue());
                     lowerName.clear();
                     getStringValue(lowerName, folded);
@@ -313,7 +313,7 @@ static void expandFieldNames(StringBuffer & out, IHqlExpression * record, String
                     {
                         unsigned len = prefix.length();
                         prefix.append(lowerName).append(".");
-                        expandFieldNames(out, cur->queryRecord(), prefix, sep, formatFunc);
+                        expandFieldNames(errorProcessor, out, cur->queryRecord(), prefix, sep, formatFunc);
                         prefix.setLength(len);
                         break;
                     }
@@ -331,10 +331,10 @@ static void expandFieldNames(StringBuffer & out, IHqlExpression * record, String
     }
 }
 
-void expandFieldNames(StringBuffer & out, IHqlExpression * record, const char * sep, IHqlExpression * formatFunc)
+void expandFieldNames(IErrorReceiver & errorProcessor, StringBuffer & out, IHqlExpression * record, const char * sep, IHqlExpression * formatFunc)
 {
     StringBuffer prefix;
-    expandFieldNames(out, record, prefix, sep, formatFunc);
+    expandFieldNames(errorProcessor, out, record, prefix, sep, formatFunc);
 }
 
 
@@ -395,7 +395,7 @@ IHqlExpression * projectCreateSetDataset(IHqlExpression * expr)
         if (select->getOperator() == no_select)
             targetField.set(select->queryChild(1));
         else
-            targetField.setown(createField(valueAtom, select->getType(), NULL));
+            targetField.setown(createField(valueId, select->getType(), NULL));
         IHqlExpression * newRecord = createRecord(targetField);
         assigns.append(*createAssign(createSelectExpr(getSelf(newRecord), LINK(targetField)), LINK(select)));
         IHqlExpression * newTransform = createValue(no_newtransform, makeTransformType(LINK(newRecord->queryRecordType())), assigns);
@@ -435,7 +435,7 @@ IHqlExpression * mapInternalFunctionParameters(IHqlExpression * expr)
             case type_unicode:
             case type_utf8:
             case type_varunicode:
-                if (!expr->hasProperty(constAtom))
+                if (!expr->hasAttribute(constAtom))
                     return appendOwnedOperand(expr, createAttribute(constAtom));
                 break;
             }

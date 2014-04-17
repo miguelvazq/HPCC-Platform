@@ -218,14 +218,14 @@ public:
         return *onceResultStore;
     }
 
-    virtual IPropertyTree &queryOnceContext(const IQueryFactory *factory, const IRoxieContextLogger &logctx) const
+    virtual IPropertyTree &queryOnceContext(const IQueryFactory *factory, const ContextLogger &logctx) const
     {
         checkOnceDone(factory, logctx);
         assertex(onceContext != NULL);
         return *onceContext;
     }
 
-    virtual void checkOnceDone(const IQueryFactory *factory, const IRoxieContextLogger &logctx) const
+    virtual void checkOnceDone(const IQueryFactory *factory, const ContextLogger &logctx) const
     {
         CriticalBlock b(onceCrit);
         if (!onceContext)
@@ -282,8 +282,11 @@ protected:
     StringBuffer errorMessage;
     MapIdToActivityFactory allActivities;
 
+    bool dynamic;
     bool isSuspended;
+    bool isLoadFailed;
     bool enableFieldTranslation;
+    ClusterType targetClusterType;
     unsigned timeLimit;
     unsigned warnTimeLimit;
     memsize_t memoryLimit;
@@ -446,8 +449,6 @@ protected:
                 RemoteActivityId remoteId(id, hashValue);
                 return createRoxieServerIndexGroupAggregateActivityFactory(id, subgraphId, *this, helperFactory, kind, remoteId, node);
             }
-        case TAKcountdisk:
-            return createRoxieServerDiskCountActivityFactory(id, subgraphId, *this, helperFactory, kind, node);
         case TAKhashdedup:
             return createRoxieServerHashDedupActivityFactory(id, subgraphId, *this, helperFactory, kind);
         case TAKhashdenormalize:
@@ -479,7 +480,10 @@ protected:
         case TAKlookupjoin:
         case TAKlookupdenormalize:
         case TAKlookupdenormalizegroup:
-            return createRoxieServerLookupJoinActivityFactory(id, subgraphId, *this, helperFactory, kind);
+        case TAKsmartjoin:
+        case TAKsmartdenormalize:
+        case TAKsmartdenormalizegroup:
+            return createRoxieServerLookupJoinActivityFactory(id, subgraphId, *this, helperFactory, kind, node);
         case TAKmerge:
             return createRoxieServerMergeActivityFactory(id, subgraphId, *this, helperFactory, kind);
         case TAKnormalize:
@@ -644,9 +648,10 @@ protected:
             return createRoxieServerWhenActivityFactory(id, subgraphId, *this, helperFactory, kind);
         case TAKwhen_action:
             return createRoxieServerWhenActionActivityFactory(id, subgraphId, *this, helperFactory, kind, isRootAction(node));
+        case TAKdistribution:
+            return createRoxieServerDistributionActivityFactory(id, subgraphId, *this, helperFactory, kind, isRootAction(node));
 
         // These are not required in Roxie for the time being - code generator should trap them
-        case TAKdistribution:
         case TAKchilddataset:
 
         default:
@@ -702,12 +707,20 @@ protected:
 
                 unsigned sourceOutput = edge.getPropInt("att[@name=\"_sourceIndex\"]/@value", 0);
                 unsigned targetInput = edge.getPropInt("att[@name=\"_targetIndex\"]/@value", 0);
-                activities->serverItem(target).setInput(targetInput, source, sourceOutput);
+                int controlId = edge.getPropInt("att[@name=\"_when\"]/@value", 0);
+                if (controlId != 0)
+                {
+                    const char * edgeId = edge.queryProp("@id");
+                    addDependency(sourceOutput, source, target, controlId, edgeId, activities);
+                }
+                else
+                    activities->serverItem(target).setInput(targetInput, source, sourceOutput);
             }
         }
         catch (...)
         {
             ::Release(activities);
+            allActivities.kill();
             throw;
         }
         return activities;
@@ -759,12 +772,22 @@ protected:
             ForEach(*edges)
             {
                 IPropertyTree &edge = edges->query();
-                unsigned source = activities->findActivityIndex(edge.getPropInt("@source", 0));
-                unsigned target = activities->recursiveFindActivityIndex(edge.getPropInt("@target", 0));
+                unsigned sourceActivity = edge.getPropInt("@source", 0);
+                unsigned targetActivity = edge.getPropInt("@target", 0);
+                unsigned source = activities->findActivityIndex(sourceActivity);
+                unsigned target = activities->recursiveFindActivityIndex(targetActivity);
 
                 unsigned sourceOutput = edge.getPropInt("att[@name=\"_sourceIndex\"]/@value", 0);
                 unsigned targetInput = edge.getPropInt("att[@name=\"_targetIndex\"]/@value", 0);
-                activities->serverItem(target).setInput(targetInput, source, sourceOutput);
+
+                int controlId = edge.getPropInt("att[@name=\"_when\"]/@value", 0);
+                if (controlId != 0)
+                {
+                    const char * edgeId = edge.queryProp("@id");
+                    addDependency(sourceOutput, sourceActivity, targetActivity, controlId, edgeId, activities);
+                }
+                else
+                    activities->serverItem(target).setInput(targetInput, source, sourceOutput);
             }
         }
     }
@@ -825,18 +848,18 @@ public:
     IMPLEMENT_IINTERFACE;
     unsigned channelNo;
 
-    CQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, ISharedOnceContext *_sharedOnceContext)
-        : id(_id), package(_package), dll(_dll), channelNo(_channelNo), hashValue(_hashValue), sharedOnceContext(_sharedOnceContext)
+    CQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, ISharedOnceContext *_sharedOnceContext, bool _dynamic)
+        : id(_id), package(_package), dll(_dll), channelNo(_channelNo), hashValue(_hashValue), sharedOnceContext(_sharedOnceContext), dynamic(_dynamic)
     {
         package.Link();
         isSuspended = false;
+        isLoadFailed = false;
         libraryInterfaceHash = 0;
         priority = 0;
         memoryLimit = defaultMemoryLimit;
         timeLimit = defaultTimeLimit[priority];
         warnTimeLimit = 0;
         enableFieldTranslation = fieldTranslationEnabled;
-
     }
 
     ~CQueryFactory()
@@ -852,7 +875,7 @@ public:
 
     virtual IQueryFactory *lookupLibrary(const char *libraryName, unsigned expectedInterfaceHash, const IRoxieContextLogger &logctx) const
     {
-        return globalPackageSetManager->lookupLibrary(package, libraryName, expectedInterfaceHash, logctx);
+        return globalPackageSetManager->lookupLibrary(libraryName, expectedInterfaceHash, logctx);
     }
 
     virtual void beforeDispose()
@@ -877,8 +900,11 @@ public:
 
     static hash64_t getQueryHash(const char *id, const IQueryDll *dll, const IHpccPackage &package, const IPropertyTree *stateInfo)
     {
-        hash64_t hashValue = rtlHash64VStr(dll->queryDll()->queryName(), package.queryHash());
-        hashValue = rtlHash64VStr(id, hashValue);
+        hash64_t hashValue = package.queryHash();
+        if (dll)
+            hashValue = rtlHash64VStr(dll->queryDll()->queryName(), hashValue);
+        if (id)
+            hashValue = rtlHash64VStr(id, hashValue);
         if (stateInfo)
         {
             StringBuffer xml;
@@ -905,6 +931,8 @@ public:
             warnTimeLimit = (unsigned) wu->getDebugValueInt("warnTimeLimit", 0);
             SCMStringBuffer bStr;
             enableFieldTranslation = strToBool(wu->getDebugValue("layoutTranslationEnabled", bStr).str());
+            bStr.clear();
+            targetClusterType = getClusterType(wu->getDebugValue("targetClusterType", bStr).str(), RoxieCluster);
 
             // MORE - does package override stateInfo, or vice versa?
 
@@ -916,26 +944,28 @@ public:
                 timeLimit = (unsigned) stateInfo->getPropInt("@timeLimit", timeLimit);
                 warnTimeLimit = (unsigned) stateInfo->getPropInt("@warnTimeLimit", warnTimeLimit);
             }
-
-            Owned<IConstWUGraphIterator> graphs = &wu->getGraphs(GraphTypeActivities);
-            SCMStringBuffer graphNameStr;
-            ForEach(*graphs)
+            if (targetClusterType == RoxieCluster)
             {
-                graphs->query().getName(graphNameStr);
-                const char *graphName = graphNameStr.s.str();
-                Owned<IPropertyTree> graphXgmml = graphs->query().getXGMMLTree(false);
-                try
+                Owned<IConstWUGraphIterator> graphs = &wu->getGraphs(GraphTypeActivities);
+                SCMStringBuffer graphNameStr;
+                ForEach(*graphs)
                 {
-                    ActivityArray *activities = loadGraph(*graphXgmml, graphName);
-                    graphMap.setValue(graphName, activities);
-                }
-                catch (IException *E)
-                {
-                    StringBuffer m;
-                    E->errorMessage(m);
-                    suspend(true, m.str(), NULL, false);
-                    ERRLOG("Query %s suspended: %s", id.get(), m.str());
-                    E->Release();
+                    graphs->query().getName(graphNameStr);
+                    const char *graphName = graphNameStr.s.str();
+                    Owned<IPropertyTree> graphXgmml = graphs->query().getXGMMLTree(false);
+                    try
+                    {
+                        ActivityArray *activities = loadGraph(*graphXgmml, graphName);
+                        graphMap.setValue(graphName, activities);
+                    }
+                    catch (IException *E)
+                    {
+                        StringBuffer m;
+                        E->errorMessage(m);
+                        suspend(m.str());
+                        ERRLOG("Query %s suspended: %s", id.get(), m.str());
+                        E->Release();
+                    }
                 }
             }
         }
@@ -964,7 +994,7 @@ public:
         return sharedOnceContext->queryOnceResultStore();
     }
 
-    virtual IPropertyTree &queryOnceContext(const IRoxieContextLogger &logctx) const
+    virtual IPropertyTree &queryOnceContext(const ContextLogger &logctx) const
     {
         assertex(sharedOnceContext);
         return sharedOnceContext->queryOnceContext(this, logctx);
@@ -1017,7 +1047,7 @@ public:
 
     virtual IPropertyTree* cloneQueryXGMML() const
     {
-        assertex(dll->queryWorkUnit());
+        assertex(dll && dll->queryWorkUnit());
         Owned<IPropertyTree> tree = createPTree("Query");
         Owned<IConstWUGraphIterator> graphs = &dll->queryWorkUnit()->getGraphs(GraphTypeActivities);
         SCMStringBuffer graphNameStr;
@@ -1038,21 +1068,24 @@ public:
 
     virtual void getStats(StringBuffer &reply, const char *graphName) const
     {
-        assertex(dll->queryWorkUnit());
-        Owned<IConstWUGraphIterator> graphs = &dll->queryWorkUnit()->getGraphs(GraphTypeActivities);
-        SCMStringBuffer thisGraphNameStr;
-        ForEach(*graphs)
+        if (dll)
         {
-            graphs->query().getName(thisGraphNameStr);
-            if (graphName)
+            assertex(dll->queryWorkUnit());
+            Owned<IConstWUGraphIterator> graphs = &dll->queryWorkUnit()->getGraphs(GraphTypeActivities);
+            SCMStringBuffer thisGraphNameStr;
+            ForEach(*graphs)
             {
-                if (thisGraphNameStr.length() && (stricmp(graphName, thisGraphNameStr.s.str()) != 0))
-                    continue; // not interested in this one
+                graphs->query().getName(thisGraphNameStr);
+                if (graphName)
+                {
+                    if (thisGraphNameStr.length() && (stricmp(graphName, thisGraphNameStr.s.str()) != 0))
+                        continue; // not interested in this one
+                }
+                reply.appendf("<Graph id='%s'><xgmml>", thisGraphNameStr.s.str());
+                Owned<IPropertyTree> graphXgmml = graphs->query().getXGMMLTree(false);
+                getGraphStats(reply, *graphXgmml);
+                reply.append("</xgmml></Graph>");
             }
-            reply.appendf("<Graph id='%s'><xgmml><graph>", thisGraphNameStr.s.str());
-            Owned<IPropertyTree> graphXgmml = graphs->query().getXGMMLTree(false);
-            getGraphStats(reply, *graphXgmml);
-            reply.append("</graph></xgmml></Graph>");
         }
     }
     virtual void getActivityMetrics(StringBuffer &reply) const
@@ -1089,7 +1122,7 @@ public:
                 f->getXrefInfo(*xref, logctx);
             }
         }
-        toXML(xref, reply);
+        toXML(xref, reply, 1);
     }
     virtual void resetQueryTimings()
     {
@@ -1116,25 +1149,17 @@ public:
     {
         return libraryInterfaceHash;
     }
-    virtual void suspend(bool suspendit, const char* errMsg, const char *userId, bool appendIfNewError)
+    virtual void suspend(const char* errMsg)
     {
-        // MORE - should wait until no queries active before returning
-        isSuspended = suspendit; // Atomic enough for our purposes I think - at least until the wait stuff is in place
-        if (appendIfNewError)
-        {
-            if (errorMessage.length())
-            {
-                // MORE - not the most efficient code, but this error condition should not occur in production
-                if (strstr(errorMessage.str(), errMsg) == 0)
-                    errorMessage.appendf(", %s", errMsg);
-            }
-            else
-                errorMessage.append(errMsg);
-        }
-        else
-            errorMessage.clear().append(errMsg);
+        isSuspended = true;
+        isLoadFailed = true;
+        errorMessage.append(errMsg);
     }
 
+    virtual bool loadFailed() const
+    {
+        return isLoadFailed;
+    }
     virtual bool suspended() const
     {
         return isSuspended;
@@ -1149,17 +1174,19 @@ public:
     }
     virtual ILoadedDllEntry *queryDll() const 
     {
+        assertex(dll);
         return dll->queryDll();
     }
     virtual IConstWorkUnit *queryWorkUnit() const
     {
+        assertex(dll);
         return dll->queryWorkUnit();
     }
     virtual const IRoxiePackage &queryPackage() const
     {
         return package;
     }
-    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IRoxieContextLogger &logctx) const 
+    virtual CRoxieWorkflowMachine *createWorkflowMachine(IConstWorkUnit *wu, bool isOnce, const ContextLogger &logctx) const
     {
         throwUnexpected();  // only on server...
     }
@@ -1209,11 +1236,11 @@ public:
         throwUnexpected();   // only implemented in derived slave class
     }
 
-    virtual IRoxieServerContext *createContext(IPropertyTree *xml, SafeSocket &client, TextMarkupFormat mlFmt, bool isRaw, bool isBlocked, HttpHelper &httpHelper, bool trim, const IRoxieContextLogger &_logctx, PTreeReaderOptions xmlReadFlags) const
+    virtual IRoxieServerContext *createContext(IPropertyTree *xml, SafeSocket &client, TextMarkupFormat mlFmt, bool isRaw, bool isBlocked, HttpHelper &httpHelper, bool trim, const ContextLogger &_logctx, PTreeReaderOptions xmlReadFlags, const char *querySetName) const
     {
         throwUnexpected();   // only implemented in derived server class
     }
-    virtual IRoxieServerContext *createContext(IConstWorkUnit *wu, const IRoxieContextLogger &_logctx) const
+    virtual IRoxieServerContext *createContext(IConstWorkUnit *wu, const ContextLogger &_logctx) const
     {
         throwUnexpected();   // only implemented in derived server class
     }
@@ -1234,6 +1261,11 @@ public:
             graphs->query().getName(graphName);
             ret.append(graphName.str());
         }
+    }
+
+    virtual bool isDynamic() const
+    {
+        return dynamic;
     }
 
 protected:
@@ -1282,8 +1314,8 @@ protected:
     Owned<IQueryStatsAggregator> queryStats;
 
 public:
-    CRoxieServerQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, ISharedOnceContext *_sharedOnceContext)
-        : CQueryFactory(_id, _dll, _package, _hashValue, 0, _sharedOnceContext)
+    CRoxieServerQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, ISharedOnceContext *_sharedOnceContext, bool _dynamic)
+        : CQueryFactory(_id, _dll, _package, _hashValue, 0, _sharedOnceContext, _dynamic)
     {
         queryStats.setown(createQueryStatsAggregator(id.get(), statsExpiryTime));
     }
@@ -1328,24 +1360,24 @@ public:
         return activities;
     }
 
-    virtual IRoxieServerContext *createContext(IPropertyTree *context, SafeSocket &client, TextMarkupFormat mlFmt, bool isRaw, bool isBlocked, HttpHelper &httpHelper, bool trim, const IRoxieContextLogger &_logctx, PTreeReaderOptions _xmlReadFlags) const
+    virtual IRoxieServerContext *createContext(IPropertyTree *context, SafeSocket &client, TextMarkupFormat mlFmt, bool isRaw, bool isBlocked, HttpHelper &httpHelper, bool trim, const ContextLogger &_logctx, PTreeReaderOptions _xmlReadFlags, const char *_querySetName) const
     {
         checkSuspended();
-        return createRoxieServerContext(context, this, client, mlFmt, isRaw, isBlocked, httpHelper, trim, priority, _logctx, _xmlReadFlags);
+        return createRoxieServerContext(context, this, client, mlFmt==MarkupFmt_XML, isRaw, isBlocked, httpHelper, trim, priority, _logctx, _xmlReadFlags, _querySetName);
     }
 
-    virtual IRoxieServerContext *createContext(IConstWorkUnit *wu, const IRoxieContextLogger &_logctx) const
+    virtual IRoxieServerContext *createContext(IConstWorkUnit *wu, const ContextLogger &_logctx) const
     {
         checkSuspended();
         return createWorkUnitServerContext(wu, this, _logctx);
     }
 
-    virtual WorkflowMachine *createWorkflowMachine(bool isOnce, const IRoxieContextLogger &logctx) const
+    virtual CRoxieWorkflowMachine *createWorkflowMachine(IConstWorkUnit *wu, bool isOnce, const ContextLogger &logctx) const
     {
         IPropertyTree *workflow = queryWorkflowTree();
         if (workflow)
         {
-            return ::createRoxieWorkflowMachine(workflow, isOnce, logctx);
+            return ::createRoxieWorkflowMachine(workflow, wu, isOnce, logctx);
         }
         else
             return NULL;
@@ -1376,29 +1408,34 @@ static void checkWorkunitVersionConsistency(const IQueryDll *dll)
         throw MakeStringException(ROXIE_MISMATCH, "Workunit did not export createProcess function");
 }
 
-extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *dll, const IHpccPackage &package, const IPropertyTree *stateInfo)
+extern IQueryFactory *createServerQueryFactory(const char *id, const IQueryDll *dll, const IHpccPackage &package, const IPropertyTree *stateInfo, bool isDynamic, bool forceRetry)
 {
     CriticalBlock b(CQueryFactory::queryCreateLock);
     hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo);
     IQueryFactory *cached = getQueryFactory(hashValue, 0);
-    if (cached)
+    if (cached && !(cached->loadFailed() && (reloadRetriesFailed || forceRetry)))
     {
         ::Release(dll);
         return cached;
     }
-    checkWorkunitVersionConsistency(dll);
-    Owned<ISharedOnceContext> sharedOnceContext;
-    IPropertyTree *workflow = dll->queryWorkUnit()->queryWorkflowTree();
-    if (workflow && workflow->hasProp("Item[@mode='once']"))
-        sharedOnceContext.setown(new CSharedOnceContext);
-    Owned<CRoxieServerQueryFactory> newFactory = new CRoxieServerQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, sharedOnceContext);
-    newFactory->load(stateInfo);
-    if (sharedOnceContext && preloadOnceData)
+    if (dll)
     {
-        Owned<StringContextLogger> logctx = new StringContextLogger(id); // NB may get linked by the onceContext
-        sharedOnceContext->checkOnceDone(newFactory, *logctx);
+        checkWorkunitVersionConsistency(dll);
+        Owned<ISharedOnceContext> sharedOnceContext;
+        IPropertyTree *workflow = dll->queryWorkUnit()->queryWorkflowTree();
+        if (workflow && workflow->hasProp("Item[@mode='once']"))
+            sharedOnceContext.setown(new CSharedOnceContext);
+        Owned<CRoxieServerQueryFactory> newFactory = new CRoxieServerQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, sharedOnceContext, isDynamic);
+        newFactory->load(stateInfo);
+        if (sharedOnceContext && preloadOnceData)
+        {
+            Owned<StringContextLogger> logctx = new StringContextLogger(id); // NB may get linked by the onceContext
+            sharedOnceContext->checkOnceDone(newFactory, *logctx);
+        }
+        return newFactory.getClear();
     }
-    return newFactory.getClear();
+    else
+        return new CRoxieServerQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, NULL, isDynamic);
 }
 
 extern IQueryFactory *createServerQueryFactoryFromWu(IConstWorkUnit *wu)
@@ -1407,7 +1444,7 @@ extern IQueryFactory *createServerQueryFactoryFromWu(IConstWorkUnit *wu)
     if (!dll)
         return NULL;
     SCMStringBuffer wuid;
-    return createServerQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootRoxiePackage(), NULL); // MORE - if use a constant for id might cache better?
+    return createServerQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootRoxiePackage(), NULL, true, false); // MORE - if use a constant for id might cache better?
 }
 
 //==============================================================================================================================================
@@ -1585,8 +1622,8 @@ class CSlaveQueryFactory : public CQueryFactory
     }
 
 public:
-    CSlaveQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, ISharedOnceContext *_sharedOnceContext)
-        : CQueryFactory(_id, _dll, _package, _hashValue, _channelNo, _sharedOnceContext)
+    CSlaveQueryFactory(const char *_id, const IQueryDll *_dll, const IRoxiePackage &_package, hash64_t _hashValue, unsigned _channelNo, ISharedOnceContext *_sharedOnceContext, bool _dynamic)
+        : CQueryFactory(_id, _dll, _package, _hashValue, _channelNo, _sharedOnceContext, _dynamic)
     {
     }
 
@@ -1630,13 +1667,14 @@ public:
         catch (...)
         {
             ::Release(activities);
+            allActivities.kill();
             throw;
         }
         return activities;
     }
 };
 
-IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, const IHpccPackage &package, unsigned channel, const IPropertyTree *stateInfo)
+IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, const IHpccPackage &package, unsigned channel, const IPropertyTree *stateInfo, bool isDynamic, bool forceRetry)
 {
     CriticalBlock b(CQueryFactory::queryCreateLock);
     hash64_t hashValue = CQueryFactory::getQueryHash(id, dll, package, stateInfo);
@@ -1646,11 +1684,16 @@ IQueryFactory *createSlaveQueryFactory(const char *id, const IQueryDll *dll, con
         ::Release(dll);
         return cached;
     }
-    checkWorkunitVersionConsistency(dll);
-    Owned<IQueryFactory> serverFactory = createServerQueryFactory(id, LINK(dll), package, stateInfo); // Should always find a cached one
-    Owned<CSlaveQueryFactory> newFactory = new CSlaveQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, serverFactory->querySharedOnceContext());
-    newFactory->load(stateInfo);
-    return newFactory.getClear();
+    if (dll)
+    {
+        checkWorkunitVersionConsistency(dll);
+        Owned<IQueryFactory> serverFactory = createServerQueryFactory(id, LINK(dll), package, stateInfo, false, forceRetry); // Should always find a cached one
+        Owned<CSlaveQueryFactory> newFactory = new CSlaveQueryFactory(id, dll, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, serverFactory->querySharedOnceContext(), isDynamic);
+        newFactory->load(stateInfo);
+        return newFactory.getClear();
+    }
+    else
+        return new CSlaveQueryFactory(id, NULL, dynamic_cast<const IRoxiePackage&>(package), hashValue, channel, NULL, isDynamic);
 }
 
 extern IQueryFactory *createSlaveQueryFactoryFromWu(IConstWorkUnit *wu, unsigned channelNo)
@@ -1659,7 +1702,7 @@ extern IQueryFactory *createSlaveQueryFactoryFromWu(IConstWorkUnit *wu, unsigned
     if (!dll)
         return NULL;
     SCMStringBuffer wuid;
-    return createSlaveQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootRoxiePackage(), channelNo, NULL);  // MORE - if use a constant for id might cache better?
+    return createSlaveQueryFactory(wu->getWuid(wuid).str(), dll.getClear(), queryRootRoxiePackage(), channelNo, NULL, true, false);  // MORE - if use a constant for id might cache better?
 }
 
 IRecordLayoutTranslator * createRecordLayoutTranslator(const char *logicalName, IDefRecordMeta const * diskMeta, IDefRecordMeta const * activityMeta)

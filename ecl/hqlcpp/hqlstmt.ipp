@@ -19,19 +19,6 @@
 
 #include "hqlstmt.hpp"
 
-//Sometimes the number of definitions can get very very large.  
-//To help with that situation the following option creates an array of "hashes" of the definitions
-//It uses more memory, but has much better cache locality than accessing a member of the definition
-
-#define CACHE_DEFINITION_HASHES
-inline unsigned getSearchHash(IHqlExpression * search)
-{
-    unsigned hash = search->getHash();
-    return (unsigned short)((hash >> 16) | hash);
-}
-//typedef UnsignedArray DefinitionHashArray;
-typedef UnsignedShortArray DefinitionHashArray;
-
 //---------------------------------------------------------------------------
 
 class HqlStmts;
@@ -42,12 +29,12 @@ class HqlStmt : public CInterfaceOf<IHqlStmt>
 public:
     HqlStmt(StmtKind _kind, HqlStmts * _container);
     
-    virtual StmtKind                getStmt();
-    virtual StringBuffer &          getTextExtra(StringBuffer & out);
+    virtual StmtKind                getStmt() const;
+    virtual StringBuffer &          getTextExtra(StringBuffer & out) const;
     virtual bool                    isIncluded() const;
     virtual unsigned                numChildren() const;
     virtual IHqlStmt *              queryChild(unsigned index) const;
-    virtual IHqlExpression *        queryExpr(unsigned index);
+    virtual IHqlExpression *        queryExpr(unsigned index) const;
     virtual HqlStmts *              queryContainer();
 
             void                    addExpr(IHqlExpression * expr);
@@ -58,6 +45,7 @@ public:
     virtual void                    setIncomplete(bool _incomplete) { incomplete = _incomplete; }
     virtual void                    setIncluded(bool _included) { included = _included; }
             void                    setPriority(unsigned _prio) { priority = _prio; }
+    virtual void                    finishedFramework() { throwUnexpected(); }
 
 protected:
     bool hasChildren() const;
@@ -82,6 +70,41 @@ protected:
 
 typedef IArrayOf<HqlStmt> HqlStmtArray;
 
+//The elements are kept in the hash table, but not linked - they are owned by an associated array.
+class HQLCPP_API AssociationCache : public SuperHashTableOf<HqlExprAssociation, IHqlExpression>
+{
+public:
+    AssociationCache() {}
+    ~AssociationCache() { releaseAll(); }
+
+    IMPLEMENT_SUPERHASHTABLEOF_REF_FIND(HqlExprAssociation, IHqlExpression);
+
+    virtual void onAdd(void *et) { }
+    virtual void onRemove(void *et) { }
+    virtual unsigned getHashFromElement(const void *et) const
+    {
+        const HqlExprAssociation * elem = reinterpret_cast<const HqlExprAssociation *>(et);
+        return elem->represents->getHash();
+    }
+    virtual unsigned getHashFromFindParam(const void *fp) const
+    {
+        const IHqlExpression * expr = (const IHqlExpression *)fp;
+        return expr->getHash();
+    }
+    virtual const void *getFindParam(const void *et) const
+    {
+        const HqlExprAssociation * elem = reinterpret_cast<const HqlExprAssociation *>(et);
+        return elem->represents;
+    }
+    virtual bool matchesFindParam(const void *et, const void *fp, unsigned) const
+    {
+        const IHqlExpression * expr = (const IHqlExpression *)fp;
+        const HqlExprAssociation * elem = reinterpret_cast<const HqlExprAssociation *>(et);
+        return expr == elem->represents;
+    }
+};
+
+
 class HQLCPP_API HqlStmts : public IArrayOf<HqlStmt>
 {
     friend class BuildCtx;
@@ -94,32 +117,15 @@ public:
     void                            inheritDefinitions(HqlStmts & owwther);
     HqlStmt *                       queryStmt() { return owner; };
 
-    inline void appendOwn(HqlExprAssociation & next)
-    {
-        defs.append(next);
-#ifdef CACHE_DEFINITION_HASHES
-        exprHashes.append(getSearchHash(next.represents));
-#endif
-    }
-
-    inline bool zap(HqlExprAssociation & next)
-    {
-        unsigned match = defs.find(next);
-        if (match == NotFound)
-            return false;
-        defs.remove(match);
-#ifdef CACHE_DEFINITION_HASHES
-        exprHashes.remove(match);
-#endif
-        return true;
-    }
+    void appendOwn(HqlExprAssociation & next);
+    bool zap(HqlExprAssociation & next);
 
 protected:
     HqlStmt *                       owner;
     CIArrayOf<HqlExprAssociation>   defs;
-#ifdef CACHE_DEFINITION_HASHES
-    DefinitionHashArray             exprHashes;
-#endif
+    // A bit mask of which types of associations this contains.  Don't worry about false positives.
+    unsigned                        associationMask;
+    AssociationCache                exprAssociationCache;
 };
 
 
@@ -135,21 +141,35 @@ class HqlCompoundStmt : public HqlStmt
 public:
     HqlCompoundStmt(StmtKind _kind, HqlStmts * _container);
 
+    virtual bool                    isIncluded() const;
     virtual unsigned                numChildren() const;
     virtual void                    mergeScopeWithContainer();
     virtual IHqlStmt *              queryChild(unsigned index) const;
+    virtual void                    finishedFramework();
 
 protected:
     HqlStmts                         code;
+    unsigned                         frameworkCount;
 };
 
+
+class HqlConditionalGroupStmt : public HqlCompoundStmt
+{
+public:
+    HqlConditionalGroupStmt(HqlStmts * _container, IHqlStmt * _stmt) : HqlCompoundStmt(group_stmt, _container), stmt(_stmt) {}
+
+    virtual bool                    isIncluded() const;
+
+protected:
+    IHqlStmt * stmt;
+};
 
 class HqlQuoteStmt : public HqlCompoundStmt
 {
 public:
     HqlQuoteStmt(StmtKind _kind, HqlStmts * _container, const char * _text) : HqlCompoundStmt(_kind, _container), text(_text) {}
 
-    virtual StringBuffer &          getTextExtra(StringBuffer & out);
+    virtual StringBuffer &          getTextExtra(StringBuffer & out) const;
 
 protected:
   StringAttr text;

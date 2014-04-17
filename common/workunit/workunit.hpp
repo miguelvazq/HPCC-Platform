@@ -36,6 +36,7 @@
 #include "errorlist.h"
 #include "jtime.hpp"
 #include "jsocket.hpp"
+#include "jstats.h"
 
 #define CHEAP_UCHAR_DEF
 #ifdef _WIN32
@@ -552,6 +553,7 @@ interface IConstWUClusterInfo : extends IInterface
     virtual IStringVal & getServerQueue(IStringVal & str) const = 0;
     virtual IStringVal & getRoxieProcess(IStringVal & str) const = 0;
     virtual const StringArray & getThorProcesses() const = 0;
+    virtual const StringArray & getPrimaryThorProcesses() const = 0;
     virtual const SocketEndpointArray & getRoxieServers() const = 0;
 };
 
@@ -626,6 +628,7 @@ interface IConstWorkflowItem : extends IInterface
     virtual unsigned queryContingencyFor() const = 0;
     virtual IStringVal & getPersistName(IStringVal & val) const = 0;
     virtual unsigned queryPersistWfid() const = 0;
+    virtual int queryPersistCopies() const = 0;  // 0 - unmangled name,  < 0 - use default, > 0 - max number
     virtual unsigned queryScheduleCountRemaining() const = 0;
     virtual WFState queryState() const = 0;
     virtual unsigned queryRetriesRemaining() const = 0;
@@ -657,7 +660,7 @@ interface IWorkflowItem : extends IRuntimeWorkflowItem
     virtual void setSchedulePriority(unsigned priority) = 0;
     virtual void setScheduleCount(unsigned count) = 0;
     virtual void addDependency(unsigned wfid) = 0;
-    virtual void setPersistInfo(const char * name, unsigned wfid) = 0;
+    virtual void setPersistInfo(const char * name, unsigned wfid, int maxCopies) = 0;
     virtual void syncRuntimeData(const IConstWorkflowItem & other) = 0;
     virtual void setScheduledWfid(unsigned wfid) = 0;
     virtual void setCluster(const char * cluster) = 0;
@@ -802,7 +805,23 @@ interface IConstWUAppValueIterator : extends IScmIterator
     virtual IConstWUAppValue & query() = 0;
 };
 
+interface IConstWUStatistic : extends IInterface
+{
+    virtual IStringVal & getFullName(IStringVal & str) const = 0;   // A unique name
+    virtual IStringVal & getCreator(IStringVal & str) const = 0;    // what component gathered the statistic e.g., roxie/eclcc/thorslave[ip]
+    virtual IStringVal & getDescription(IStringVal & str) const = 0;// Description suitable for displaying to the user
+    virtual IStringVal & getName(IStringVal & str) const = 0;       // what is the name of the statistic e.g., wall time
+    virtual IStringVal & getScope(IStringVal & str) const = 0;      // what scope is the statistic gathered over? e.g., workunit, wfid:n, graphn, graphn:m
+    virtual StatisticMeasure getKind() const = 0;
+    virtual unsigned __int64 getValue() const = 0;
+    virtual unsigned __int64 getCount() const = 0;
+    virtual unsigned __int64 getMax() const = 0;
+};
 
+interface IConstWUStatisticIterator : extends IScmIterator
+{
+    virtual IConstWUStatistic & query() = 0;
+};
 
 //! IWorkUnit
 //! Provides high level access to WorkUnit "header" data.
@@ -873,13 +892,16 @@ interface IConstWorkUnit : extends IInterface
     virtual IConstWUResult * getTemporaryByName(const char * name) const = 0;
     virtual IConstWUResultIterator & getTemporaries() const = 0;
     virtual bool getRunningGraph(IStringVal & graphName, WUGraphIDType & subId) const = 0;
-    virtual unsigned getTimerCount(const char * timerName, const char * instance) const = 0;
-    virtual unsigned getTimerDuration(const char * timerName, const char * instance) const = 0;
+    virtual unsigned getTimerCount(const char * timerName) const = 0;
+    virtual unsigned getTimerDuration(const char * timerName) const = 0;
+    virtual IStringVal & getTimerDescription(const char * timerName, IStringVal & str) const = 0;
     virtual IStringVal & getTimeStamp(const char * name, const char * instance, IStringVal & str) const = 0;
     virtual IConstWUWebServicesInfo * getWebServicesInfo() const = 0;
     virtual IConstWURoxieQueryInfo * getRoxieQueryInfo() const = 0;
     virtual IStringIterator & getTimers() const = 0;
     virtual IConstWUTimeStampIterator & getTimeStamps() const = 0;
+    virtual IConstWUStatisticIterator & getStatistics() const = 0;
+    virtual IConstWUStatistic * getStatistic(const char * name) const = 0;
     virtual IStringVal & getUser(IStringVal & str) const = 0;
     virtual IStringVal & getWuScope(IStringVal & str) const = 0;
     virtual IConstWUResult * getVariableByName(const char * name) const = 0;
@@ -923,6 +945,7 @@ interface IConstWorkUnit : extends IInterface
     virtual unsigned __int64 getHash() const = 0;
     virtual IStringIterator *getLogs(const char *type, const char *instance=NULL) const = 0;
     virtual IStringIterator *getProcesses(const char *type) const = 0;
+    virtual IPropertyTreeIterator* getProcesses(const char *type, const char *instance) const = 0;
 };
 
 
@@ -935,7 +958,7 @@ interface IWorkUnit : extends IConstWorkUnit
     virtual IWUException * createException() = 0;
     virtual void setTimeStamp(const char * name, const char * instance, const char * event) = 0;
     virtual void addTimeStamp(const char * name, const char * instance, const char * event) = 0;
-    virtual void addProcess(const char *type, const char *instance, const char *log=NULL) = 0;
+    virtual void addProcess(const char *type, const char *instance, unsigned pid, const char *log=NULL) = 0;
     virtual void setAction(WUAction action) = 0;
     virtual void setApplicationValue(const char * application, const char * propname, const char * value, bool overwrite) = 0;
     virtual void setApplicationValueInt(const char * application, const char * propname, int value, bool overwrite) = 0;
@@ -956,8 +979,8 @@ interface IWorkUnit : extends IConstWorkUnit
     virtual void setState(WUState state) = 0;
     virtual void setStateEx(const char * text) = 0;
     virtual void setAgentSession(__int64 sessionId) = 0;
-    virtual void setAgentPID(unsigned pid) = 0;
-    virtual void setTimerInfo(const char * name, const char * instance, unsigned ms, unsigned count, unsigned __int64 max) = 0;
+    virtual void setTimerInfo(const char * name, unsigned ms, unsigned count, unsigned __int64 max) = 0;
+    virtual void setStatistic(const char * creator_who, const char * wuScope_where, const char * stat_what, const char * description, StatisticMeasure kind, unsigned __int64 value, unsigned __int64 count, unsigned __int64 maxValue, bool merge) = 0;
     virtual void setTracingValue(const char * propname, const char * value) = 0;
     virtual void setTracingValueInt(const char * propname, int value) = 0;
     virtual void setUser(const char * value) = 0;
@@ -1027,7 +1050,6 @@ interface IConstWorkUnitIterator : extends IScmIterator
     virtual IConstWorkUnit & query() = 0;
 };
 
-
 //! IWUTimers
 
 interface IWUTimers : extends IInterface
@@ -1078,6 +1100,9 @@ enum WUSortField
     WUSFbatchinputfile = 18,
     WUSFbatchoutputfile = 19,
     WUSFtotalthortime = 20,
+    WUSFwildwuid = 21,
+    WUSFecl = 22,
+    WUSFcustom = 23,
     WUSFterm = 0,
     WUSFreverse = 256,
     WUSFnocase = 512,
@@ -1085,6 +1110,38 @@ enum WUSortField
     WUSFwild = 2048
 };
 
+enum WUQueryFilterBoolean
+{
+    WUQFSNo = 0,
+    WUQFSYes = 1,
+    WUQFSAll = 2
+};
+
+enum WUQuerySortField
+{
+    WUQSFId = 1,
+    WUQSFname = 2,
+    WUQSFwuid = 3,
+    WUQSFdll = 4,
+    WUQSFmemoryLimit = 5,
+    WUQSFmemoryLimitHi = 6,
+    WUQSFtimeLimit = 7,
+    WUQSFtimeLimitHi = 8,
+    WUQSFwarnTimeLimit = 9,
+    WUQSFwarnTimeLimitHi = 10,
+    WUQSFpriority = 11,
+    WUQSFpriorityHi = 12,
+    WUQSFQuerySet = 13,
+    WUQSFActivited = 14,
+    WUQSFSuspendedByUser = 15,
+    WUQSFterm = 0,
+    WUQSFreverse = 256,
+    WUQSFnocase = 512,
+    WUQSFnumeric = 1024,
+    WUQSFwild = 2048
+};
+
+typedef IIteratorOf<IPropertyTree> IConstQuerySetQueryIterator;
 
 
 interface IWorkUnitFactory : extends IInterface
@@ -1105,6 +1162,7 @@ interface IWorkUnitFactory : extends IInterface
     virtual unsigned numWorkUnitsFiltered(WUSortField * filters, const void * filterbuf) = 0;
     virtual void descheduleAllWorkUnits() = 0;
     virtual bool deleteWorkUnitEx(const char * wuid) = 0;
+    virtual IConstQuerySetQueryIterator * getQuerySetQueriesSorted(WUQuerySortField *sortorder, WUQuerySortField *filters, const void *filterbuf, unsigned startoffset, unsigned maxnum, __int64 *cachehint, unsigned *total) = 0;
 };
 
 
@@ -1136,6 +1194,22 @@ public:
     ~WorkunitUpdate() { if (get()) get()->commit(); }
 };
 
+class WuStatisticTarget : implements IStatisticTarget
+{
+public:
+    WuStatisticTarget(IWorkUnit * _wu, const char * _defaultWho) : wu(_wu), defaultWho(_defaultWho) {}
+
+    virtual void addStatistic(const char * creator_who, const char * wuScope_where, const char * stat_what, const char * description, StatisticMeasure kind, unsigned __int64 value, unsigned __int64 count, unsigned __int64 maxValue, bool merge)
+    {
+        if (!creator_who) creator_who = defaultWho;
+        wu->setStatistic(creator_who, wuScope_where, stat_what, description, kind, value, count, maxValue, merge);
+    }
+
+protected:
+    Linked<IWorkUnit> wu;
+    const char * defaultWho;
+};
+
 extern WORKUNIT_API IStringVal &getEclCCServerQueueNames(IStringVal &ret, const char *process);
 extern WORKUNIT_API IStringVal &getEclServerQueueNames(IStringVal &ret, const char *process);
 extern WORKUNIT_API IStringVal &getEclSchedulerQueueNames(IStringVal &ret, const char *process);
@@ -1155,7 +1229,8 @@ typedef IArrayOf<IConstWUClusterInfo> CConstWUClusterInfoArray;
 extern WORKUNIT_API unsigned getEnvironmentClusterInfo(CConstWUClusterInfoArray &clusters);
 extern WORKUNIT_API unsigned getEnvironmentClusterInfo(IPropertyTree* environmentRoot, CConstWUClusterInfoArray &clusters);
 extern WORKUNIT_API void getRoxieProcessServers(const char *process, SocketEndpointArray &servers);
-
+extern WORKUNIT_API bool isProcessCluster(const char *remoteDali, const char *process);
+extern WORKUNIT_API bool isProcessCluster(const char *process);
 
 extern WORKUNIT_API bool getWorkUnitCreateTime(const char *wuid,CDateTime &time); // based on WUID
 extern WORKUNIT_API bool restoreWorkUnit(const char *base,const char *wuid);
@@ -1164,15 +1239,16 @@ extern WORKUNIT_API IExtendedWUInterface * queryExtendedWU(IWorkUnit * wu);
 extern WORKUNIT_API unsigned getEnvironmentThorClusterNames(StringArray &thorNames, StringArray &groupNames, StringArray &targetNames, StringArray &queueNames);
 extern WORKUNIT_API unsigned getEnvironmentHThorClusterNames(StringArray &eclAgentNames, StringArray &groupNames, StringArray &targetNames);
 extern WORKUNIT_API StringBuffer &formatGraphTimerLabel(StringBuffer &str, const char *graphName, unsigned subGraphNum=0, unsigned __int64 subId=0);
-extern WORKUNIT_API bool parseGraphTimerLabel(const char *label, StringBuffer &graphName, unsigned &subGraphNum, unsigned __int64  &subId);
+extern WORKUNIT_API StringBuffer &formatGraphTimerScope(StringBuffer &str, const char *graphName, unsigned subGraphNum, unsigned __int64 subId);
+extern WORKUNIT_API bool parseGraphTimerLabel(const char *label, StringAttr &graphName, unsigned & graphNum, unsigned &subGraphNum, unsigned &subId);
 extern WORKUNIT_API void addExceptionToWorkunit(IWorkUnit * wu, WUExceptionSeverity severity, const char * source, unsigned code, const char * text, const char * filename, unsigned lineno, unsigned column);
 extern WORKUNIT_API IWorkUnitFactory * getWorkUnitFactory();
 extern WORKUNIT_API IWorkUnitFactory * getSecWorkUnitFactory(ISecManager &secmgr, ISecUser &secuser);
 extern WORKUNIT_API IWorkUnitFactory * getWorkUnitFactory(ISecManager *secmgr, ISecUser *secuser);
 extern WORKUNIT_API ILocalWorkUnit* createLocalWorkUnit();
-extern WORKUNIT_API IStringVal& exportWorkUnitToXML(const IConstWorkUnit *wu, IStringVal &str, bool unpack);
-extern WORKUNIT_API StringBuffer &exportWorkUnitToXML(const IConstWorkUnit *wu, StringBuffer &str, bool unpack);
-extern WORKUNIT_API void exportWorkUnitToXMLFile(const IConstWorkUnit *wu, const char * filename, unsigned extraXmlFlags, bool unpack);
+extern WORKUNIT_API IStringVal& exportWorkUnitToXML(const IConstWorkUnit *wu, IStringVal &str, bool unpack, bool includeProgress);
+extern WORKUNIT_API StringBuffer &exportWorkUnitToXML(const IConstWorkUnit *wu, StringBuffer &str, bool unpack, bool includeProgress);
+extern WORKUNIT_API void exportWorkUnitToXMLFile(const IConstWorkUnit *wu, const char * filename, unsigned extraXmlFlags, bool unpack, bool includeProgress);
 extern WORKUNIT_API void submitWorkUnit(const char *wuid, const char *username, const char *password);
 extern WORKUNIT_API void abortWorkUnit(const char *wuid);
 extern WORKUNIT_API void submitWorkUnit(const char *wuid, ISecManager *secmgr, ISecUser *secuser);
@@ -1242,8 +1318,14 @@ extern WORKUNIT_API void deleteQuerySetQuery(const char *querySetName, const cha
 extern WORKUNIT_API const char *queryIdFromQuerySetWuid(const char *querySetName, const char *wuid, IStringVal &id);
 extern WORKUNIT_API void removeQuerySetAliasesFromNamedQuery(const char *querySetName, const char * id);
 extern WORKUNIT_API void setQueryCommentForNamedQuery(const char *querySetName, const char *id, const char *comment);
+extern WORKUNIT_API void gatherLibraryNames(StringArray &names, StringArray &unresolved, IWorkUnitFactory &workunitFactory, IConstWorkUnit &cw, IPropertyTree *queryset);
 
 extern WORKUNIT_API void associateLocalFile(IWUQuery * query, WUFileType type, const char * name, const char * description, unsigned crc);
+
+interface ITimeReporter;
+extern WORKUNIT_API void updateWorkunitTimeStat(IWorkUnit * wu, const char * component, const char * wuScope, const char * stat, const char * description, unsigned __int64 value, unsigned __int64 count, unsigned __int64 maxValue);
+extern WORKUNIT_API void updateWorkunitTiming(IWorkUnit * wu, const char * component, const char * mangledScope, const char * description, unsigned __int64 value, unsigned __int64 count, unsigned __int64 maxValue);
+extern WORKUNIT_API void updateWorkunitTimings(IWorkUnit * wu, ITimeReporter *timer, const char * component);
 
 
 

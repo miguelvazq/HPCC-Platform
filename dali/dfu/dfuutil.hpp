@@ -56,8 +56,10 @@ interface IDFUhelper: extends IInterface
 
 
     virtual void createSingleFileClone(const char *srcname,             // src LFN (can't be super)
+                         const char *srcCluster,
                          const char *dstname,               // dst LFN
                          const char *cluster1,              // group name of roxie cluster
+                         const char *prefix,
                          DFUclusterPartDiskMapping clustmap, // how the nodes are mapped
                          bool repeattlk,                    // repeat last part on all nodes if key
                          const char *cluster2,              // servers cluster (for just tlk)

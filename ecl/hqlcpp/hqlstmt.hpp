@@ -39,15 +39,21 @@ interface IFunctionInfo;
 // used to represent an association of something already calculated in the context
 // e.g. a cursor, temporary value, or even dependency information.
 
-enum AssocKind { AssocAny, AssocExpr, AssocActivity, AssocCursor, AssocClass, 
-                 AssocRow,
-                 AssocActivityInstance,
-                 AssocExtract,
-                 AssocExtractContext,
-                 AssocSubQuery,
-                 AssocGraphNode,
-                 AssocSubGraph,
-                 AssocStmt,
+//These are represented using unique bits, so that a mask can be stored to indicate which associations are held
+enum AssocKind
+{
+    AssocExpr              = 0x0000001,
+    AssocActivity          = 0x0000002,
+    AssocCursor            = 0x0000004,
+    AssocClass             = 0x0000008,
+    AssocRow               = 0x0000010,
+    AssocActivityInstance  = 0x0000020,
+    AssocExtract           = 0x0000040,
+    AssocExtractContext    = 0x0000080,
+    AssocSubQuery          = 0x0000100,
+    AssocGraphNode         = 0x0000200,
+    AssocSubGraph          = 0x0000400,
+    AssocStmt              = 0x0000800,
  };
 
 class CHqlBoundExpr;
@@ -79,7 +85,7 @@ class HQLCPP_API BuildCtx : public CInterface
 {
     friend class AssociationIterator;
 public:
-    BuildCtx(HqlCppInstance & _state, _ATOM section);
+    BuildCtx(HqlCppInstance & _state, IAtom * section);
     BuildCtx(HqlCppInstance & _state);
     BuildCtx(BuildCtx & _owner);
     ~BuildCtx();
@@ -91,6 +97,7 @@ public:
     IHqlStmt *                  addBlock();
     IHqlStmt *                  addBreak();
     IHqlStmt *                  addCase(IHqlStmt * owner, IHqlExpression * condition);
+    IHqlStmt *                  addConditionalGroup(IHqlStmt * stmt); // generated if stmt->isIncluded() is true
     IHqlStmt *                  addContinue();
     IHqlStmt *                  addDeclare(IHqlExpression * name, IHqlExpression * value=NULL);
     IHqlStmt *                  addDeclareExternal(IHqlExpression * name);
@@ -127,7 +134,7 @@ public:
     bool                        getMatchExpr(IHqlExpression * expr, CHqlBoundExpr & bound);
     IHqlExpression *            getTempDeclare(ITypeInfo * type, IHqlExpression * value);
     void                        needFunction(IFunctionInfo & helper);
-    void                        needFunction(_ATOM name);
+    void                        needFunction(IAtom * name);
     void                        removeAssociation(HqlExprAssociation * search);
     IHqlStmt *                  replaceExpr(IHqlStmt * stmt, IHqlExpression * expr);            // use with extreme care!
     IHqlStmt *                  selectBestContext(IHqlExpression * expr);
@@ -139,9 +146,8 @@ public:
     void                        setNextPriority(unsigned newPrio);
     unsigned                    setPriority(unsigned newPrio);
 
-    void                        set(_ATOM section);
+    void                        set(IAtom * section);
     void                        set(BuildCtx & _owner);
-    void                        walkAssociations(IAssociationVisitor & visitor);
 
 public:
     enum { ConPrio = 1, EarlyPrio =3000, NormalPrio = 5000, LatePrio = 7000, DesPrio = 9999, OutermostScopePrio };
@@ -194,17 +200,18 @@ enum StmtKind {
 interface IHqlStmt : public IInterface
 {
 public:
-    virtual StringBuffer &  getTextExtra(StringBuffer & out) = 0;
+    virtual StringBuffer &  getTextExtra(StringBuffer & out) const = 0;
     virtual bool            isIncluded() const = 0;
-    virtual StmtKind        getStmt() = 0;
-    virtual unsigned                numChildren() const = 0;
-    virtual IHqlStmt *          queryChild(unsigned index) const = 0;
-    virtual IHqlExpression *queryExpr(unsigned index) = 0;
+    virtual StmtKind        getStmt() const = 0;
+    virtual unsigned        numChildren() const = 0;
+    virtual IHqlStmt *      queryChild(unsigned index) const = 0;
+    virtual IHqlExpression *queryExpr(unsigned index) const = 0;
 
 //used when creating the statement graph
     virtual void            mergeScopeWithContainer() = 0;
     virtual void            setIncomplete(bool incomplete) = 0;
     virtual void            setIncluded(bool _included) = 0;
+    virtual void            finishedFramework() = 0;
 };
 
 class HqlCppTranslator;
@@ -226,6 +233,7 @@ protected:
 protected:
     HqlStmts * rootStmts;
     unsigned curIdx;
+    unsigned searchMask;
     HqlStmts * curStmts;
 };
 
@@ -233,7 +241,11 @@ protected:
 class FilteredAssociationIterator : public AssociationIterator
 {
 public:
-    FilteredAssociationIterator(BuildCtx & ctx, AssocKind _searchKind) : AssociationIterator(ctx) { searchKind = _searchKind; }
+    FilteredAssociationIterator(BuildCtx & ctx, AssocKind _searchKind) : AssociationIterator(ctx)
+    {
+        searchKind = _searchKind;
+        searchMask = searchKind;
+    }
 
     virtual bool doNext();
 
@@ -247,7 +259,10 @@ class BoundRow;
 class RowAssociationIterator : public AssociationIterator
 {
 public:
-    RowAssociationIterator(BuildCtx & ctx) : AssociationIterator(ctx) {}
+    RowAssociationIterator(BuildCtx & ctx) : AssociationIterator(ctx)
+    {
+        searchMask = AssocRow|AssocCursor;
+    }
 
     virtual bool doNext();
 
@@ -255,7 +270,7 @@ public:
 };
 
 
-unsigned calcTotalChildren(IHqlStmt * stmt);
+unsigned calcTotalChildren(const IHqlStmt * stmt);
 
 IHqlExpression * stripTranslatedCasts(IHqlExpression * e);
 IHqlExpression * peepholeAddExpr(IHqlExpression * left, IHqlExpression * right);

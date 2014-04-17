@@ -67,8 +67,8 @@ class jlib_decl Thread : public CInterface, public IThread
 private:
     ThreadId threadid;
     unsigned short stacksize; // in 4K blocks
-    char prioritydelta;
-    char nicelevel;
+    int prioritydelta;
+    int nicelevel;
 
     bool alive;
     unsigned tidlog;
@@ -103,8 +103,9 @@ public:
     Thread() { init(NULL); }
     ~Thread();
 
-    void adjustPriority(char delta);
-    void setNice(char nicelevel);
+    void adjustPriority(int delta);
+    bool isCurrentThread() const;
+    void setNice(int nicelevel);
     void setStackSize(size32_t size);               // required stack size in bytes - called before start() (obviously)
     const char *getName() { const char *ret = ithreadname?ithreadname->get():NULL; return ret?ret:"unknown"; }
     bool isAlive() { return alive; }
@@ -137,6 +138,8 @@ public:
 interface IThreaded
 {
     virtual void main() = 0;
+protected:
+    virtual ~IThreaded() {}
 };
 
 // utility class, useful for containing a thread
@@ -265,6 +268,7 @@ interface IPipeProcess: extends IInterface
     virtual void abort() = 0;
     virtual void notifyTerminated(HANDLE pid,unsigned retcode) = 0; // internal
     virtual HANDLE getProcessHandle() = 0;                          // used to auto kill
+    virtual void setenv(const char *var, const char *value) = 0;  // Set a value to be passed in the called process environment
 };
 
 extern jlib_decl IPipeProcess *createPipeProcess(const char *allowedprograms=NULL);

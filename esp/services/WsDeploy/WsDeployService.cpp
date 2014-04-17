@@ -23,6 +23,7 @@
 #include "daclient.hpp"
 #include "dadfs.hpp"
 #include "jencrypt.hpp"
+#include "confighelper.hpp"
 
 #ifdef _WINDOWS
 #include <winsock2.h>
@@ -31,8 +32,6 @@
 
 #define STANDARD_CONFIG_BACKUPDIR CONFIG_DIR"/backup"
 #define STANDARD_CONFIG_SOURCEDIR CONFIG_DIR
-#define STANDARD_CONFIG_BUILDSETFILE "buildset.xml"
-#define STANDARD_CONFIG_CONFIGXML_DIR "/componentfiles/configxml/"
 #define STANDARD_CONFIG_STAGED_PATH "/etc/HPCCSystems/environment.xml"
 
 #define DEFAULT_DIRECTORIES "<Directories name=\""DIR_NAME"\">\
@@ -154,7 +153,7 @@ void substituteParameters(const IPropertyTree* pEnv, const char *xpath, IPropert
         StringBuffer sb(xpath2);
         int pos = xpath2.indexOf(']');
         if (pos != -1)
-          sb.clear().append(xpath2.substring(0, pos)->toCharArray());
+          sb.clear().append(xpath2.toCharArray(), 0, pos);
 
         result.append('\"');
         result.append(pNode->queryProp(sb.str()));
@@ -193,59 +192,6 @@ void expandRange(IPropertyTree* pComputers)
 
       pComputers->removeProp("@hasrange");
     }
-  }
-}
-
-CConfigHelper::CConfigHelper()
-{
-}
-
-CConfigHelper::~CConfigHelper()
-{
-}
-
-void CConfigHelper::init(const IPropertyTree *cfg, const char* esp_name)
-{
-  StringBuffer xpath;
-
-  xpath.clear().appendf("%s/%s/%s[%s='%s']/%s",XML_TAG_SOFTWARE, XML_TAG_ESPPROCESS, XML_TAG_ESPSERVICE, XML_ATTR_NAME, esp_name, XML_TAG_LOCALCONFFILE);
-  m_strConfFile = cfg->queryProp(xpath.str());
-
-  xpath.clear().appendf("%s/%s/%s[%s='%s']/%s",XML_TAG_SOFTWARE, XML_TAG_ESPPROCESS, XML_TAG_ESPSERVICE, XML_ATTR_NAME, esp_name, XML_TAG_LOCALENVCONFFILE);
-  m_strEnvConfFile = cfg->queryProp(xpath.str());
-
-  if (m_strConfFile.length() > 0 && m_strEnvConfFile.length() > 0)
-  {
-    Owned<IProperties> pParams = createProperties(m_strConfFile);
-    Owned<IProperties> pEnvParams = createProperties(m_strEnvConfFile);
-
-    m_strConfigXMLDir = pEnvParams->queryProp(TAG_PATH);
-
-    if ( m_strConfigXMLDir.length() == 0)
-    {
-      m_strConfigXMLDir = INSTALL_DIR;
-    }
-
-    m_strBuildSetFileName = pParams->queryProp(TAG_BUILDSET);
-
-    m_strBuildSetFilePath.append(m_strConfigXMLDir).append(STANDARD_CONFIG_CONFIGXML_DIR).append( m_strBuildSetFileName.length() > 0 ? m_strBuildSetFileName : STANDARD_CONFIG_BUILDSETFILE);
-    m_pDefBldSet.set(createPTreeFromXMLFile(m_strBuildSetFilePath.str()));
-  }
-}
-
-bool CConfigHelper::isInBuildSet(const char* comp_process_name, const char* comp_name) const
-{
-  StringBuffer xpath;
-
-  xpath.appendf("./%s/%s/%s[%s=\"%s\"][%s=\"%s\"]", XML_TAG_PROGRAMS, XML_TAG_BUILD, XML_TAG_BUILDSET, XML_ATTR_PROCESS_NAME, comp_process_name, XML_ATTR_NAME, comp_name);
-
-  if (strcmp(XML_TAG_DIRECTORIES,comp_name) != 0 && m_pDefBldSet->queryPropTree(xpath.str()) == NULL)
-  {
-     return false;
-  }
-  else
-  {
-     return true;
   }
 }
 
@@ -298,11 +244,13 @@ void CWsDeployExCE::init(IPropertyTree *cfg, const char *process, const char *se
   if (m_service.length() == 0)
     m_service.append(service);
 
+  CConfigHelper::getInstance(cfg, service);
+
   m_bCloud = false;
   StringBuffer xpath;
   m_envFile.clear();
 
-  m_configHelper.init(cfg,service);
+  m_pConfigHelper = CConfigHelper::getInstance(cfg,service);
 
   xpath.clear().appendf("Software/EspProcess/EspService[@name='%s']/LocalEnvConfFile", service);
   const char* tmp = cfg->queryProp(xpath.str());
@@ -719,13 +667,13 @@ bool CWsDeployFileInfo::navMenuEvent(IEspContext &context,
           else
             sMsg.append(":\n\n").append(sErrMsg);
 
-          throw MakeStringException(0, "%s", sMsg.str());
+          throw MakeStringExceptionDirect(0, sMsg.str());
         }
         else
         {
           StringBuffer sMsg;
           sMsg.append("Error locking environment. ").append(sErrMsg.str());
-          throw MakeStringException(-1, "%s", sMsg.str());
+          throw MakeStringExceptionDirect(-1, sMsg.str());
         }
       }
     }
@@ -817,13 +765,13 @@ bool CWsDeployFileInfo::navMenuEvent(IEspContext &context,
           else
             sMsg.append(":\n\n").append(sErrMsg);
 
-          throw MakeStringException(0, "%s", sMsg.str());
+          throw MakeStringExceptionDirect(0, sMsg.str());
         }
         else
         {
           StringBuffer sMsg;
           sMsg.append("Error unlocking environment. ").append(sErrMsg.str());
-          throw MakeStringException(-1, "%s", sMsg.str());
+          throw MakeStringExceptionDirect(-1, sMsg.str());
         }
       }
     }
@@ -1170,6 +1118,9 @@ bool CWsDeployFileInfo::saveSetting(IEspContext &context, IEspSaveSettingRequest
                   pBuildSet->addProp(XML_ATTR_SCHEMA, "directories.xsd");
                   pBuildSet->addProp(XML_ATTR_PROCESS_NAME, "Directories");
                 }
+                else
+                    throwUnexpected();
+
                 const char* buildSetName = pBuildSet->queryProp(XML_ATTR_NAME);
                 const char* processName = pBuildSet->queryProp(XML_ATTR_PROCESS_NAME);
 
@@ -1463,93 +1414,6 @@ bool CWsDeployFileInfo::saveSetting(IEspContext &context, IEspSaveSettingRequest
               StringBuffer sbattr("@");
               sbattr.append(pszAttrName);
               pServer->setProp(sbattr.str(), pszNewValue);
-            }
-          }
-        }
-
-        //if dataDirectory for a roxie farm is being changed, also change baseDataDir for roxie
-        if(!strcmp(pszCompType, "Directories") && !strcmp(pszSubType, "Category"))
-        {
-          StringBuffer sbNewValue;
-          bool bdata = strstr(pszSubTypeKey, "[@name='data']") || strstr(pszSubTypeKey, "[@name=\"data\"]");\
-          bool bdata2 = strstr(pszSubTypeKey, "[@name='data2']") || strstr(pszSubTypeKey, "[@name=\"data2\"]");
-          bool bdata3 = strstr(pszSubTypeKey, "[@name='data3']") || strstr(pszSubTypeKey, "[@name=\"data3\"]");
-
-          if (bdata || bdata2 || bdata3)
-          {
-            Owned<IPropertyTreeIterator> iterRoxies = pEnvSoftware->getElements("RoxieCluster");
-            ForEach (*iterRoxies)
-            {
-              IPropertyTree* pRoxie = &iterRoxies->query();
-
-              if (bdata)
-              {
-                getCommonDir(pEnvRoot, "data", "roxie", pRoxie->queryProp(XML_ATTR_NAME), sbNewValue.clear());
-                pRoxie->setProp("@baseDataDir", sbNewValue.str());
-
-                //change all farms
-                Owned<IPropertyTreeIterator> iterFarms = pRoxie->getElements(XML_TAG_ROXIE_FARM);
-                ForEach (*iterFarms)
-                {
-                  IPropertyTree* pTmpComp = &iterFarms->query();
-                  if (strcmp(pTmpComp->queryProp(XML_ATTR_DATADIRECTORY), sbNewValue.str()))
-                    pTmpComp->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                }
-
-                //change all legacy Roxie servers
-                Owned<IPropertyTreeIterator> iterRoxieServers = pRoxie->getElements(XML_TAG_ROXIE_SERVER);
-
-                ForEach (*iterRoxieServers)
-                {
-                  IPropertyTree* pTmpComp = &iterRoxieServers->query();
-                  if (strcmp(pTmpComp->queryProp(XML_ATTR_DATADIRECTORY), sbNewValue.str()))
-                    pTmpComp->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                }
-
-                //also change roxie slave primary data directory for all RoxieSlave and RoxieSlaveProcess
-                Owned<IPropertyTreeIterator> iterSlvs = pRoxie->getElements(XML_TAG_ROXIE_ONLY_SLAVE);
-
-                ForEach (*iterSlvs)
-                {
-                  IPropertyTree* pTmpComp = &iterSlvs->query();
-                  const char* pRoxieComputer = pTmpComp->queryProp(XML_ATTR_COMPUTER);
-                  IPropertyTree* pChannel = pTmpComp->queryPropTree(XML_TAG_ROXIE_CHANNEL"[1]");
-                  if (pChannel)
-                  {
-                    pChannel->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                    const char* number = pChannel->queryProp("@number");
-                    xpath.clear().appendf(XML_TAG_ROXIE_SLAVE"[@channel='%s'][@computer='%s']", number, pRoxieComputer);
-                    
-                    IPropertyTree* pSlvProc = pRoxie->queryPropTree(xpath.str());
-                    if (pSlvProc)
-                      pSlvProc->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                  }
-                }
-              }
-              else if (bdata2 || bdata3)
-              {
-                getCommonDir(pEnvRoot, bdata2 ? "data2" : "data3" , "roxie", pRoxie->queryProp(XML_ATTR_NAME), sbNewValue.clear());
-                Owned<IPropertyTreeIterator> iterSlvs = pRoxie->getElements(XML_TAG_ROXIE_ONLY_SLAVE);
-                StringBuffer sb(XML_TAG_ROXIE_CHANNEL);
-                sb.appendf("%s", bdata2?"[2]":"[3]");
-
-                ForEach (*iterSlvs)
-                {
-                  IPropertyTree* pTmpComp = &iterSlvs->query();
-                  const char* pRoxieComputer = pTmpComp->queryProp(XML_ATTR_COMPUTER);
-                  IPropertyTree* pChannel = pTmpComp->queryPropTree(sb.str());
-                  if (pChannel)
-                  {
-                    pChannel->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                    const char* number = pChannel->queryProp("@number");
-                    xpath.clear().appendf(XML_TAG_ROXIE_SLAVE"[@channel='%s'][@computer='%s']", number, pRoxieComputer);
-                    
-                    IPropertyTree* pSlvProc = pRoxie->queryPropTree(xpath.str());
-                    if (pSlvProc)
-                      pSlvProc->setProp(XML_ATTR_DATADIRECTORY, sbNewValue.str());
-                  }
-                }
-              }
             }
           }
         }
@@ -3073,10 +2937,13 @@ bool CWsDeployFileInfo::displaySettings(IEspContext &context, IEspDisplaySetting
       const char* buildSetName = pBuildSet->queryProp(XML_ATTR_NAME);
       const char* processName = pBuildSet->queryProp(XML_ATTR_PROCESS_NAME);
 
-      if ( m_pService->m_configHelper.isInBuildSet(pszCompType,buildSetName) == false )
+      if ( CConfigHelper::getInstance()->isInBuildSet(pszCompType,buildSetName) == false )
       {
         throw MakeStringException(-1, "Component '%s' named '%s' not in build set. Component may be incompatible with the current version.", pszCompType, pszCompName);
       }
+
+      StringArray sNewCompArray;
+      CConfigHelper::getInstance()->getNewComponentListFromBuildSet(pEnvRoot, sNewCompArray);
 
       StringBuffer buildSetPath;
       Owned<IPropertyTree> pSchema = loadSchema(pEnvRoot->queryPropTree("./Programs/Build[1]"), pBuildSet, buildSetPath, m_Environment);
@@ -3344,6 +3211,9 @@ bool CWsDeployFileInfo::displaySettings(IEspContext &context, IEspDisplaySetting
                   {
                     xpath.clear().appendf("Hardware/Computer/[@name='%s']", pszComputer);
                     IPropertyTree* pComputer= pEnvRoot->queryPropTree(xpath.str());
+
+                    if (pComputer == NULL)
+                      break;
                     const char* pszNetAddr = pComputer->queryProp(XML_ATTR_NETADDRESS);
                     if (pszNetAddr)
                       pSlaveNode->addProp(XML_ATTR_NETADDRESS, pszNetAddr);
@@ -3367,22 +3237,15 @@ bool CWsDeployFileInfo::displaySettings(IEspContext &context, IEspDisplaySetting
 
         if (!strcmp(pszCompType, "RoxieCluster"))
         {
-          xpath.clear().append("RoxieFarmProcess/RoxieServerProcess");
+          xpath.clear().append(XML_TAG_ROXIE_SERVER);
           Owned<IPropertyTreeIterator> iterRoxieServers = pSrcTree->getElements(xpath.str());
 
           ForEach (*iterRoxieServers )
           {
             IPropertyTree* pRoxieServer = &iterRoxieServers->query();
-            const char* pszComputer = pRoxieServer->queryProp(XML_ATTR_COMPUTER);
-
-            if (pszComputer)
-            {
-              xpath.clear().appendf("Hardware/Computer/[@name='%s']", pszComputer);
-              IPropertyTree* pComputer= pEnvRoot->queryPropTree(xpath.str());
-              const char* pszNetAddr = pComputer->queryProp(XML_ATTR_NETADDRESS);
+             const char* pszNetAddr = pRoxieServer->queryProp(XML_ATTR_NETADDRESS);
               if (pszNetAddr)
                 pRoxieServer->addProp(XML_ATTR_NETADDRESS, pszNetAddr);
-            }
           }
 
           xpath.clear().append(XML_TAG_ROXIE_ONLY_SLAVE);
@@ -3732,10 +3595,10 @@ bool CWsDeployFileInfo::getDeployableComps(IEspContext &context, IEspGetDeployab
             for (UINT i=0; i<sizeof(instanceNodeNames) / sizeof(instanceNodeNames[0]); i++)
               if (!strcmp(nodeName, instanceNodeNames[i]))
               {
-                if (*nodeName != 'R')// || //neither RoxieServerProcess nor RoxieSlaveProcess
+                if (*nodeName != 'R')// || // neither RoxieServerProcess nor RoxieSlaveProcess
                 {
                   IPropertyTree* pInstanceNode = pCompNode->addPropTree(XML_TAG_INSTANCES, createPTree());
-                  const char* directory = pNode->queryProp(*nodeName == 'R' ? XML_ATTR_DATADIRECTORY : XML_ATTR_DIRECTORY);
+                  const char* directory = pNode->queryProp(*nodeName == 'R' ? XML_ATTR_LEVEL : XML_ATTR_DIRECTORY);
                   if (directory && *directory)
                     pInstanceNode->addProp(XML_ATTR_BUILD, directory);
 
@@ -3991,7 +3854,7 @@ bool CWsDeployFileInfo::getBuildServerDirs(IEspContext &context, IEspGetBuildSer
   else 
   {
     Owned<IFile> inFiles = NULL;
-    IPropertyTree* pParentNode = createPTree("BuildServerComps");
+    Owned<IPropertyTree> pParentNode = createPTree("BuildServerComps");
 
     if (!strcmp(cmd, "Release"))
       sourceDir.append(PATHSEPCHAR).append("release");
@@ -4188,22 +4051,27 @@ bool CWsDeployFileInfo::handleComponent(IEspContext &context, IEspHandleComponen
 
       StringBuffer xpath;
       xpath.appendf("./Programs/Build/BuildSet[@name=\"%s\"]", buildSet);
-      Owned<IPropertyTreeIterator> buildSetIter = pEnvRoot->getElements(xpath.str());
+      Owned<IPropertyTreeIterator> buildSetIter = CConfigHelper::getInstance()->getBuildSetTree()->getElements(xpath.str());
       buildSetIter->first();
       IPropertyTree* pBuildSet = &buildSetIter->query();
       const char* buildSetName = pBuildSet->queryProp(XML_ATTR_NAME);
       const char* processName = pBuildSet->queryProp(XML_ATTR_PROCESS_NAME);
 
       StringBuffer buildSetPath;
-      Owned<IPropertyTree> pSchema = loadSchema(pEnvRoot->queryPropTree("./Programs/Build[1]"), pBuildSet, buildSetPath, m_Environment);
+      Owned<IPropertyTree> pSchema = loadSchema(CConfigHelper::getInstance()->getBuildSetTree()->queryPropTree("./Programs/Build[1]"), pBuildSet, buildSetPath, m_Environment);
       xpath.clear().appendf("./Software/%s[@name='%s']", processName, buildSetName);
-      IPropertyTree* pCompTree = generateTreeFromXsd(pEnvRoot, pSchema, processName, buildSetName, m_pService->getCfg(), m_pService->getName(), false);
+      IPropertyTree* pCompTree = generateTreeFromXsd(CConfigHelper::getInstance()->getBuildSetTree(), pSchema, processName, buildSetName, m_pService->getCfg(), m_pService->getName(), false);
+
+      if (processName != NULL && strcmp(processName, XML_TAG_ROXIECLUSTER) == 0 && pCompTree->queryPropTree(XML_TAG_ROXIE_SERVER) != NULL)
+        pCompTree->removeTree(pCompTree->queryPropTree(XML_TAG_ROXIE_SERVER));
+
       IPropertyTree* pInstTree = pCompTree->queryPropTree(XML_TAG_INSTANCE);
 
       if (pInstTree)
         pCompTree->removeTree(pInstTree);
 
       addComponentToEnv(pEnvRoot, buildSet, sbNewName, pCompTree);
+      CConfigHelper::getInstance()->addNewComponentsFromBuildSetToEnv(pEnvRoot);
     }
 
     resp.setCompName(sbNewName.str());
@@ -4416,7 +4284,7 @@ bool CWsDeployFileInfo::handleHardwareCopy(IPropertyTree *pComponents, IProperty
 
       errMsg.setCharAt(errMsg.length()-2 , ']');
 
-      throw MakeStringException(-1, "%s", errMsg.str());
+      throw MakeStringExceptionDirect(-1, errMsg.str());
     }
   }
   else
@@ -4433,12 +4301,10 @@ bool CWsDeployFileInfo::handleComponentCopy(IPropertyTree *pComponents, IPropert
   bool bError = false;
   StringBuffer errMsg;
 
-  char targetName[255] = "";
   iterComp->first();
-  strncpy(targetName, iterComp->query().queryProp("@target"), 255);  //get the copy target configuration file name
 
   StringBuffer filePath;
-  CWsDeployFileInfo::setFilePath(filePath, targetName);
+  CWsDeployFileInfo::setFilePath(filePath, iterComp->query().queryProp("@target"));
 
   Owned<CWsDeployFileInfo> fi = new CWsDeployFileInfo(m_pService, filePath, false);
 
@@ -5034,6 +4900,7 @@ bool CWsDeployFileInfo::handleTopology(IEspContext &context, IEspHandleTopologyR
   pTopParams->loadProps(decodedParams.str());
 
   StringBuffer buf("Software/Topology");
+  StringBuffer subPath;
 
   for (int i = 3; i >= 0; i--)
   {
@@ -5065,7 +4932,10 @@ bool CWsDeployFileInfo::handleTopology(IEspContext &context, IEspHandleTopologyR
         buf.append("/").append(sbCl);
       }
       else if (strstr(sbName, XML_TAG_THORCLUSTER) == sbName)
+      {
+        subPath.set(buf);
         buf.append("/ThorCluster");
+      }
       else if (strstr(sbName, XML_TAG_ROXIECLUSTER) == sbName)
         buf.append("/RoxieCluster");
       else if (buf.str()[buf.length() - 1] != ']')
@@ -5098,9 +4968,15 @@ bool CWsDeployFileInfo::handleTopology(IEspContext &context, IEspHandleTopologyR
       !strcmp(sbNewType.str(), XML_TAG_ECLSERVERPROCESS) ||
       !strcmp(sbNewType.str(), XML_TAG_ECLAGENTPROCESS) ||
       !strcmp(sbNewType.str(), XML_TAG_ECLSCHEDULERPROCESS) ||
-      !strcmp(sbNewType.str(), XML_TAG_THORCLUSTER) ||
       !strcmp(sbNewType.str(), XML_TAG_ROXIECLUSTER))
       pNode->addProp(XML_ATTR_PROCESS, "");
+    else if (!strcmp(sbNewType.str(), XML_TAG_THORCLUSTER))
+    {
+      StringBuffer strName("thor");
+      strName.set(getUniqueName2(pEnvRoot->queryPropTree(buf.str()), strName, "ThorCluster", XML_ATTR_PROCESS));
+
+      pNode->addProp(XML_ATTR_PROCESS, strName.str());
+    }
     else if (!strcmp(sbNewType.str(), XML_TAG_CLUSTER))
     {
       pNode->addProp(XML_ATTR_NAME, "");
@@ -5115,22 +4991,40 @@ bool CWsDeployFileInfo::handleTopology(IEspContext &context, IEspHandleTopologyR
   }
   else if (!strcmp(operation, "Delete"))
   {
-    String sParent(buf.str());
-    StringBuffer sbParent(XML_TAG_SOFTWARE"/"XML_TAG_TOPOLOGY);
-    int idx = sParent.lastIndexOf('/');
-
-    if (idx > 0)
+    if (!strcmp(compType, XML_TAG_THORCLUSTER))
     {
-      String* tmpstr = sParent.substring(0, idx);
-      sbParent.clear().append(*tmpstr);
-      delete tmpstr;
-    }
+        StringBuffer xpath("./"XML_TAG_THORCLUSTER);
+        xpath.appendf("[%s=\"%s\"]", XML_ATTR_PROCESS, name);
 
-    IPropertyTree* pTopology = pEnvRoot->queryPropTree(sbParent);
-    IPropertyTree* pDel = pEnvRoot->queryPropTree(buf.str());
-    
-    if (pTopology && pDel)
-      pTopology->removeTree(pDel);
+        IPropertyTree *pParent = pEnvRoot->queryPropTree(subPath.str());
+
+        if (pParent)
+        {
+            IPropertyTree* pDel = pParent->queryPropTree(xpath.str());
+
+            if (pDel)
+              pParent->removeTree(pDel);
+        }
+    }
+    else
+    {
+        String sParent(buf.str());
+        StringBuffer sbParent(XML_TAG_SOFTWARE"/"XML_TAG_TOPOLOGY);
+        int idx = sParent.lastIndexOf('/');
+
+        if (idx > 0)
+        {
+          String* tmpstr = sParent.substring(0, idx);
+          sbParent.clear().append(*tmpstr);
+          delete tmpstr;
+        }
+
+        IPropertyTree* pTopology = pEnvRoot->queryPropTree(sbParent);
+        IPropertyTree* pDel = pEnvRoot->queryPropTree(buf.str());
+
+        if (pTopology && pDel)
+          pTopology->removeTree(pDel);
+    }
     resp.setStatus("true");
   }
 
@@ -6005,7 +5899,7 @@ void CWsDeployFileInfo::saveEnvironment(IEspContext* pContext, IConstWsDeployReq
       else
         sMsg.append(":\n\n").append(sErrMsg);
 
-      throw MakeStringException(0, "%s", sMsg.str());
+      throw MakeStringExceptionDirect(0, sMsg.str());
     }
   }
 
@@ -6377,11 +6271,11 @@ void CWsDeployFileInfo::initFileInfo(bool createOrOverwrite, bool bClearEnv)
     StringBuffer s("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Environment></Environment>");
     Owned<IPropertyTree> pNewTree = createPTreeFromXMLString(s);
 
-    if ( strlen(m_pService->m_configHelper.getBuildSetFilePath()) > 0 )
+    if ( strlen(m_pService->m_pConfigHelper->getBuildSetFilePath()) > 0 )
     {
         try
         {
-          Owned<IPropertyTree> pDefBldSet = createPTreeFromXMLFile( m_pService->m_configHelper.getBuildSetFilePath() );
+          Owned<IPropertyTree> pDefBldSet = m_pService->m_pConfigHelper->getBuildSetTree(); //createPTreeFromXMLFile( m_pService->m_pConfigHelper->getBuildSetFilePath() );
           pNewTree->addPropTree(XML_TAG_PROGRAMS, createPTreeFromIPT(pDefBldSet->queryPropTree("./Programs")));
           pNewTree->addPropTree(XML_TAG_SOFTWARE, createPTreeFromIPT(pDefBldSet->queryPropTree("./Software")));
         }

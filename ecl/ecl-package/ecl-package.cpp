@@ -49,7 +49,7 @@ IClientWsPackageProcess *getWsPackageSoapService(const char *server, const char 
 class EclCmdPackageActivate : public EclCmdCommon
 {
 public:
-    EclCmdPackageActivate()
+    EclCmdPackageActivate() : optGlobalScope(false)
     {
     }
     virtual bool parseCommandLineOptions(ArgvIterator &iter)
@@ -76,6 +76,8 @@ public:
                 }
                 continue;
             }
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
+                continue;
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
         }
@@ -109,6 +111,7 @@ public:
         request->setTarget(optTarget);
         request->setPackageMap(optPackageMap);
         request->setProcess(optProcess);
+        request->setGlobalScope(optGlobalScope);
 
         Owned<IClientActivatePackageResponse> resp = packageProcessClient->ActivatePackage(request);
         if (resp->getExceptions().ordinality())
@@ -125,8 +128,9 @@ public:
                     "\n"
                     "ecl packagemap activate <target> <packagemap>\n"
                     " Options:\n"
-                    "   <target>               name of target containing package map to activate\n"
-                    "   <packagemap>           packagemap to activate\n",
+                    "   <target>               Name of target containing package map to activate\n"
+                    "   <packagemap>           Packagemap to activate\n"
+                    "   --global-scope         The specified packagemap can be shared across multiple targets\n",
                     stdout);
         EclCmdCommon::usage();
     }
@@ -135,12 +139,13 @@ private:
     StringAttr optTarget;
     StringAttr optPackageMap;
     StringAttr optProcess;
+    bool optGlobalScope;
 };
 
 class EclCmdPackageDeActivate : public EclCmdCommon
 {
 public:
-    EclCmdPackageDeActivate()
+    EclCmdPackageDeActivate() : optGlobalScope(false)
     {
     }
     virtual bool parseCommandLineOptions(ArgvIterator &iter)
@@ -167,6 +172,8 @@ public:
                 }
                 continue;
             }
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
+                continue;
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
         }
@@ -200,6 +207,7 @@ public:
         request->setTarget(optTarget);
         request->setPackageMap(optPackageMap);
         request->setProcess(optProcess);
+        request->setGlobalScope(optGlobalScope);
 
         Owned<IClientDeActivatePackageResponse> resp = packageProcessClient->DeActivatePackage(request);
         if (resp->getExceptions().ordinality())
@@ -215,8 +223,9 @@ public:
                     "\n"
                     "ecl packagemap deactivate <target> <packagemap>\n"
                     " Options:\n"
-                    "   <target>               name of target containing package map to activate\n"
-                    "   <packagemap>           packagemap to activate\n",
+                    "   <target>               Name of target containing package map to activate\n"
+                    "   <packagemap>           Packagemap to activate\n"
+                    "   --global-scope         The specified packagemap can be shared across multiple targets\n",
                     stdout);
         EclCmdCommon::usage();
     }
@@ -225,6 +234,7 @@ private:
     StringAttr optTarget;
     StringAttr optPackageMap;
     StringAttr optProcess;
+    bool optGlobalScope;
 };
 
 class EclCmdPackageList : public EclCmdCommon
@@ -304,7 +314,7 @@ public:
                     "\n"
                     "ecl packagemap list <target> \n"
                     " Options:\n"
-                    "   <target>               name of target containing package map to use when retrieve list of package maps\n",
+                    "   <target>               Name of target containing package map to use when retrieving list of package maps\n",
                     stdout);
         EclCmdCommon::usage();
     }
@@ -374,7 +384,7 @@ public:
                     "\n"
                     "ecl packagemap info <target> \n"
                     " Options:\n"
-                    "   <target>               name of the target to use when retrieving active package map information\n",
+                    "   <target>               Name of the target to use when retrieving active package map information\n",
                     stdout);
         EclCmdCommon::usage();
     }
@@ -413,6 +423,8 @@ public:
                 }
                 continue;
             }
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
+                continue;
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
         }
@@ -451,6 +463,7 @@ public:
         request->setTarget(optTarget);
         request->setPackageMap(optPackageMap);
         request->setProcess(optProcess);
+        request->setGlobalScope(optGlobalScope);
 
         Owned<IClientDeletePackageResponse> resp = packageProcessClient->DeletePackage(request);
         if (resp->getExceptions().ordinality())
@@ -469,8 +482,9 @@ public:
                     "\n"
                     "ecl packagemap delete <target> <packagemap>\n"
                     " Options:\n"
-                    "   <target>               name of the target to use \n"
-                    "   <packagemap>           name of the package map to delete\n",
+                    "   <target>               Name of the target to use \n"
+                    "   <packagemap>           Name of the package map to delete\n"
+                    "   --global-scope         The specified packagemap is sharable across multiple targets\n",
                     stdout);
         EclCmdCommon::usage();
     }
@@ -478,12 +492,13 @@ private:
     StringAttr optPackageMap;
     StringAttr optTarget;
     StringAttr optProcess;
+    bool optGlobalScope;
 };
 
 class EclCmdPackageAdd : public EclCmdCommon
 {
 public:
-    EclCmdPackageAdd() : optActivate(false), optOverWrite(false)
+    EclCmdPackageAdd() : optActivate(false), optOverWrite(false), optGlobalScope(false), optAllowForeign(false)
     {
     }
     virtual bool parseCommandLineOptions(ArgvIterator &iter)
@@ -514,9 +529,15 @@ public:
                 continue;
             if (iter.matchOption(optDaliIP, ECLOPT_DALIIP))
                 continue;
+            if (iter.matchOption(optSourceProcess, ECLOPT_SOURCE_PROCESS))
+                continue;
             if (iter.matchFlag(optActivate, ECLOPT_ACTIVATE)||iter.matchFlag(optActivate, ECLOPT_ACTIVATE_S))
                 continue;
             if (iter.matchFlag(optOverWrite, ECLOPT_OVERWRITE)||iter.matchFlag(optOverWrite, ECLOPT_OVERWRITE_S))
+                continue;
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
+                continue;
+            if (iter.matchFlag(optAllowForeign, ECLOPT_ALLOW_FOREIGN))
                 continue;
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
@@ -571,10 +592,22 @@ public:
         request->setProcess(optProcess);
         request->setDaliIp(optDaliIP);
         request->setOverWrite(optOverWrite);
+        request->setGlobalScope(optGlobalScope);
+        request->setSourceProcess(optSourceProcess);
+        request->setAllowForeignFiles(optAllowForeign);
 
         Owned<IClientAddPackageResponse> resp = packageProcessClient->AddPackage(request);
         if (resp->getExceptions().ordinality())
             outputMultiExceptions(resp->getExceptions());
+
+        StringArray &notFound = resp->getFilesNotFound();
+        if (notFound.length())
+        {
+            fputs("\nFiles defined in package but not found in DFS:\n", stderr);
+            ForEachItemIn(i, notFound)
+                fprintf(stderr, "  %s\n", notFound.item(i));
+            fputs("\n", stderr);
+        }
 
         return 0;
     }
@@ -587,32 +620,37 @@ public:
                     "\n"
                     "ecl packagemap add [options] <target> <filename>\n"
                     " Options:\n"
-                    "   -O, --overwrite             overwrite existing information\n"
-                    "   -A, --activate              activate the package information\n"
-                    "   --daliip=<ip>               ip of the remote dali to use for logical file lookups\n"
-                   "   --pmid                       id of package map - defaults to filename if not specified."
-// NOT-YET          "  --packageprocessname         if not set use this package process name for all clusters"
-                    "   <target>                    name of target to use when adding package map information\n"
-                    "   <filename>                  name of file containing package map information\n",
+                    "   -O, --overwrite             Overwrite existing information\n"
+                    "   -A, --activate              Activate the package information\n"
+                    "   --daliip=<ip>               IP of the remote dali to use for logical file lookups\n"
+                    "   --pmid                      Identifier of package map - defaults to filename if not specified\n"
+                    "   --global-scope              The specified packagemap can be shared across multiple targets\n"
+                    "   --source-process            Process cluster to copy files from\n"
+                    "   --allow-foreign             Do not fail if foreign files are used in packagemap\n"
+                    "   <target>                    Name of target to use when adding package map information\n"
+                    "   <filename>                  Name of file containing package map information\n",
                     stdout);
 
         EclCmdCommon::usage();
     }
 private:
+    StringBuffer pkgInfo;
     StringAttr optFileName;
     StringAttr optTarget;
     StringAttr optProcess;
-    bool optActivate;
-    bool optOverWrite;
-    StringBuffer pkgInfo;
     StringAttr optDaliIP;
     StringAttr optPackageMapId;
+    StringAttr optSourceProcess;
+    bool optActivate;
+    bool optOverWrite;
+    bool optGlobalScope;
+    bool optAllowForeign;
 };
 
 class EclCmdPackageValidate : public EclCmdCommon
 {
 public:
-    EclCmdPackageValidate() : optValidateActive(false)
+    EclCmdPackageValidate() : optValidateActive(false), optCheckDFS(false), optGlobalScope(false)
     {
     }
     virtual bool parseCommandLineOptions(ArgvIterator &iter)
@@ -641,10 +679,18 @@ public:
             }
             if (iter.matchFlag(optValidateActive, ECLOPT_ACTIVE))
                 continue;
+            if (iter.matchFlag(optCheckDFS, ECLOPT_CHECK_DFS))
+                continue;
             if (iter.matchOption(optPMID, ECLOPT_PMID) || iter.matchOption(optPMID, ECLOPT_PMID_S))
                 continue;
-            if (iter.matchOption(optQueryId, ECLOPT_QUERYID))
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
                 continue;
+            StringAttr queryIds;
+            if (iter.matchOption(queryIds, ECLOPT_QUERYID))
+            {
+                optQueryIds.appendList(queryIds.get(), ",");
+                continue;
+            }
             if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
                 return false;
         }
@@ -696,7 +742,9 @@ public:
         request->setActive(optValidateActive);
         request->setPMID(optPMID);
         request->setTarget(optTarget);
-        request->setQueryIdToVerify(optQueryId);
+        request->setQueriesToVerify(optQueryIds);
+        request->setCheckDFS(optCheckDFS);
+        request->setGlobalScope(optGlobalScope);
 
         bool validateMessages = false;
         Owned<IClientValidatePackageResponse> resp = packageProcessClient->ValidatePackage(request);
@@ -740,9 +788,19 @@ public:
         StringArray &unusedFiles = resp->getFiles().getUnmatched();
         if (unusedFiles.ordinality()>0)
         {
+            validateMessages = true;
             fputs("\n   Files without matching package definitions:\n", stderr);
             ForEachItemIn(i, unusedFiles)
                 fprintf(stderr, "      %s\n", unusedFiles.item(i));
+        }
+
+        StringArray &notInDFS = resp->getFiles().getNotInDFS();
+        if (notInDFS.ordinality()>0)
+        {
+            validateMessages = true;
+            fputs("\n   Packagemap SubFiles not found in DFS:\n", stderr);
+            ForEachItemIn(i, notInDFS)
+                fprintf(stderr, "      %s\n", notInDFS.item(i));
         }
 
         if (!validateMessages)
@@ -759,20 +817,157 @@ public:
                     "\n"
                     "ecl packagemap validate <target> <filename>\n"
                     " Options:\n"
-                    "   <target>                    name of target to use when validating package map information\n"
-                    "   <filename>                  name of file containing package map information\n"
-                    "   --active                    validate the active packagemap\n"
-                    "   -pm, --pmid                 id of packagemap to validate\n",
+                    "   <target>                    Name of target to use when validating package map information\n"
+                    "   <filename>                  Name of file containing package map information\n"
+                    "   --active                    Validate the active packagemap\n"
+                    "   --check-dfs                 Verify that subfiles exist in DFS\n"
+                    "   -pm, --pmid                 Identifier of packagemap to validate\n"
+                    "   --queryid                   Query to verify against packagemap, multiple queries can be\n"
+                    "                               specified using a comma separated list, or by using --queryid\n"
+                    "                               more than once. Default is all queries in the target queryset\n"
+                    "   --global-scope              The specified packagemap can be shared across multiple targets\n",
                     stdout);
 
         EclCmdCommon::usage();
     }
 private:
+    StringArray optQueryIds;
     StringAttr optFileName;
     StringAttr optTarget;
     StringAttr optPMID;
-    StringAttr optQueryId;
     bool optValidateActive;
+    bool optCheckDFS;
+    bool optGlobalScope;
+};
+
+class EclCmdPackageQueryFiles : public EclCmdCommon
+{
+public:
+    EclCmdPackageQueryFiles() : optGlobalScope(false)
+    {
+    }
+    virtual bool parseCommandLineOptions(ArgvIterator &iter)
+    {
+        if (iter.done())
+        {
+            usage();
+            return false;
+        }
+
+        for (; !iter.done(); iter.next())
+        {
+            const char *arg = iter.query();
+            if (*arg!='-')
+            {
+                if (optTarget.isEmpty())
+                    optTarget.set(arg);
+                else if (optQueryId.isEmpty())
+                    optQueryId.set(arg);
+                else
+                {
+                    fprintf(stderr, "\nunrecognized argument %s\n", arg);
+                    return false;
+                }
+                continue;
+            }
+            if (iter.matchOption(optPMID, ECLOPT_PMID) || iter.matchOption(optPMID, ECLOPT_PMID_S))
+                continue;
+            if (iter.matchFlag(optGlobalScope, ECLOPT_GLOBAL_SCOPE))
+                continue;
+            if (EclCmdCommon::matchCommandLineOption(iter, true)!=EclCmdOptionMatch)
+                return false;
+        }
+        return true;
+    }
+    virtual bool finalizeOptions(IProperties *globals)
+    {
+        if (!EclCmdCommon::finalizeOptions(globals))
+        {
+            usage();
+            return false;
+        }
+        StringBuffer err;
+        if (optTarget.isEmpty())
+            err.append("\n ... A target cluster must be specified\n\n");
+        if (optQueryId.isEmpty())
+            err.append("\n ... A query must be specified\n\n");
+
+        if (err.length())
+        {
+            fprintf(stdout, "%s", err.str());
+            usage();
+            return false;
+        }
+        return true;
+    }
+    virtual int processCMD()
+    {
+        Owned<IClientWsPackageProcess> packageProcessClient = getWsPackageSoapService(optServer, optPort, optUsername, optPassword);
+        Owned<IClientGetQueryFileMappingRequest> request = packageProcessClient->createGetQueryFileMappingRequest();
+
+        request->setTarget(optTarget);
+        request->setQueryName(optQueryId);
+        request->setPMID(optPMID);
+        request->setGlobalScope(optGlobalScope);
+
+        Owned<IClientGetQueryFileMappingResponse> resp = packageProcessClient->GetQueryFileMapping(request);
+        if (resp->getExceptions().ordinality()>0)
+            outputMultiExceptions(resp->getExceptions());
+
+        StringArray &unmappedFiles = resp->getUnmappedFiles();
+        if (!unmappedFiles.ordinality())
+            fputs("No undefined files found.\n", stderr);
+        else
+        {
+            fputs("Files not defined in PackageMap:\n", stderr);
+            ForEachItemIn(i, unmappedFiles)
+                fprintf(stderr, "  %s\n", unmappedFiles.item(i));
+        }
+        IArrayOf<IConstSuperFile> &superFiles = resp->getSuperFiles();
+        if (!superFiles.ordinality())
+            fputs("\nNo matching SuperFiles found in PackageMap.\n", stderr);
+        else
+        {
+            fputs("\nSuperFiles defined in PackageMap:\n", stderr);
+            ForEachItemIn(i, superFiles)
+            {
+                IConstSuperFile &super = superFiles.item(i);
+                fprintf(stderr, "  %s\n", super.getName());
+                StringArray &subfiles = super.getSubFiles();
+                if (subfiles.ordinality()>0)
+                {
+                    ForEachItemIn(sbi, subfiles)
+                        fprintf(stderr, "   > %s\n", subfiles.item(sbi));
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    virtual void usage()
+    {
+        fputs("\nUsage:\n"
+                    "\n"
+                    "The 'query-files' command will list the files referenced by a query, showing if/how they\n"
+                    "are mapped as SuperFiles in the active packagemap.  --pmid option allows an inactive\n"
+                    "packagemap to be used instead.\n"
+                    "\n"
+                    "ecl packagemap query-files <target> <queryid>\n"
+                    " Options:\n"
+                    "   <target>                    Name of target to use when validating package map information\n"
+                    "   <queryid>                   Name of query to get file mappings for\n"
+                    "   -pm, --pmid                 Optional id of packagemap to validate, defaults to active\n"
+                    "   --global-scope              The specified packagemap can be shared across multiple targets\n",
+                    stdout);
+
+        EclCmdCommon::usage();
+    }
+private:
+    StringAttr optTarget;
+    StringAttr optQueryId;
+    StringAttr optPMID;
+    bool optGlobalScope;
 };
 
 IEclCommand *createPackageSubCommand(const char *cmdname)
@@ -793,6 +988,8 @@ IEclCommand *createPackageSubCommand(const char *cmdname)
         return new EclCmdPackageList();
     if (strieq(cmdname, "validate"))
         return new EclCmdPackageValidate();
+    if (strieq(cmdname, "query-files"))
+        return new EclCmdPackageQueryFiles();
 return NULL;
 }
 
@@ -811,13 +1008,14 @@ public:
         fprintf(stdout,"\nUsage:\n\n"
             "ecl packagemap <command> [command options]\n\n"
             "   packagemap Commands:\n"
-            "      add          add a package map to the environment\n"
-            "      delete       delete a package map\n"
-            "      activate     activate a package map\n"
-            "      deactivate   deactivate a package map (package map will not get loaded)\n"
-            "      list         list loaded package map names\n"
-            "      info         return active package map information\n"
-            "      validate     validate information in the package map file \n"
+            "      add          Add a package map to the environment\n"
+            "      delete       Delete a package map\n"
+            "      activate     Activate a package map\n"
+            "      deactivate   Deactivate a package map (package map will not get loaded)\n"
+            "      list         List loaded package map names\n"
+            "      info         Return active package map information\n"
+            "      validate     Validate information in the package map file \n"
+            "      query-files  Show files used by a query and if/how they are mapped\n"
         );
     }
 };

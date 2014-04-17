@@ -17,6 +17,10 @@
 
 #include "platform.h"
 
+#ifdef _WIN32
+#define S_ISDIR(m) (((m)&_S_IFDIR)!=0)
+#endif
+
 #include "jlib.hpp"
 #include "jio.hpp"
 
@@ -35,7 +39,11 @@
  * Installs hooks into createIFile, spotting filenames of the form /my/directory/myfile.zip/{password}/path/within/archive
  */
 
-#define ARCHIVE_SIGNATURE "[.]{zip|tar|tar[.]gz|tgz}{$|"PATHSEPSTR"}"
+#ifdef _WIN32
+#define ARCHIVE_SIGNATURE "[.]{zip|tar|tar[.]gz|tgz}{$|/|\\\\}"
+#else
+#define ARCHIVE_SIGNATURE "[.]{zip|tar|tar[.]gz|tgz}{$|/}"
+#endif
 
 static RegExpr *signature;
 static SpinLock *lock;
@@ -110,6 +118,9 @@ public:
         mode = archive_entry_filetype(entry);
         filesize = archive_entry_size(entry);
         path.set(archive_entry_pathname(entry));
+        accessTime = archive_entry_atime(entry);
+        createTime = archive_entry_ctime(entry);
+        modifiedTime = archive_entry_mtime(entry);
     }
     bool isDir() const
     {
@@ -123,10 +134,28 @@ public:
     {
         return path.get();
     }
+    CDateTime &getAccessTime(CDateTime &t)
+    {
+        t.set(accessTime);
+        return t;
+    }
+    CDateTime &getCreateTime(CDateTime &t)
+    {
+        t.set(createTime);
+        return t;
+    }
+    CDateTime &getModifiedTime(CDateTime &t)
+    {
+        t.set(modifiedTime);
+        return t;
+    }
 private:
     unsigned mode;
     offset_t filesize;
     StringAttr path;
+    time_t accessTime;
+    time_t createTime;
+    time_t modifiedTime;
 };
 
 // IFileIO implementation for reading out of libarchive-supported archives
@@ -149,8 +178,14 @@ public:
         curBuffSize = 0;
         curBuff = NULL;
         archive = archive_read_new();
+#ifdef _WIN32
+        archive_read_support_format_zip(archive);
+        archive_read_support_format_tar(archive);
+        archive_read_support_compression_bzip2(archive);
+#else
         archive_read_support_format_all(archive);
         archive_read_support_compression_all(archive);
+#endif
         int retcode = archive_read_open_filename(archive, container, 10240);
         if (retcode == ARCHIVE_OK)
         {
@@ -240,6 +275,9 @@ protected:
 #if ARCHIVE_VERSION_NUMBER < 3000000
     off_t curPos;
 #else
+#if defined(_WIN32)
+#define	int64_t	__int64
+#endif
     int64_t curPos;
 #endif
     offset_t lastPos;
@@ -267,7 +305,18 @@ public:
     }
     virtual bool getTime(CDateTime * createTime, CDateTime * modifiedTime, CDateTime * accessedTime)
     {
-        UNIMPLEMENTED; // MORE - maybe could implement if required
+        if (entry)
+        {
+            if (accessedTime)
+                entry->getAccessTime(*accessedTime);
+            if (createTime)
+                entry->getCreateTime(*createTime);
+            if (modifiedTime)
+                entry->getModifiedTime(*modifiedTime);
+            return true;
+        }
+        else
+            return false;
     }
     virtual fileBool isDirectory()
     {
@@ -287,7 +336,7 @@ public:
             return notFound;
         return foundYes;
     }
-    virtual IFileIO * open(IFOmode mode)
+    virtual IFileIO * open(IFOmode mode, IFEflags extraFlags=IFEnone)
     {
         assertex(mode==IFOread && entry != NULL);
         return new ArchiveFileIO(fullName.str());
@@ -296,7 +345,7 @@ public:
     {
         UNIMPLEMENTED;
     }
-    virtual IFileIO * openShared(IFOmode mode, IFSHmode shmode)
+    virtual IFileIO * openShared(IFOmode mode, IFSHmode shmode, IFEflags extraFlags=IFEnone)
     {
         assertex(mode==IFOread && entry != NULL);
         return new ArchiveFileIO(fullName.str());
@@ -352,10 +401,10 @@ public:
                                   unsigned checkinterval=60*1000,
                                   unsigned timeout=(unsigned)-1,
                                   Semaphore *abortsem=NULL)  { UNIMPLEMENTED; }
-    virtual void copySection(const RemoteFilename &dest, offset_t toOfs=(offset_t)-1, offset_t fromOfs=0, offset_t size=(offset_t)-1, ICopyFileProgress *progress=NULL) { UNIMPLEMENTED; }
-    virtual void copyTo(IFile *dest, size32_t buffersize=0x100000, ICopyFileProgress *progress=NULL, bool usetmp=false) { UNIMPLEMENTED; }
+    virtual void copySection(const RemoteFilename &dest, offset_t toOfs=(offset_t)-1, offset_t fromOfs=0, offset_t size=(offset_t)-1, ICopyFileProgress *progress=NULL, CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
+    virtual void copyTo(IFile *dest, size32_t buffersize=DEFAULT_COPY_BLKSIZE, ICopyFileProgress *progress=NULL, bool usetmp=false, CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
     virtual IMemoryMappedFile *openMemoryMapped(offset_t ofs=0, memsize_t len=(memsize_t)-1, bool write=false)  { UNIMPLEMENTED; }
-    virtual void treeCopyTo(IFile *dest,IpSubNet &subnet,IpAddress &resfrom,bool usetmp=false) { UNIMPLEMENTED; }
+    virtual void treeCopyTo(IFile *dest,IpSubNet &subnet,IpAddress &resfrom,bool usetmp=false,CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
 
 
 protected:
@@ -431,8 +480,14 @@ public:
         entries.kill();
         curIndex = 0;
         struct archive *archive = archive_read_new();
+#ifdef _WIN32
+        archive_read_support_format_zip(archive);
+        archive_read_support_format_tar(archive);
+        archive_read_support_compression_bzip2(archive);
+#else
         archive_read_support_format_all(archive);
         archive_read_support_compression_all(archive);
+#endif
         int retcode = archive_read_open_filename(archive, container, 10240);
         if (retcode == ARCHIVE_OK)
         {
@@ -544,11 +599,15 @@ extern ARCHIVEFILE_API void installFileHook()
 
 extern ARCHIVEFILE_API void removeFileHook()
 {
-    SpinBlock b(*lock); // Probably overkill!
-    if (archiveFileHook)
+    if (lock)
     {
-        removeContainedFileHook(archiveFileHook);
-        archiveFileHook = NULL;
+        SpinBlock b(*lock); // Probably overkill!
+        if (archiveFileHook)
+        {
+            removeContainedFileHook(archiveFileHook);
+            delete archiveFileHook;
+            archiveFileHook = NULL;
+        }
     }
 }
 
@@ -569,5 +628,7 @@ MODULE_EXIT()
     }
     delete signature;
     delete lock;
+    lock = NULL;
+    signature = NULL;
     ::Release(archiveFileHook);
 }

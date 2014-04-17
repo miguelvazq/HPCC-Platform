@@ -66,15 +66,10 @@ public:
         ensureNavLink(*folder, "Spray XML", "/FileSpray/SprayVariableInput?submethod=xml", "Spray an XML File", NULL, NULL, 10);
         ensureNavLink(*folder, "Remote Copy", "/FileSpray/CopyInput", "Copy a Logical File from one environment to another", NULL, NULL, 11);
         ensureNavLink(*folder, "XRef", "/WsDFUXRef/DFUXRefList", "View Xref result details or run the Xref utility", NULL, NULL, 12);
-
-        IPropertyTree *folderTP = CEspBinding::ensureNavFolder(data, "Tech Preview", "Technical Preview");
-        CEspBinding::ensureNavLink(*folderTP, "DFU Workunits", "/esp/files/stub.htm?Widget=GetDFUWorkunitsWidget", "DFU Workunits", NULL, NULL, 2);
-        CEspBinding::ensureNavLink(*folderTP, "Logical Files", "/esp/files/stub.htm?Widget=DFUQueryWidget", "Logical Files", NULL, NULL, 3);
-        CEspBinding::ensureNavLink(*folderTP, "Landing Zones", "/esp/files/stub.htm?Widget=LZBrowseWidget", "Landing Zone Files", NULL, NULL, 4);
     }
 
     int onGetInstantQuery(IEspContext &context, CHttpRequest* request, CHttpResponse* response, const char *service, const char *method);
-    int onFinishUpload(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *service, const char *method, StringArray& fileNames, IMultiException *me);
+    int onFinishUpload(IEspContext &ctx, CHttpRequest* request, CHttpResponse* response, const char *service, const char *method, StringArray& fileNames, StringArray& files, IMultiException *me);
 
 private:
     IPropertyTree* createPTreeForXslt(const char* method, const char* dfuwuid);

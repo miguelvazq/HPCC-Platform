@@ -100,7 +100,7 @@ public:
     }
     virtual const IContextLogger &queryContextLogger() const
     {
-        return queryDummyContextLogger();
+        return job.queryContextLogger();
     }
 
     virtual void executeGraph(const char * graphName, bool realThor, size32_t parentExtractSize, const void * parentExtract) { UNIMPLEMENTED; }
@@ -117,6 +117,8 @@ public:
     virtual IConstWUResult *getResultForGet(const char *name, unsigned sequence) { throwUnexpected(); }
     virtual const void * fromXml(IEngineRowAllocator * rowAllocator, size32_t len, const char * utf8, IXmlToRowTransformer * xmlTransformer, bool stripWhitespace);
     virtual IEngineContext *queryEngineContext() { return NULL; }
+    virtual char *getDaliServers();
+    virtual IWorkUnit *updateWorkUnit() const { throwUnexpected(); }
 };
 
 #endif

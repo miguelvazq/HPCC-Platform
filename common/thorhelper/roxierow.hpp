@@ -23,22 +23,15 @@
 #include "eclhelper.hpp"
 
 
-extern THORHELPER_API IEngineRowAllocator * createRoxieRowAllocator(roxiemem::IRowManager & _rowManager, IOutputMetaData * _meta, unsigned _activityId, unsigned _allocatorId, roxiemem::RoxieHeapFlags flags);
-extern THORHELPER_API IEngineRowAllocator * createCrcRoxieRowAllocator(roxiemem::IRowManager & rowManager, IOutputMetaData * meta, unsigned activityId, unsigned allocatorId, roxiemem::RoxieHeapFlags flags);
-
 interface IRowAllocatorMetaActIdCache : extends roxiemem::IRowAllocatorCache
 {
-    virtual bool add(IEngineRowAllocator *allocator, IOutputMetaData *meta, unsigned activityId) = 0;
-    virtual bool remove(IOutputMetaData *meta, unsigned activityId) = 0;
-    virtual IEngineRowAllocator *lookup(IOutputMetaData *meta, unsigned activityId) const = 0;
-    virtual IEngineRowAllocator *ensure(IOutputMetaData * meta, unsigned activityId) = 0;
-    virtual void clear() = 0;
+    virtual IEngineRowAllocator *ensure(IOutputMetaData * meta, unsigned activityId, roxiemem::RoxieHeapFlags flags) = 0;
     virtual unsigned items() const = 0;
 };
 
 interface IRowAllocatorMetaActIdCacheCallback
 {
-    virtual IEngineRowAllocator *createAllocator(IOutputMetaData *meta, unsigned activityId, unsigned cacheId) const = 0;
+    virtual IEngineRowAllocator *createAllocator(IRowAllocatorMetaActIdCache * cache, IOutputMetaData *meta, unsigned activityId, unsigned cacheId, roxiemem::RoxieHeapFlags flags) const = 0;
 };
 
 extern THORHELPER_API IRowAllocatorMetaActIdCache *createRowAllocatorCache(IRowAllocatorMetaActIdCacheCallback *callback);
@@ -66,5 +59,8 @@ public:
         LinkRoxieRow(row);
     }
 };
+
+extern THORHELPER_API IEngineRowAllocator * createRoxieRowAllocator(IRowAllocatorMetaActIdCache * cache, roxiemem::IRowManager & _rowManager, IOutputMetaData * _meta, unsigned _activityId, unsigned _allocatorId, roxiemem::RoxieHeapFlags flags);
+extern THORHELPER_API IEngineRowAllocator * createCrcRoxieRowAllocator(IRowAllocatorMetaActIdCache * cache, roxiemem::IRowManager & rowManager, IOutputMetaData * meta, unsigned activityId, unsigned allocatorId, roxiemem::RoxieHeapFlags flags);
 
 #endif

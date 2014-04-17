@@ -96,6 +96,11 @@ protected:
         return (node) ? node->hasProp(xpath) : false;
     }
 
+    virtual const char *queryId() const
+    {
+        return (node) ? node->queryProp("@id") : NULL;
+    }
+
     virtual bool getSysFieldTranslationEnabled() const {return false;}
     virtual bool getEnableFieldTranslation() const
     {
@@ -144,12 +149,6 @@ public:
         return node;
     }
 
-    virtual IPropertyTree *getQuerySets() const
-    {
-        if (!node)
-            return NULL;
-        return node->getPropTree("QuerySets");
-    }
     virtual bool validate(StringArray &warn, StringArray &err) const;
 };
 
@@ -240,20 +239,27 @@ public:
         return NULL;
     }
 
-    bool hasSuperFile(const char *superFileName) const
+    const char *locateSuperFile(const char *superFileName) const
     {
         if (!superFileName || !*superFileName || !TYPE::node)
-            return false;
+            return NULL;
 
         StringBuffer xpath;
         if (TYPE::hasProp(TYPE::makeSuperFileXPath(xpath, superFileName)))
-            return true;
+            return TYPE::queryId();
         ForEachItemIn(idx, bases)
         {
             if (bases.item(idx).hasProp(xpath))
-                return true;
+                return bases.item(idx).queryId();
         }
 
+        return NULL;
+    }
+
+    bool hasSuperFile(const char *superFileName) const
+    {
+        if (locateSuperFile(superFileName))
+            return true;
         return false;
     }
 
@@ -373,7 +379,43 @@ public:
         load(getPackageMapById(id, true));
     }
 
-    virtual bool validate(const char *queryToCheck, StringArray &warn, StringArray &err, 
+    virtual void gatherFileMappingForQuery(const char *queryname, IPropertyTree *fileInfo) const
+    {
+        Owned<IPropertyTree> query = resolveQueryAlias(querySet, queryname, true);
+        if (!query)
+            throw MakeStringException(PACKAGE_QUERY_NOT_FOUND, "Query %s not found", queryname);
+        Owned<IReferencedFileList> filelist = createReferencedFileList(NULL, NULL, true);
+        Owned<IWorkUnitFactory> wufactory = getWorkUnitFactory(NULL, NULL);
+        Owned<IConstWorkUnit> cw = wufactory->openWorkUnit(query->queryProp("@wuid"), false);
+
+        const IHpccPackage *pkg = matchPackage(query->queryProp("@id"));
+        filelist->addFilesFromQuery(cw, pkg);
+        Owned<IReferencedFileIterator> refFiles = filelist->getFiles();
+        ForEach(*refFiles)
+        {
+            IReferencedFile &rf = refFiles->query();
+            if (!(rf.getFlags() & RefFileInPackage))
+                fileInfo->addProp("File", rf.getLogicalName());
+            else
+            {
+                Owned<ISimpleSuperFileEnquiry> ssfe = pkg->resolveSuperFile(rf.getLogicalName());
+                if (ssfe && ssfe->numSubFiles()>0)
+                {
+                    IPropertyTree *superInfo = fileInfo->addPropTree("SuperFile", createPTree());
+                    superInfo->setProp("@name", rf.getLogicalName());
+                    unsigned count = ssfe->numSubFiles();
+                    while (count--)
+                    {
+                        StringBuffer subfile;
+                        ssfe->getSubFileName(count, subfile);
+                        superInfo->addProp("SubFile", subfile.str());
+                    }
+                }
+            }
+        }
+    }
+
+    virtual bool validate(StringArray &queriesToCheck, StringArray &warn, StringArray &err, 
         StringArray &unmatchedQueries, StringArray &unusedPackages, StringArray &unmatchedFiles) const
     {
         bool isValid = true;
@@ -404,10 +446,26 @@ public:
                     referencedPackages.setValue(baseId, true);
             }
         }
-        StringBuffer xpath("Query");
-        if (queryToCheck && *queryToCheck)
-            xpath.appendf("[@id='%s']", queryToCheck);
-        Owned<IPropertyTreeIterator> queries = qs->getElements(xpath);
+        Owned<IPropertyTree> tempQuerySet=createPTree();
+        Owned<IPropertyTreeIterator> queries;
+        if (queriesToCheck.length())
+        {
+            ForEachItemIn(i, queriesToCheck)
+            {
+                VStringBuffer xpath("Query[@id='%s']", queriesToCheck.item(i));
+                Owned<IPropertyTree> queryEntry = qs->getPropTree(xpath);
+                if (queryEntry)
+                    tempQuerySet->addPropTree("Query", queryEntry.getClear());
+                else
+                {
+                    VStringBuffer msg("Query %s not found in %s queryset", queriesToCheck.item(i), querySet.sget());
+                    err.append(msg);
+                }
+            }
+            queries.setown(tempQuerySet->getElements("Query"));
+        }
+        else
+            queries.setown(qs->getElements("Query"));
         if (!queries->first())
         {
             warn.append("No Queries found");
@@ -420,13 +478,52 @@ public:
             const char *queryid = queries->query().queryProp("@id");
             if (queryid && *queryid)
             {
-                Owned<IReferencedFileList> filelist = createReferencedFileList(NULL, NULL);
+                Owned<IReferencedFileList> filelist = createReferencedFileList(NULL, NULL, true);
                 Owned<IConstWorkUnit> cw = wufactory->openWorkUnit(queries->query().queryProp("@wuid"), false);
+
+                StringArray libnames, unresolvedLibs;
+                gatherLibraryNames(libnames, unresolvedLibs, *wufactory, *cw, qs);
+
+                PointerIArrayOf<IHpccPackage> libraries;
+                ForEachItemIn(libitem, libnames)
+                {
+                    const char *libname = libnames.item(libitem);
+                    const IHpccPackage *libpkg = matchPackage(libname);
+                    if (libpkg)
+                        libraries.append(LINK(const_cast<IHpccPackage*>(libpkg)));
+                    else
+                        unmatchedQueries.append(libname);
+                }
+
                 filelist->addFilesFromQuery(cw, this, queryid);
                 Owned<IReferencedFileIterator> refFiles = filelist->getFiles();
                 ForEach(*refFiles)
                 {
-                    VStringBuffer fullname("%s/%s", queryid, refFiles->query().getLogicalName());
+                    IReferencedFile &rf = refFiles->query();
+                    unsigned flags = rf.getFlags();
+                    if (flags & RefFileInPackage)
+                    {
+                        if (flags & RefFileSuper)
+                        {
+                            const char *pkgid = rf.queryPackageId();
+                            if (!pkgid || !*pkgid)
+                                continue;
+                            ForEachItemIn(libPkgItem, libraries)
+                            {
+                                IHpccPackage *libpkg = libraries.item(libPkgItem);
+                                const char *libpkgid = libpkg->locateSuperFile(rf.getLogicalName());
+                                if (libpkgid && !strieq(libpkgid, pkgid))
+                                {
+                                    VStringBuffer msg("For query %s SuperFile %s defined in package %s redefined for library %s in package %s", 
+                                        queryid, rf.getLogicalName(), pkgid, libpkg->queryId(), libpkgid);
+                                    warn.append(msg.str());
+                                }
+                            }
+                        }
+
+                        continue;
+                    }
+                    VStringBuffer fullname("%s/%s", queryid, rf.getLogicalName());
                     unmatchedFiles.append(fullname);
                 }
 

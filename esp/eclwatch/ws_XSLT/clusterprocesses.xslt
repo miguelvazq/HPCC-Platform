@@ -437,11 +437,11 @@
                         </th>
                      </xsl:for-each>
                      <!--process disk storage next-->
-                     <xsl:for-each select="../../../Columns/Item[text()!='Processes' and text()!='Up Time' and not(contains(text(), 'Memory')) and not(starts-with(text(), 'CPU')) and text()!='State' and text()!='Condition' and text()!='UpTime']">
+                     <xsl:for-each select="../../../Columns/Item[text()!='Processes' and text()!='Up Time' and not(contains(text(), 'Memory')) and not(starts-with(text(), 'CPU')) and text()!='State' and text()!='Condition' and text()!='UpTime' and text()!='Swap']">
                         <th align="center"><xsl:value-of select="."/></th>
                      </xsl:for-each>
-                     <!--process physical and virtual memory next-->      
-                     <xsl:for-each select="../../../Columns/Item[text() = 'Physical Memory' or text()='Virtual Memory']">
+                     <!--process physical memory and swap next-->      
+                     <xsl:for-each select="../../../Columns/Item[text() = 'Physical Memory' or text()='Swap']">
                         <th align="center"><xsl:value-of select="."/></th>
                      </xsl:for-each>
                      <!--process CPU Load next -->      
@@ -630,7 +630,7 @@
      
      <xsl:for-each select="/GetTargetClusterInfoResponse/Columns/Item">
           <xsl:variable name="text" select="text()"/>
-          <xsl:if test="$text!='Processes' and $text!='Up Time' and $text!='State' and $text!='Condition' and $text!='UpTime' and not(contains($text, 'Memory')) and not(starts-with($text, 'CPU'))">
+          <xsl:if test="$text!='Processes' and $text!='Up Time' and $text!='State' and $text!='Condition' and $text!='UpTime' and not(contains($text, 'Memory')) and not(starts-with($text, 'CPU')) and $text!='Swap'">
              <xsl:variable name="storageNode" select="$storageInfo[($OS!=0 and Description=$text) or ($OS=0 and starts-with(Description,$text))]"/>
              <xsl:choose>
                 <xsl:when test="$storageNode">
@@ -648,8 +648,8 @@
           </xsl:if>
       </xsl:for-each>      
              
-      <!--process Physical / Virtual memory next -->      
-      <xsl:for-each select="/GetTargetClusterInfoResponse/Columns/Item[text() = 'Physical Memory' or text()='Virtual Memory']">
+      <!--process Physical memory / Swap next -->      
+      <xsl:for-each select="/GetTargetClusterInfoResponse/Columns/Item[text() = 'Physical Memory' or text()='Swap']">
       <!--save:  and not(starts-with(text(), 'CPU') and contains(substring-after(text(), 'CPU'), 'Load'))-->
          <xsl:variable name="label" select="text()"/>
          <xsl:variable name="storageNode" select="$storageInfo[Description=$label]"/>
@@ -732,17 +732,22 @@
           <xsl:text disable-output-escaping="yes"><![CDATA[ <br /> ]]></xsl:text>
           <xsl:value-of select="$memNode/Total"/> MB Total
         </xsl:attribute>
-         <xsl:if test="$threshold != 0">
-                <xsl:choose>
-                        <xsl:when test="$thresholdType=0 and $memNode/PercentAvail &lt; $threshold">
-                    <xsl:attribute name="bgcolor">FF8800</xsl:attribute>
-                        </xsl:when>
-                        <xsl:when test="$thresholdType=1 and $memNode/Available &lt; $threshold">
-                    <xsl:attribute name="bgcolor">FF8800</xsl:attribute>
-                        </xsl:when>
-                    </xsl:choose>
-         </xsl:if>
-         <xsl:value-of select="$memNode/PercentAvail"/>%
+        <xsl:choose>
+          <xsl:when test="$memNode/Total=0">N/A</xsl:when>
+          <xsl:otherwise>
+            <xsl:if test="$threshold != 0">
+              <xsl:choose>
+                <xsl:when test="$thresholdType=0 and $memNode/PercentAvail &lt; $threshold">
+                  <xsl:attribute name="bgcolor">FF8800</xsl:attribute>
+                </xsl:when>
+                <xsl:when test="$thresholdType=1 and $memNode/Available &lt; $threshold">
+                  <xsl:attribute name="bgcolor">FF8800</xsl:attribute>
+                </xsl:when>
+              </xsl:choose>
+            </xsl:if>
+            <xsl:value-of select="$memNode/PercentAvail"/>%
+          </xsl:otherwise>
+        </xsl:choose>
       </td>            
    </xsl:template>
   

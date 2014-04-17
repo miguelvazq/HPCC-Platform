@@ -105,7 +105,7 @@ void timeQorSDS(bool timeq)
     MemoryBuffer mb;
     Owned<INamedQueueConnection> qconn;
     Owned<IRemoteConnection> sdsconn;
-    IPropertyTree *sdsroot;
+    IPropertyTree *sdsroot = NULL;
     Owned<IQueueChannel> channel;
     CTestSDSSubscription testsdssub;
     SubscriptionId sdssubid=0;
@@ -194,7 +194,7 @@ void timeQorSDS(bool timeq)
             }   
             a /= s;
             if (last10av>0.0) {
-                if (a>last10av+MININC) last10inc='+'; else if (a<last10av-MININC) last10inc='-'; else last100inc=' ';
+                if (a>last10av+MININC) last10inc='+'; else if (a<last10av-MININC) last10inc='-'; else last10inc=' ';
             }
             last10av = a;
             last10max = m;

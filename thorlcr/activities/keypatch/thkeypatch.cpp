@@ -31,6 +31,7 @@ class CKeyPatchMaster : public CMasterActivity
     bool local;
     unsigned width;
     StringArray clusters;
+    Owned<IDistributedFile> originalIndexFile, patchFile;
 
 public:
     CKeyPatchMaster(CMasterGraphElement *info) : CMasterActivity(info)
@@ -39,23 +40,24 @@ public:
         local = false;
         width = 0;
     }
-    ~CKeyPatchMaster()
+    virtual void init()
     {
-    }
-    void init()
-    {
+        CMasterActivity::init();
         helper = (IHThorKeyPatchArg *)queryHelper();
 
         OwnedRoxieString originalName(helper->getOriginalName());
         OwnedRoxieString patchName(helper->getPatchName());
-        Owned<IDistributedFile> originalIndexFile = queryThorFileManager().lookup(container.queryJob(), originalName);
-        Owned<IDistributedFile> patchFile = queryThorFileManager().lookup(container.queryJob(), patchName);
+        originalIndexFile.setown(queryThorFileManager().lookup(container.queryJob(), originalName));
+        patchFile.setown(queryThorFileManager().lookup(container.queryJob(), patchName));
         
         if (originalIndexFile->numParts() != patchFile->numParts())
             throw MakeActivityException(this, TE_KeyPatchIndexSizeMismatch, "Index %s and patch %s differ in width", originalName.get(), patchName.get());
         if (originalIndexFile->querySuperFile() || patchFile->querySuperFile())
             throw MakeActivityException(this, 0, "Patching super files not supported");
         
+        addReadFile(originalIndexFile);
+        addReadFile(patchFile);
+
         width = originalIndexFile->numParts();
 
         originalDesc.setown(originalIndexFile->getFileDescriptor());
@@ -77,7 +79,7 @@ public:
         if (!local)
             newIndexDesc->queryPart(newIndexDesc->numParts()-1)->queryProperties().setProp("@kind", "topLevelKey");
     }
-    void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
+    virtual void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
     {
         if (slave < width) // if false - due to mismatch width fitting - fill in with a blank entry
         {
@@ -106,7 +108,7 @@ public:
         else
             dst.append(false); // no part
     }
-    void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
+    virtual void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
     {
         if (mb.length()) // if 0 implies aborted out from this slave.
         {
@@ -133,7 +135,7 @@ public:
             }
         }
     }
-    void done()
+    virtual void done()
     {
         StringBuffer scopedName;
         OwnedRoxieString outputName(helper->getOutputName());
@@ -147,7 +149,8 @@ public:
 
         IPropertyTree &props = newIndexDesc->queryProperties();
         props.setProp("@kind", "key");
-        setExpiryTime(props, helper->getExpiryDays());
+        if (0 != (helper->getFlags() & KDPexpires))
+            setExpiryTime(props, helper->getExpiryDays());
 
         // Fill in some logical file properties here
         IPropertyTree &originalProps = originalDesc->queryProperties();;
@@ -162,6 +165,7 @@ public:
 
         container.queryTempHandler()->registerFile(outputName, container.queryOwner().queryGraphId(), 0, false, WUFileStandard, &clusters);
         queryThorFileManager().publish(container.queryJob(), outputName, false, *newIndexDesc);
+        CMasterActivity::done();
     }
     void preStart(size32_t parentExtractSz, const byte *parentExtract)
     {

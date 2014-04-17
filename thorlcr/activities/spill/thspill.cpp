@@ -32,8 +32,9 @@ public:
     {
         recordsProcessed = 0;
     }
-    void init()
+    virtual void init()
     {
+        CMasterActivity::init();
         IHThorSpillArg *helper = (IHThorSpillArg *)queryHelper();
         IArrayOf<IGroup> groups;
         OwnedRoxieString fname(helper->getFileName());
@@ -57,22 +58,23 @@ public:
             props.setPropBool("@blockCompressed", true);        
         if (0 != (helper->getFlags() & TDXgrouped))
             fileDesc->queryProperties().setPropBool("@grouped", true);
-
+        props.setProp("@kind", "flat");
         if (container.queryOwner().queryOwner() && (!container.queryOwner().isGlobal())) // I am in a child query
         { // do early, because this will be local act. and will not come back to master until end of owning graph.
             container.queryTempHandler()->registerFile(fname, container.queryOwner().queryGraphId(), helper->getTempUsageCount(), TDXtemporary & helper->getFlags(), getDiskOutputKind(helper->getFlags()), &clusters);
             queryThorFileManager().publish(container.queryJob(), fname, true, *fileDesc);
         }
     }
-    void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
+    virtual void serializeSlaveData(MemoryBuffer &dst, unsigned slave)
     {
         IHThorSpillArg *helper = (IHThorSpillArg *)queryHelper();
         IPartDescriptor *partDesc = fileDesc->queryPart(slave);
         partDesc->serialize(dst);
         dst.append(helper->getTempUsageCount());
     }
-    void done()
+    virtual void done()
     {
+        CMasterActivity::done();
         if (!container.queryOwner().queryOwner() || container.queryOwner().isGlobal()) // I am in a child query
         {
             IHThorSpillArg *helper = (IHThorSpillArg *)queryHelper();
@@ -81,7 +83,7 @@ public:
             queryThorFileManager().publish(container.queryJob(), fname, true, *fileDesc);
         }
     }
-    void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
+    virtual void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
     {
         if (mb.length()) // if 0 implies aborted out from this slave.
         {

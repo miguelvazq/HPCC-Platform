@@ -480,7 +480,7 @@ void CThorDemoRowSerializer::put(size32_t len, const void * ptr)
     //ok to flush if nesting == 0;
 }
 
-size32_t CThorDemoRowSerializer::beginNested()
+size32_t CThorDemoRowSerializer::beginNested(size32_t count)
 {
     nesting++;
     unsigned pos = buffer.length();
@@ -542,7 +542,7 @@ void CSizingSerializer::put(size32_t len, const void * ptr)
     totalsize += len;
 }
 
-size32_t CSizingSerializer::beginNested()
+size32_t CSizingSerializer::beginNested(size32_t count)
 {
     totalsize += sizeof(size32_t);
     return totalsize;
@@ -557,7 +557,7 @@ void CMemoryRowSerializer::put(size32_t len, const void * ptr)
     buffer.append(len, ptr);
 }
 
-size32_t CMemoryRowSerializer::beginNested()
+size32_t CMemoryRowSerializer::beginNested(size32_t count)
 {
     nesting++;
     unsigned pos = buffer.length();
@@ -582,19 +582,6 @@ static void ensureClassesAreNotAbstract()
 }
 
 //=====================================================================================================
-
-class ChildRowLinkerWalker : implements IIndirectMemberVisitor
-{
-public:
-    virtual void visitRowset(size32_t count, byte * * rows)
-    {
-        rtlLinkRowset(rows);
-    }
-    virtual void visitRow(const byte * row)
-    {
-        rtlLinkRow(row);
-    }
-};
 
 //the visitor callback is used to ensure link counts for children are updated.
 size32_t cloneRow(ARowBuilder & rowBuilder, const void * row, IOutputMetaData * meta)
@@ -673,7 +660,6 @@ extern const char * getActivityText(ThorActivityKind kind)
     case TAKcsvfetch:               return "Csv Fetch";
     case TAKxmlwrite:               return "Xml Write";
     case TAKparse:                  return "Parse";
-    case TAKcountdisk:              return "Count Disk";
     case TAKsideeffect:             return "Simple Action";
     case TAKtopn:                   return "Top N";
     case TAKmerge:                  return "Merge";
@@ -785,6 +771,11 @@ extern const char * getActivityText(ThorActivityKind kind)
     case TAKsubsort:                return "Sub Sort";
     case TAKdictionaryworkunitwrite:return "Dictionary Write";
     case TAKdictionaryresultwrite:  return "Dictionary Result";
+    case TAKsmartjoin:              return "Smart Join";
+    case TAKsmartdenormalize:       return "Smart Denormalize";
+    case TAKsmartdenormalizegroup:  return "Smart Denormalize Group";
+    case TAKselfdenormalize:       return "Self Denormalize";
+    case TAKselfdenormalizegroup:  return "Self Denormalize Group";
     }
     throwUnexpected();
 }
@@ -1014,7 +1005,7 @@ offset_t CThorContiguousRowBuffer::beginNested()
     return len+readOffset;
 }
 
-bool CThorContiguousRowBuffer::finishedNested(offset_t endPos)
+bool CThorContiguousRowBuffer::finishedNested(offset_t & endPos)
 {
     return readOffset >= endPos;
 }
@@ -1324,7 +1315,7 @@ IExtRowStream *createRowStream(IFile *file, IRowInterfaces *rowIf, unsigned rwFl
     return createRowStreamEx(file, rowIf, 0, (offset_t)-1, (unsigned __int64)-1, rwFlags, eexp);
 }
 
-
+// Memory map sizes can be big, restrict to 64-bit platforms.
 void useMemoryMappedRead(bool on)
 {
 #if defined(_DEBUG) || defined(__64BIT__)
@@ -1497,7 +1488,7 @@ public:
         }
     }
 
-    size32_t beginNested()
+    size32_t beginNested(size32_t count)
     {
         if (nested++==0)
             if (bufpos==ROW_WRITER_BUFFERSIZE)

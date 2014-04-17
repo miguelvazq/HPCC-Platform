@@ -249,6 +249,7 @@ int main( int argc, char *argv[]  )
 
     dummyProc();
 #ifndef __64BIT__
+    // Restrict stack sizes on 32-bit systems
     Thread::setDefaultStackSize(0x10000);   // NB under windows requires linker setting (/stack:)
 #endif
 
@@ -308,7 +309,6 @@ int main( int argc, char *argv[]  )
         markNodeCentral(masterEp);
         if (RegisterSelf(masterEp))
         {
-            MilliSleep(20000);
             if (globals->getPropBool("Debug/@slaveDaliClient"))
                 enableThorSlaveAsDaliClient();
 
@@ -438,6 +438,7 @@ int main( int argc, char *argv[]  )
     ::Release(globals);
     releaseAtoms(); // don't know why we can't use a module_exit to destruct these...
 
+    ExitModuleObjects(); // not necessary, atexit will call, but good for leak checking
     return 0;
 }
 

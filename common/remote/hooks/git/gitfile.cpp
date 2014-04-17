@@ -28,6 +28,7 @@
 /*
  * Direct access to files in git repositories, by revision, without needing to check them out first
  * Installs hooks into createIFile, spotting filenames of the form /my/directory/.git/{revision}/path/within/git
+ * Bare repositories of the form  /my/directory.git/{revision}/path/within/git also supported
  */
 
 IDirectoryIterator *createGitRepositoryDirectoryIterator(const char *gitFileName, const char *mask=NULL, bool sub=false,bool includedirs=false);
@@ -35,25 +36,21 @@ IDirectoryIterator *createGitRepositoryDirectoryIterator(const char *gitFileName
 static void splitGitFileName(const char *fullName, StringAttr &gitDir, StringAttr &revision, StringAttr &relPath)
 {
     assertex(fullName);
-    const char *git = strstr(fullName, PATHSEPSTR ".git" PATHSEPSTR);
+    const char *git = strstr(fullName, ".git" PATHSEPSTR "{" );
     assertex(git);
-    const char *tail = git+6;
+    const char *tail = git+5;
     gitDir.set(fullName, tail-fullName);
-    if (*tail=='{')
-    {
+    assertex (*tail=='{');
+    tail++;
+    const char *end = strchr(tail, '}');
+    if (!end)
+        throw MakeStringException(0, "Invalid git repository filename - no matching } found");
+    revision.set(tail, end - tail);
+    tail = end+1;
+    if (*tail==PATHSEPCHAR)
         tail++;
-        const char *end = strchr(tail, '}');
-        if (!end)
-            throw MakeStringException(0, "Invalid git repository filename - no matching } found");
-        revision.set(tail, end - tail);
-        tail = end+1;
-        if (*tail==PATHSEPCHAR)
-            tail++;
-        else if (*tail != 0)
-            throw MakeStringException(0, "Invalid git repository filename - " PATHSEPSTR " expected after }");
-    }
-    else
-        revision.clear();
+    else if (*tail != 0)
+        throw MakeStringException(0, "Invalid git repository filename - " PATHSEPSTR " expected after }");
     if (tail && *tail)
     {
         StringBuffer s(tail);
@@ -62,13 +59,17 @@ static void splitGitFileName(const char *fullName, StringAttr &gitDir, StringAtt
     }
     else
         relPath.clear();
+    // Check it's a valid git repository
+    StringBuffer configName(gitDir);
+    configName.append("config");
+    if (!checkFileExists(configName.str()))
+        throw MakeStringException(0, "Invalid git repository - config file %s not found", configName.str());
 }
 
 static StringBuffer & buildGitFileName(StringBuffer &fullname, const char *gitDir, const char *revision, const char *relPath)
 {
     fullname.append(gitDir);
-    if (revision && *revision)
-        fullname.append('{').append(revision).append('}').append(PATHSEPCHAR);
+    fullname.append('{').append(revision).append('}').append(PATHSEPCHAR);
     if (relPath && *relPath)
         fullname.append(relPath);
     return fullname;
@@ -80,7 +81,7 @@ public:
     IMPLEMENT_IINTERFACE;
     GitRepositoryFileIO(const char * gitDirectory, const char * revision, const char * relFileName)
     {
-        VStringBuffer gitcmd("git --git-dir=%s show %s:%s", gitDirectory, revision ? revision : "HEAD", relFileName);
+        VStringBuffer gitcmd("git --git-dir=%s show %s:%s", gitDirectory, (revision && *revision) ? revision : "HEAD", relFileName);
         Owned<IPipeProcess> pipe = createPipeProcess();
         if (pipe->run("git", gitcmd, ".", false, true, false, 0))
         {
@@ -183,7 +184,7 @@ public:
             return notFound;
         return foundYes;
     }
-    virtual IFileIO * open(IFOmode mode)
+    virtual IFileIO * open(IFOmode mode, IFEflags extraFlags=IFEnone)
     {
         assertex(mode==IFOread && isExisting);
         return new GitRepositoryFileIO(gitDirectory, revision, relFileName);
@@ -192,7 +193,7 @@ public:
     {
         UNIMPLEMENTED;
     }
-    virtual IFileIO * openShared(IFOmode mode, IFSHmode shmode)
+    virtual IFileIO * openShared(IFOmode mode, IFSHmode shmode, IFEflags extraFlags=IFEnone)
     {
         assertex(mode==IFOread && isExisting);
         return new GitRepositoryFileIO(gitDirectory, revision, relFileName);
@@ -246,10 +247,10 @@ public:
                                   unsigned checkinterval=60*1000,
                                   unsigned timeout=(unsigned)-1,
                                   Semaphore *abortsem=NULL)  { UNIMPLEMENTED; }
-    virtual void copySection(const RemoteFilename &dest, offset_t toOfs=(offset_t)-1, offset_t fromOfs=0, offset_t size=(offset_t)-1, ICopyFileProgress *progress=NULL) { UNIMPLEMENTED; }
-    virtual void copyTo(IFile *dest, size32_t buffersize=0x100000, ICopyFileProgress *progress=NULL, bool usetmp=false) { UNIMPLEMENTED; }
+    virtual void copySection(const RemoteFilename &dest, offset_t toOfs=(offset_t)-1, offset_t fromOfs=0, offset_t size=(offset_t)-1, ICopyFileProgress *progress=NULL, CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
+    virtual void copyTo(IFile *dest, size32_t buffersize=DEFAULT_COPY_BLKSIZE, ICopyFileProgress *progress=NULL, bool usetmp=false, CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
     virtual IMemoryMappedFile *openMemoryMapped(offset_t ofs=0, memsize_t len=(memsize_t)-1, bool write=false)  { UNIMPLEMENTED; }
-    virtual void treeCopyTo(IFile *dest,IpSubNet &subnet,IpAddress &resfrom,bool usetmp=false) { UNIMPLEMENTED; }
+    virtual void treeCopyTo(IFile *dest,IpSubNet &subnet,IpAddress &resfrom,bool usetmp=false,CFflags copyFlags=CFnone) { UNIMPLEMENTED; }
 
 
 protected:
@@ -267,6 +268,10 @@ static IFile *createGitFile(const char *gitFileName)
     StringBuffer fname(gitFileName);
     assertex(fname.length());
     removeTrailingPathSepChar(fname);
+    StringAttr gitDirectory, revision, relDir;
+    splitGitFileName(fname, gitDirectory, revision, relDir);
+    if (relDir.isEmpty())
+        return new GitRepositoryFile(fname, 0, true, true);  // Special case the root - ugly but apparently necessary
     Owned<IDirectoryIterator> dir = createGitRepositoryDirectoryIterator(fname, NULL, false, true);
     if (dir->first())
     {
@@ -427,7 +432,7 @@ public:
 protected:
     static bool isGitFileName(const char *fileName)
     {
-        if (fileName && strstr(fileName, PATHSEPSTR ".git" PATHSEPSTR))
+        if (fileName && strstr(fileName, ".git" PATHSEPSTR "{"))
             return true;
         return false;
     }
@@ -447,11 +452,15 @@ extern GITFILE_API void installFileHook()
 
 extern GITFILE_API void removeFileHook()
 {
-    CriticalBlock b(*cs); // Probably overkill!
-    if (gitRepositoryFileHook)
+    if (cs)
     {
-        removeContainedFileHook(gitRepositoryFileHook);
-        gitRepositoryFileHook = NULL;
+        CriticalBlock b(*cs); // Probably overkill!
+        if (gitRepositoryFileHook)
+        {
+            removeContainedFileHook(gitRepositoryFileHook);
+            delete gitRepositoryFileHook;
+            gitRepositoryFileHook = NULL;
+        }
     }
 }
 
@@ -471,4 +480,5 @@ MODULE_EXIT()
     }
     ::Release(gitRepositoryFileHook);
     delete cs;
+    cs = NULL;
 }

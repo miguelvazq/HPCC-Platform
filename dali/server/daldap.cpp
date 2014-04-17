@@ -38,6 +38,7 @@ static void ignoreSigPipe()
     sigemptyset(&blockset);
     act.sa_mask = blockset;
     act.sa_handler = SIG_IGN;
+    act.sa_flags = 0;
     sigaction(SIGPIPE, &act, NULL);
 #endif
 }
@@ -131,7 +132,7 @@ public:
                 udesc->getPassword(password);
             }
             if (username.length()==0)  {
-#ifndef _NO_DALIUSER_STACKTRACE
+#ifdef NULL_DALIUSER_STACKTRACE
                 DBGLOG("UNEXPECTED USER (NULL) in daldap.cpp getPermissions() line %d", __LINE__);
                 //following debug code to be removed
                 PrintStackReport();
@@ -187,6 +188,37 @@ public:
         user->credentials().setPassword(password);
         return ldapsecurity->clearPermissionsCache(*user);
     }
+
+    bool enableScopeScans(IUserDescriptor *udesc, bool enable, int * err)
+    {
+        bool superUser;
+        StringBuffer username;
+        StringBuffer password;
+        udesc->getUserName(username);
+        udesc->getPassword(password);
+        Owned<ISecUser> user = ldapsecurity->createUser(username);
+        user->credentials().setPassword(password);
+        if (!ldapsecurity->authenticateUser(*user,superUser) || !superUser)
+        {
+            *err = -1;
+            return false;
+        }
+        unsigned flags = getLDAPflags();
+        if (enable)
+        {
+            DBGLOG("Scope Scans Enabled by user %s",username.str());
+            flags |= (unsigned)DLF_SCOPESCANS;
+        }
+        else
+        {
+            DBGLOG("Scope Scans Disabled by user %s",username.str());
+            flags &= ~(unsigned)DLF_SCOPESCANS;
+        }
+        setLDAPflags(flags);
+        *err = 0;
+        return true;
+    }
+
     bool checkScopeScans()
     {
         return (ldapflags&DLF_SCOPESCANS)!=0;

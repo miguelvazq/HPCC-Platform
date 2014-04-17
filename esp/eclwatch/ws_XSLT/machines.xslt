@@ -340,7 +340,6 @@
                     <xsl:when test="Type='ThorSlaveProcess'">Thor Slave</xsl:when>
                     <xsl:when test="Type='ThorSpareProcess'">Thor Spare</xsl:when>
                     <xsl:when test="Type='RoxieServerProcess'">Roxie Server</xsl:when>
-                    <xsl:when test="Type='RoxieSlaveProcess'">Roxie Slave</xsl:when>
                     <xsl:when test="Type='DropZone'">Drop Zone</xsl:when>
                     <xsl:otherwise>
                         <xsl:value-of select="Type"/>
@@ -391,7 +390,7 @@
                         <xsl:value-of select="OS"/>
                         <xsl:text>);</xsl:text>
                     </xsl:attribute>
-                    <img border="0" src="/esp/files_/img/base.gif" alt="View log file..." width="19" height="16"/>
+                    <img border="0" src="/esp/files_/img/base.gif" alt="View log file..." title="View log file..." width="19" height="16"/>
                 </a>            
                 <xsl:value-of select="Name"/>
             </td>

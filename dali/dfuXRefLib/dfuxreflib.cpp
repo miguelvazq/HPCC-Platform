@@ -349,7 +349,7 @@ static unsigned short getDafsPort(const SocketEndpoint &ep,unsigned &numfails,Cr
     else 
         numfails++;
 #else
-    throw MakeStringException(-1, "%s", err.str());
+    throw MakeStringExceptionDirect(-1, err.str());
 #endif
     return 0;
 }
@@ -1114,6 +1114,7 @@ public:
             }
             out.append('[').append(pna.item(sorted[i2])+1).append(']');
         }
+        delete [] sorted;
     }
 
     IPropertyTree *addFileBranch(IPropertyTree *dst,unsigned flags)
@@ -1562,6 +1563,8 @@ void loadFromDFS(CXRefManagerBase &manager,IGroup *grp,unsigned numdirs,const ch
                                     oldentry->crosslink.setown(entry);
 #endif
                                 }
+                                else
+                                    entry->Release();
                             }
                             else {
                                 manager.filemap.add(*entry);
@@ -2677,8 +2680,8 @@ IPropertyTree *  runXRef(unsigned nclusters,const char **clusters,IXRefProgressC
     Owned<IGroup> group = queryNamedGroupStore().lookup(clusters[0]);
     if (group)
         islinux = queryOS(group->queryNode(0).endpoint())==MachineOsLinux;
-    dirs[0] = queryBaseDirectory(false,islinux?DFD_OSunix:DFD_OSwindows);
-    dirs[1] = queryBaseDirectory(true,islinux?DFD_OSunix:DFD_OSwindows);
+    dirs[0] = queryBaseDirectory(grp_unknown, 0,islinux?DFD_OSunix:DFD_OSwindows);  // MORE - should use the info from the group store
+    dirs[1] = queryBaseDirectory(grp_unknown, 1,islinux?DFD_OSunix:DFD_OSwindows);
     numdirs = 2;
     IPropertyTree *ret=NULL;
     try {

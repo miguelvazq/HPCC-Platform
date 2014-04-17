@@ -199,7 +199,7 @@ MemoryBuffer & serializeKind(MemoryBuffer & out, ThorRegexKind kind)
     return out.append((byte)kind);
 }
 
-void deserialize(MemoryBuffer & in, _ATOM & name)
+void deserialize(MemoryBuffer & in, IAtom * & name)
 {
     StringAttr x;
     in.read(x);
@@ -1979,6 +1979,7 @@ void RegexNamedPattern::getTraceText(StringBuffer & s)
 RegexMatchAction RegexNamedPattern::match(RegexState & state)
 {
 #ifdef __64BIT__
+    // 64-bit systems have more space for stack
     RegexMatchState matched(def);
     return def->match(state, &end, matched);
 #else
@@ -3148,7 +3149,7 @@ RegexMatchStateSave * RegexStateCache::createStateSave(RegexNamed * def)
     return new RegexMatchStateSave(def);
 }
 
-RegexMatchStateSave * RegexStateCache::createStateSave(_ATOM _name, regexid_t _id)
+RegexMatchStateSave * RegexStateCache::createStateSave(IAtom * _name, regexid_t _id)
 {
     if (matchStateSaves.ordinality())
     {

@@ -46,7 +46,7 @@ typedef size32_t rowidx_t;
 class roxiemem_decl RoxieOutputRowArray
 {
 public:
-    RoxieOutputRowArray(IRowManager * _rowManager, rowidx_t _initialSize, size32_t _commitDelta);
+    RoxieOutputRowArray(IRowManager * _rowManager, rowidx_t _initialSize, size32_t _commitDelta, unsigned _allocatorId);
     inline ~RoxieOutputRowArray() { kill(); }
 
     //The following can be called from the writer, without any need to lock first.
@@ -82,14 +82,18 @@ public:
     void kill();
     void transferRows(rowidx_t & outNumRows, const void * * & outRows);
 
+    // also needs to be locked otherwise they could be updated out of sync
+    inline rowidx_t numCommitted() const { return commitRows - firstRow; }
+
     //The block returned is only valid until the critical section is released
 
     inline rowidx_t firstCommitted() const { return firstRow; }
-    inline rowidx_t numCommitted() const { return commitRows - firstRow; }
 
     //Locking functions - use the RoxieOutputRowArrayLock class below.
     inline void lock() const { cs.enter(); }
     inline void unlock() const { cs.leave(); }
+
+    virtual void setAllocatorId(unsigned _allocatorId)        { allocatorId = _allocatorId; }
 
 protected:
     virtual bool ensure(rowidx_t requiredRows) { return false; }
@@ -101,6 +105,7 @@ protected:
     rowidx_t firstRow; // Only rows firstRow..numRows are considered initialized.  Only read/write within cs.
     rowidx_t numRows;  // rows that have been added can only be updated by writing thread.
     rowidx_t commitRows;  // can only be updated by writing thread within a critical section
+    unsigned allocatorId;
     const size32_t commitDelta;  // How many rows need to be written before they are added to the committed region?
     mutable CriticalSection cs;
 };
@@ -108,8 +113,8 @@ protected:
 class roxiemem_decl DynamicRoxieOutputRowArray : public RoxieOutputRowArray
 {
 public:
-    DynamicRoxieOutputRowArray(IRowManager * _rowManager, rowidx_t _initialSize, size32_t _commitDelta)
-        : RoxieOutputRowArray(_rowManager, _initialSize, _commitDelta) {}
+    DynamicRoxieOutputRowArray(IRowManager * _rowManager, rowidx_t _initialSize, size32_t _commitDelta, unsigned _allocatorId)
+        : RoxieOutputRowArray(_rowManager, _initialSize, _commitDelta, _allocatorId) {}
 
 protected:
     virtual bool ensure(rowidx_t requiredRows);

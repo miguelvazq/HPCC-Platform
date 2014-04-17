@@ -509,9 +509,11 @@ void OutputProgress::reset()
     inputLength = 0;
     outputCRC = 0;
     outputLength = 0;
+    hasCompressed = false;
+    compressedPartSize = 0;
 }
 
-MemoryBuffer & OutputProgress::deserialize(MemoryBuffer & in)
+MemoryBuffer & OutputProgress::deserializeCore(MemoryBuffer & in)
 { 
     unsigned _inputCRC, _outputCRC;
     bool hasTime;
@@ -525,6 +527,22 @@ MemoryBuffer & OutputProgress::deserialize(MemoryBuffer & in)
     return in;
 }
 
+MemoryBuffer & OutputProgress::deserializeExtra(MemoryBuffer & in, unsigned version)
+{
+    if (in.remaining())
+    {
+        switch (version)
+        {
+        case 1:
+            in.read(hasCompressed);
+            if (hasCompressed)
+                in.read(compressedPartSize);
+            break;
+        }
+    }
+    return in;
+}
+
 
 static const char * const statusText[] = {"Init","Active","Copied","Renamed"};
 void OutputProgress::trace()
@@ -532,7 +550,7 @@ void OutputProgress::trace()
     LOG(MCdebugInfoDetail, unknownJob, "[%d] %s  %"I64F"d[%x]->%"I64F"d[%x]", whichPartition, statusText[status], inputLength, inputCRC, outputLength, outputCRC);
 }
 
-MemoryBuffer & OutputProgress::serialize(MemoryBuffer & out)        
+MemoryBuffer & OutputProgress::serializeCore(MemoryBuffer & out)        
 { 
     bool hasTime = !resultTime.isNull();
     unsigned _inputCRC = inputCRC;
@@ -543,6 +561,18 @@ MemoryBuffer & OutputProgress::serialize(MemoryBuffer & out)
     return out;
 }
 
+MemoryBuffer & OutputProgress::serializeExtra(MemoryBuffer & out, unsigned version)
+{
+    switch (version)
+    {
+    case 1:
+        out.append(hasCompressed);
+        if (hasCompressed )
+            out.append(compressedPartSize);
+        break;
+    }
+    return out;
+}
 
 void OutputProgress::set(const OutputProgress & other)
 {
@@ -554,6 +584,8 @@ void OutputProgress::set(const OutputProgress & other)
     outputLength = other.outputLength;
     status = other.status;
     resultTime = other.resultTime;
+    hasCompressed = other.hasCompressed;
+    compressedPartSize = other.compressedPartSize;
 }
 
 void OutputProgress::restore(IPropertyTree * tree)
@@ -566,6 +598,8 @@ void OutputProgress::restore(IPropertyTree * tree)
     outputCRC = tree->getPropInt("@outputCRC");
     outputLength = tree->getPropInt64("@outputLength");
     resultTime.setString(tree->queryProp("@modified"));
+    hasCompressed = tree->getPropInt("@compressed");
+    compressedPartSize = tree->getPropInt64("@compressedPartSize");
 }
 
 void OutputProgress::save(IPropertyTree * tree)
@@ -582,6 +616,8 @@ void OutputProgress::save(IPropertyTree * tree)
         StringBuffer timestr;
         tree->setProp("@modified", resultTime.getString(timestr));
     }
+    tree->setPropInt("@compressed", hasCompressed);
+    tree->setPropInt64("@compressedPartSize", compressedPartSize);
 }
 
 

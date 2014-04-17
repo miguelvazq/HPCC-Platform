@@ -59,6 +59,7 @@ xmlns:seisint="http://seisint.com"  xmlns:set="http://exslt.org/sets" exclude-re
         <xsl:param name="bindingNode"/>
         <xsl:param name="authNode"/>
         <xsl:variable name="serviceType" select="Properties/@type"/>
+
         <xsl:variable name="serviceName" select="concat($serviceType, '_', @name, '_', $process)"/>
         <xsl:variable name="bindName" select="concat($serviceType, '_', $bindingNode/@name, '_', $process)"/>
         <xsl:variable name="bindType">
@@ -239,6 +240,9 @@ xmlns:seisint="http://seisint.com"  xmlns:set="http://exslt.org/sets" exclude-re
             <xsl:when test="$authMethod='htpasswd'">
               <Authenticate method="htpasswd">
                 <xsl:attribute name="htpasswdFile"> <xsl:value-of select="$bindingNode/../Authentication/@htpasswdFile"/> </xsl:attribute>
+                <xsl:for-each select="$bindingNode/Authenticate[@path='/']">
+                    <Location path="/" resource="{@resource}" required="{@access}" description="{@description}"/>
+                </xsl:for-each>
               </Authenticate>
             </xsl:when>
         </xsl:choose>

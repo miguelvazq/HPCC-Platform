@@ -146,8 +146,7 @@ class NSplitterSlaveActivity : public CSlaveActivity
         virtual void start() { throwUnexpected(); }
         virtual void getMetaInfo(ThorDataLinkMetaInfo &info)
         {
-            info.totalRowsMin=0;
-            info.totalRowsMax=0;
+            ::initMetaInfo(info);
         }
     };
     class CInputWrapper : public CSplitterOutputBase
@@ -211,7 +210,7 @@ class NSplitterSlaveActivity : public CSlaveActivity
         {
             activity->ensureInputsConfigured();
             input->start();
-            dataLinkStart("SPLITTEROUTPUT", activity->queryContainer().queryId(), id);
+            dataLinkStart(id);
         }
         virtual bool isGrouped() { return activity->inputs.item(0)->isGrouped(); }
         virtual void getMetaInfo(ThorDataLinkMetaInfo &info)
@@ -307,15 +306,7 @@ public:
         IHThorSplitArg *helper = (IHThorSplitArg *)queryHelper();
         int dV = getOptInt(THOROPT_SPLITTER_SPILL, -1);
         if (-1 == dV)
-        {
             spill = !helper->isBalanced();
-            bool forcedUnbalanced = queryContainer().queryXGMML().getPropBool("@unbalanced", false);
-            if (!spill && forcedUnbalanced)
-            {
-                ActPrintLog("Was marked balanced, but forced unbalanced due to UPDATE changes.");
-                spill = true;
-            }
-        }
         else
             spill = dV>0;
     }

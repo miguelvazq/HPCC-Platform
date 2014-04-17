@@ -28,20 +28,21 @@ set (    SRCS
          buildset.cpp 
          computerpicker.cpp 
          configenvhelper.cpp
-         wizardInputs.cpp 
-         deployutils.cpp 
+         wizardInputs.cpp
+         deployutils.cpp
     )
 
 include_directories ( 
-         ./../../system/include 
-         ./../../system/jlib 
-         ./../../system/mp 
-         ./../../system/xmllib       
-         ./../../common/environment
-         ./../../dali/base 
-         ./../../esp/esplib
-         ../configgen
-         ../deploy 
+         ${HPCC_SOURCE_DIR}/system/include
+         ${HPCC_SOURCE_DIR}/system/jlib
+         ${HPCC_SOURCE_DIR}/system/mp
+         ${HPCC_SOURCE_DIR}/system/xmllib
+         ${HPCC_SOURCE_DIR}/common/environment
+         ${HPCC_SOURCE_DIR}/dali/base
+         ${HPCC_SOURCE_DIR}/esp/esplib
+         ${HPCC_SOURCE_DIR}/deployment/configgen
+         ${HPCC_SOURCE_DIR}/deployment/deploy
+         ${HPCC_SOURCE_DIR}/deployment/configutils
          ${CMAKE_BINARY_DIR}
          ${CMAKE_BINARY_DIR}/oss
     )
@@ -55,6 +56,7 @@ target_link_libraries ( deployutils
          environment 
          xmllib
          deploy
+         configutils
     )
 
 

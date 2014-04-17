@@ -197,6 +197,72 @@ static void appendServerAddress(StringBuffer &s, IPropertyTree &env, IPropertyTr
     s.append(netAddress).append(':').append(port ? port : "9876");
 }
 
+
+const char *nextParameterTag(StringAttr &tag, const char *path)
+{
+    while (*path=='.')
+        path++;
+    const char *finger = strchr(path, '.');
+    if (finger)
+    {
+        tag.set(path, finger - path);
+        finger++;
+    }
+    else
+        tag.set(path);
+    return finger;
+}
+
+void ensureParameter(IPropertyTree *pt, const char *tag, const char *path, const char *value, const char *fullpath)
+{
+    unsigned idx = 1;
+    if (path && isdigit(*path))
+    {
+        StringAttr pos;
+        path = nextParameterTag(pos, path);
+        idx = (unsigned) atoi(pos.sget())+1;
+        if (idx>25) //adf
+            throw MakeStringException(-1, "Array items above 25 not supported in WsECL HTTP parameters: %s", fullpath);
+    }
+    unsigned count = pt->getCount(tag);
+    while (count++ < idx)
+        pt->addPropTree(tag, createPTree(tag));
+    StringBuffer xpath(tag);
+    xpath.append('[').append(idx).append(']');
+    pt = pt->queryPropTree(xpath);
+
+    if (!path || !*path)
+    {
+        pt->setProp(NULL, value);
+        return;
+    }
+
+    StringAttr nextTag;
+    path = nextParameterTag(nextTag, path);
+    ensureParameter(pt, nextTag, path, value, fullpath);
+}
+
+void ensureParameter(IPropertyTree *pt, const char *path, const char *value)
+{
+    const char *fullpath = path;
+    StringAttr tag;
+    path = nextParameterTag(tag, path);
+    ensureParameter(pt, tag, path, value, fullpath);
+}
+
+IPropertyTree *createPTreeFromHttpParameters(const char *name, IProperties *parameters)
+{
+    Owned<IPropertyTree> pt = createPTree(name);
+    Owned<IPropertyIterator> props = parameters->getIterator();
+    ForEach(*props)
+    {
+        const char *key = props->getPropKey();
+        const char *value = parameters->queryProp(key);
+        ensureParameter(pt, key, value);
+    }
+    return pt.getClear();
+}
+
 bool CWsEclService::init(const char * name, const char * type, IPropertyTree * cfg, const char * process)
 {
     StringBuffer xpath;
@@ -223,17 +289,25 @@ bool CWsEclService::init(const char * name, const char * type, IPropertyTree * c
     xpath.clear().appendf("EspService[@name='%s']/VIPS", name);
     IPropertyTree *vips = prc->queryPropTree(xpath.str());
 
-    Owned<IPropertyTreeIterator> it = pRoot->getElements("Software/RoxieCluster");
-    ForEach(*it)
+    Owned<IStringIterator> roxieTargets = getTargetClusters("RoxieCluster", NULL);
+    ForEach(*roxieTargets)
     {
-        const char *name = it->query().queryProp("@name");
-        if (connMap.getValue(name)) //bad config?
+        SCMStringBuffer target;
+        roxieTargets->str(target);
+        if (!target.length() || connMap.getValue(target.str())) //bad config?
             continue;
-        bool loadBalanced = false;
-        StringBuffer list;
+        Owned<IConstWUClusterInfo> clusterInfo = getTargetClusterInfo(target.str());
+        if (!clusterInfo)
+            continue;
+        SCMStringBuffer process;
+        clusterInfo->getRoxieProcess(process);
+        if (!process.length())
+            continue;
         const char *vip = NULL;
         if (vips)
-            vip = vips->queryProp(xpath.clear().appendf("ProcessCluster[@name='%s']/@vip", name).str());
+            vip = vips->queryProp(xpath.clear().appendf("ProcessCluster[@name='%s']/@vip", process.str()).str());
+        StringBuffer list;
+        bool loadBalanced = false;
         if (vip && *vip)
         {
             list.append(vip);
@@ -241,14 +315,19 @@ bool CWsEclService::init(const char * name, const char * type, IPropertyTree * c
         }
         else
         {
-            Owned<IPropertyTreeIterator> servers = it->query().getElements("RoxieServerProcess");
-            ForEach(*servers)
-                appendServerAddress(list, *pRoot, servers->query(), daliAddress.str());
+            VStringBuffer xpath("Software/RoxieCluster[@name='%s']", process.str());
+            Owned<IPropertyTreeIterator> it = pRoot->getElements(xpath.str());
+            ForEach(*it)
+            {
+                Owned<IPropertyTreeIterator> servers = it->query().getElements("RoxieServerProcess");
+                ForEach(*servers)
+                    appendServerAddress(list, *pRoot, servers->query(), daliAddress.str());
+            }
         }
         if (list.length())
         {
             Owned<ISmartSocketFactory> sf = createSmartSocketFactory(list.str(), !loadBalanced);
-            connMap.setValue(name, sf.get());
+            connMap.setValue(target.str(), sf.get());
         }
     }
 
@@ -393,41 +472,6 @@ void CWsEclBinding::getDynNavData(IEspContext &context, IProperties *params, IPr
 }
 
 
-static inline bool isPathSeparator(char sep)
-{
-    return (sep=='\\')||(sep=='/');
-}
-
-static inline const char *skipPathNodes(const char *&s, int skip)
-{
-    if (s) {
-        while (*s) {
-            if (isPathSeparator(*s++))
-                if (!skip--)
-                    return s;
-        }
-    }
-    return NULL;
-}
-
-static inline const char *nextPathNode(const char *&s, StringBuffer &node, int skip=0)
-{
-    if (skip)
-        skipPathNodes(s, skip);
-    if (s) while (*s) {
-        if (isPathSeparator(*s))
-            return s++;
-        node.append(*s++);
-    }
-    return NULL;
-}
-
-static inline const char *firstPathNode(const char *&s, StringBuffer &node)
-{
-    if (s && isPathSeparator(*s))
-        s++;
-    return nextPathNode(s, node);
-}
 
 
 static void splitPathTailAndExt(const char *s, StringBuffer &path, StringBuffer &tail, StringBuffer *ext)
@@ -516,22 +560,25 @@ StringBuffer &CWsEclBinding::generateNamespace(IEspContext &context, CHttpReques
 }
 
 
-#define REQXML_ROOT         0x0001
-#define REQXML_SAMPLE_DATA  0x0002
-#define REQXML_TRIM         0x0004
-#define REQXML_ESCAPEFORMATTERS 0x0008
+#define REQSF_ROOT         0x0001
+#define REQSF_SAMPLE_DATA  0x0002
+#define REQSF_TRIM         0x0004
+#define REQSF_ESCAPEFORMATTERS 0x0008
 
-static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, const char* tag, IPropertyTree *parmtree, unsigned flags, const char* ns=NULL)
+#define REQSF_EXCLUSIVE (REQSF_SAMPLE_DATA | REQSF_TRIM)
+
+static void buildReqXml(StringArray& parentTypes, IXmlType* type, StringBuffer& out, const char* tag, IPropertyTree *parmtree, unsigned flags, const char* ns=NULL)
 {
     assertex(type!=NULL);
+    assertex((flags & REQSF_EXCLUSIVE)!= REQSF_EXCLUSIVE);
 
-    if (!parmtree && (flags & REQXML_TRIM) && !(flags & REQXML_ROOT))
+    if (!parmtree && (flags & REQSF_TRIM) && !(flags & REQSF_ROOT))
         return;
 
     const char* typeName = type->queryName();
     if (type->isComplexType())
     {
-        if (typeName && std::find(parent.begin(),parent.end(),typeName) != parent.end())
+        if (typeName && !parentTypes.appendUniq(typeName))
             return; // recursive
 
         int startlen = out.length();
@@ -552,8 +599,6 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
                 appendXMLAttr(out, attr->queryName(), attrval);
         }
         out.append('>');
-        if (typeName)
-            parent.push_back(typeName);
 
         int flds = type->getFieldCount();
         switch (type->getSubType())
@@ -566,7 +611,7 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
                 if (val)
                     encodeXML(val, out);
             }
-            else if (flags & REQXML_SAMPLE_DATA)
+            else if (flags & REQSF_SAMPLE_DATA)
                 type->queryFieldType(0)->getSampleValue(out,tag);
             break;
 
@@ -577,21 +622,21 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
                 const char *childname = type->queryFieldName(idx);
                 if (parmtree)
                     childtree = parmtree->queryPropTree(childname);
-                buildReqXml(parent,type->queryFieldType(idx), out, childname, childtree, flags & ~REQXML_ROOT);
+                buildReqXml(parentTypes,type->queryFieldType(idx), out, childname, childtree, flags & ~REQSF_ROOT);
             }
             break;
         }
 
         if (typeName)
-            parent.pop_back();
-        if ((flags & REQXML_TRIM) && !(flags & REQXML_ROOT) && out.length()==taglen)
+            parentTypes.pop();
+        if ((flags & REQSF_TRIM) && !(flags & REQSF_ROOT) && out.length()==taglen)
             out.setLength(startlen);
         else
             appendXMLCloseTag(out, tag);
     }
     else if (type->isArray())
     {
-        if (typeName && std::find(parent.begin(),parent.end(),typeName) != parent.end())
+        if (typeName && !parentTypes.appendUniq(typeName))
             return; // recursive
 
         const char* itemName = type->queryFieldName(0);
@@ -599,11 +644,8 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
         if (!itemName || !itemType)
             throw MakeStringException(-1,"*** Invalid array definition: tag=%s, itemName=%s", tag, itemName?itemName:"NULL");
 
-        if (typeName)
-            parent.push_back(typeName);
-
         int startlen = out.length();
-        appendXMLOpenTag(out, tag);
+        appendXMLOpenTag(out, tag, NULL, false);
         if (ns)
             out.append(' ').append(ns);
         out.append(">");
@@ -621,14 +663,14 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
                     itempath.append(itemName).append(idx);
                     IPropertyTree *itemtree = parmtree->queryPropTree(itempath.str());
                     if (itemtree)
-                        buildReqXml(parent,itemType,out,itemName, itemtree, flags & ~REQXML_ROOT);
+                        buildReqXml(parentTypes,itemType,out,itemName, itemtree, flags & ~REQSF_ROOT);
                 }
             }
             else if (parmtree->hasProp(itemName))
             {
                 Owned<IPropertyTreeIterator> items = parmtree->getElements(itemName);
                 ForEach(*items)
-                    buildReqXml(parent,itemType,out,itemName, &items->query(), flags & ~REQXML_ROOT);
+                    buildReqXml(parentTypes,itemType,out,itemName, &items->query(), flags & ~REQSF_ROOT);
             }
             else
             {
@@ -644,11 +686,11 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
             }
         }
         else
-            buildReqXml(parent,itemType,out,itemName, NULL, flags & ~REQXML_ROOT);
+            buildReqXml(parentTypes,itemType,out,itemName, NULL, flags & ~REQSF_ROOT);
 
         if (typeName)
-            parent.pop_back();
-        if ((flags & REQXML_TRIM) && !(flags & REQXML_ROOT) && out.length()==taglen)
+            parentTypes.pop();
+        if ((flags & REQSF_TRIM) && !(flags & REQSF_ROOT) && out.length()==taglen)
             out.setLength(startlen);
         else
             appendXMLCloseTag(out, tag);
@@ -658,18 +700,15 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
         StringBuffer parmval;
         if (parmtree)
             parmval.append(parmtree->queryProp(NULL));
-        if (!parmval.length() && (flags & REQXML_SAMPLE_DATA))
+        if (!parmval.length() && (flags & REQSF_SAMPLE_DATA))
             type->getSampleValue(parmval, NULL);
         
-        if (parmval.length() || !(flags&REQXML_TRIM))
+        if (parmval.length() || !(flags&REQSF_TRIM))
         {
             if (strieq(typeName, "boolean"))
             {
                 if (!strieq(parmval, "default"))
-                {
-                    bool val = (strieq(parmval.str(),"1")||strieq(parmval.str(),"true")||strieq(parmval.str(), "on"));
-                    appendXMLTag(out, tag, val ? "1" : "0");
-                }
+                    appendXMLTag(out, tag, strToBool(parmval.str()) ? "1" : "0");
             }
             else
                 appendXMLTag(out, tag, parmval);
@@ -677,10 +716,114 @@ static void buildReqXml(StringStack& parent, IXmlType* type, StringBuffer& out, 
     }
 }
 
-inline void indenter(StringBuffer &s, int count)
+void appendRESTParameter(StringBuffer &out, const StringArray &path, const char *name, const char *value)
 {
-    s.appendN(count*3, ' ');
+    StringBuffer s;
+    ForEachItemIn(i, path)
+    {
+        if (s.length())
+            s.append('.');
+        s.append(path.item(i));
+    }
+    if (name && *name)
+    {
+        if (s.length())
+            s.append('.');
+        s.append(name);
+    }
+    if (!s.length())
+        return;
+    unsigned len = out.length();
+    if (len && out.charAt(len-1)!='?')
+        out.append('&');
+    out.append(s).append('=');
+    if (value && *value)
+        appendURL(&out, value);
 }
+
+static void buildRestURL(StringArray& parentTypes, StringArray &path, IXmlType* type, StringBuffer& out, const char* tag, unsigned flags, unsigned depth=0)
+{
+    assertex(type!=NULL);
+
+    const char* typeName = type->queryName();
+    if (type->isComplexType())
+    {
+        if (typeName && !parentTypes.appendUniq(typeName))
+            return; // recursive
+        if (tag && *tag)
+            path.append(tag);
+        for (size_t i=0; i<type->getAttrCount(); i++)
+        {
+            IXmlAttribute* attr = type->queryAttr(i);
+            StringBuffer s;
+            const char *attrval=NULL;
+            if (flags & REQSF_SAMPLE_DATA)
+                attrval = attr->getSampleValue(s);
+            appendRESTParameter(out, path, attr->queryName(), attrval);
+        }
+
+        int flds = type->getFieldCount();
+        switch (type->getSubType())
+        {
+        case SubType_Complex_SimpleContent:
+            assertex(flds==0);
+            {
+                StringBuffer val;
+                if (flags & REQSF_SAMPLE_DATA)
+                    type->queryFieldType(0)->getSampleValue(val, tag);
+                appendRESTParameter(out, path, tag, val);
+            }
+            break;
+
+        default:
+            for (int idx=0; idx<flds; idx++)
+                buildRestURL(parentTypes, path, type->queryFieldType(idx), out, type->queryFieldName(idx), flags, depth+1);
+            break;
+        }
+
+        if (typeName)
+            parentTypes.pop();
+        if (tag && *tag)
+            path.pop();
+    }
+    else if (type->isArray())
+    {
+        if (typeName && !parentTypes.appendUniq(typeName))
+            return; // recursive
+        if (tag && *tag)
+            path.append(tag);
+
+        const char* itemName = type->queryFieldName(0);
+        IXmlType*   itemType = type->queryFieldType(0);
+        if (!itemName || !itemType)
+            throw MakeStringException(-1,"*** Invalid array definition: tag=%s, itemName=%s", tag, itemName?itemName:"NULL");
+
+        StringBuffer itemURLPath(itemName);
+        if (depth>1)
+            itemURLPath.append(".0");
+        buildRestURL(parentTypes, path, itemType, out, itemURLPath, flags, depth+1);
+
+        if (typeName)
+            parentTypes.pop();
+        if (tag && *tag)
+            path.pop();
+    }
+    else // simple type
+    {
+        StringBuffer parmval;
+        if (flags & REQSF_SAMPLE_DATA)
+            type->getSampleValue(parmval, NULL);
+
+        if (strieq(typeName, "boolean"))
+        {
+            if (!strieq(parmval, "default"))
+                appendRESTParameter(out, path, tag, strToBool(parmval.str()) ? "1" : "0");
+        }
+        else
+            appendRESTParameter(out, path, tag, parmval);
+    }
+}
+
 
 IException *MakeJSONValueException(int code, const char *start, const char *pos, const char *tail, const char *intro="Invalid json format: ")
 {
@@ -752,8 +895,6 @@ StringBuffer &appendJSONNumericString(StringBuffer &s, const char *value, bool a
     return s;
 }
 
-inline const char *jsonNewline(unsigned flags){return ((flags & REQXML_ESCAPEFORMATTERS) ? "\\n" : "\n");}
-
 typedef enum _JSONFieldCategory
 {
     JSONField_String,
@@ -764,22 +905,24 @@ typedef enum _JSONFieldCategory
 
 JSONField_Category xsdTypeToJSONFieldCategory(const char *xsdtype)
 {
-    if (!strnicmp(xsdtype, "real", 4) || !strnicmp(xsdtype, "dec", 3) || !strnicmp(xsdtype, "double", 6) || !strnicmp(xsdtype, "float", 5))
-        return JSONField_Real;
-    if (!strnicmp(xsdtype, "int", 3))
+    //map XML Schema types used in ECL generated schemas to basic JSON formatting types
+    if (streq(xsdtype, "integer") || streq(xsdtype, "nonNegativeInteger"))
         return JSONField_Integer;
-    if (!strnicmp(xsdtype, "bool", 4))
+    if (streq(xsdtype, "boolean"))
         return JSONField_Boolean;
+    if (streq(xsdtype, "double"))
+        return JSONField_Real;
+    if (!strncmp(xsdtype, "decimal", 7)) //ecl creates derived types of the form decimal#_#
+        return JSONField_Real;
     return JSONField_String;
 }
 
-static void buildJsonAppendValue(StringStack& parent, IXmlType* type, StringBuffer& out, const char* tag, const char *value, unsigned flags, int &indent)
+static void buildJsonAppendValue(IXmlType* type, StringBuffer& out, const char* tag, const char *value, unsigned flags)
 {
-    indenter(out, indent);
     if (tag && *tag)
         out.appendf("\"%s\": ", tag);
     StringBuffer sample;
-    if ((!value || !*value) && (flags & REQXML_SAMPLE_DATA))
+    if ((!value || !*value) && (flags & REQSF_SAMPLE_DATA))
     {
         type->getSampleValue(sample, NULL);
         value = sample.str();
@@ -799,7 +942,7 @@ static void buildJsonAppendValue(StringStack& parent, IXmlType* type, StringBuff
             appendJSONNumericString(out, value, true);
             break;
         case JSONField_Boolean:
-            appendJSONValue(out, NULL, (bool)('1'==*value || strieq(value, "true")));
+            appendJSONValue(out, NULL, strToBool(value));
             break;
         }
     }
@@ -807,43 +950,33 @@ static void buildJsonAppendValue(StringStack& parent, IXmlType* type, StringBuff
         out.append("null");
 }
 
-static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out, const char* tag, IPropertyTree *parmtree, unsigned flags, int &indent)
+static void buildJsonMsg(StringArray& parentTypes, IXmlType* type, StringBuffer& out, const char* tag, IPropertyTree *parmtree, unsigned flags)
 {
     assertex(type!=NULL);
 
-    if (flags & REQXML_ROOT)
-    {
+    if (flags & REQSF_ROOT)
         out.append("{");
-        out.append(jsonNewline(flags));
-        indent++;
-    }
 
     const char* typeName = type->queryName();
     if (type->isComplexType())
     {
-        if (typeName && std::find(parent.begin(),parent.end(),typeName) != parent.end())
+        if (typeName && !parentTypes.appendUniq(typeName))
             return; // recursive
 
         int startlen = out.length();
-        indenter(out, indent++);
         if (tag)
-            out.appendf("\"%s\": {", tag).append(jsonNewline(flags));
-        else
-            out.append("{").append(jsonNewline(flags));
+            appendJSONName(out, tag);
+        out.append('{');
         int taglen=out.length()+1;
-        if (typeName)
-            parent.push_back(typeName);
         if (type->getSubType()==SubType_Complex_SimpleContent)
         {
             if (parmtree)
             {
                 const char *attrval = parmtree->queryProp(NULL);
-                indenter(out, indent);
                 out.appendf("\"%s\" ", (attrval) ? attrval : "");
             }
-            else if (flags & REQXML_SAMPLE_DATA)
+            else if (flags & REQSF_SAMPLE_DATA)
             {
-                indenter(out, indent);
                 out.append("\"");
                 type->queryFieldType(0)->getSampleValue(out,tag);
                 out.append("\" ");
@@ -858,24 +991,22 @@ static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out,
                 if (first)
                     first=false;
                 else
-                    out.append(",").append(jsonNewline(flags));
+                    out.append(',');
                 IPropertyTree *childtree = NULL;
                 const char *childname = type->queryFieldName(idx);
                 if (parmtree)
                     childtree = parmtree->queryPropTree(childname);
-                buildJsonMsg(parent, type->queryFieldType(idx), out, childname, childtree, flags & ~REQXML_ROOT, indent);
+                buildJsonMsg(parentTypes, type->queryFieldType(idx), out, childname, childtree, flags & ~REQSF_ROOT);
             }
-            out.append(jsonNewline(flags));
         }
 
         if (typeName)
-            parent.pop_back();
-        indenter(out, indent--);
+            parentTypes.pop();
         out.append("}");
     }
     else if (type->isArray())
     {
-        if (typeName && std::find(parent.begin(),parent.end(),typeName) != parent.end())
+        if (typeName && !parentTypes.appendUniq(typeName))
             return; // recursive
 
         const char* itemName = type->queryFieldName(0);
@@ -883,18 +1014,11 @@ static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out,
         if (!itemName || !itemType)
             throw MakeStringException(-1,"*** Invalid array definition: tag=%s, itemName=%s", tag, itemName?itemName:"NULL");
 
-        if (typeName)
-            parent.push_back(typeName);
-
         int startlen = out.length();
-        indenter(out, indent++);
         if (tag)
-            out.appendf("\"%s\": {%s", tag, jsonNewline(flags));
-        else
-            out.append("{").append(jsonNewline(flags));
-        indenter(out, indent++);
-        out.appendf("\"%s\": [", itemName).append(jsonNewline(flags));
-        indent++;
+            out.appendf("\"%s\": ", tag);
+        out.append('{');
+        out.appendf("\"%s\": [", itemName);
         int taglen=out.length();
         if (parmtree)
         {
@@ -909,14 +1033,13 @@ static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out,
                     if (first)
                         first=false;
                     else
-                        out.append(",").append(jsonNewline(flags));
+                        out.append(",");
                     StringBuffer itempath;
                     itempath.append(itemName).append(idx);
                     IPropertyTree *itemtree = parmtree->queryPropTree(itempath.str());
                     if (itemtree)
-                        buildJsonMsg(parent,itemType,out, NULL, itemtree, flags & ~REQXML_ROOT, indent);
+                        buildJsonMsg(parentTypes,itemType,out, NULL, itemtree, flags & ~REQSF_ROOT);
                 }
-                out.append(jsonNewline(flags));
             }
             else if (parmtree->hasProp(itemName))
             {
@@ -927,10 +1050,9 @@ static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out,
                     if (first)
                         first=false;
                     else
-                        out.append(",").append(jsonNewline(flags));
-                    buildJsonMsg(parent,itemType,out, NULL, &items->query(), flags & ~REQXML_ROOT, indent);
+                        out.append(",");
+                    buildJsonMsg(parentTypes,itemType,out, NULL, &items->query(), flags & ~REQSF_ROOT);
                 }
-                out.append(jsonNewline(flags));
             }
             else
             {
@@ -941,33 +1063,30 @@ static void buildJsonMsg(StringStack& parent, IXmlType* type, StringBuffer& out,
                     items.appendList(s, "\n");
                     ForEachItemIn(i, items)
                     {
-                        delimitJSON(out, true, 0!=(flags & REQXML_ESCAPEFORMATTERS));
-                        buildJsonAppendValue(parent, type, out, NULL, items.item(i), flags & ~REQXML_ROOT, indent);
+                        delimitJSON(out, false);
+                        buildJsonAppendValue(type, out, NULL, items.item(i), flags & ~REQSF_ROOT);
                     }
-                    out.append(jsonNewline(flags));
                 }
 
             }
         }
         else
-            buildJsonMsg(parent, itemType, out, NULL, NULL, flags & ~REQXML_ROOT, indent);
+            buildJsonMsg(parentTypes, itemType, out, NULL, NULL, flags & ~REQSF_ROOT);
 
-        indenter(out, indent--);
-        out.append("]").append(jsonNewline(flags));
+        out.append(']');
 
         if (typeName)
-            parent.pop_back();
-        indenter(out, indent--);
+            parentTypes.pop();
         out.append("}");
     }
     else // simple type
     {
         const char *parmval = (parmtree) ? parmtree->queryProp(NULL) : NULL;
-        buildJsonAppendValue(parent, type, out, tag, parmval, flags, indent);
+        buildJsonAppendValue(type, out, tag, parmval, flags);
     }
 
-    if (flags & REQXML_ROOT)
-        out.append(jsonNewline(flags)).append("}");
+    if (flags & REQSF_ROOT)
+        out.append('}');
 
 }
 
@@ -996,8 +1115,8 @@ void buildSampleDataset(StringBuffer &xml, IPropertyTree *xsdtree, const char *s
             appendNamespaceSpecificString(ns, method).append(":result:");
             appendNamespaceSpecificString(ns, resultname);
             ns.append('\"');
-            StringStack parent;
-            buildReqXml(parent, type, xml, "Dataset", NULL, REQXML_SAMPLE_DATA, ns.str());
+            StringArray parentTypes;
+            buildReqXml(parentTypes, type, xml, "Dataset", NULL, REQSF_SAMPLE_DATA, ns.str());
         }
     }
 
@@ -1201,8 +1320,6 @@ StringBuffer &appendEclXsdName(StringBuffer &content, const char *name, bool ist
 
 void appendEclXsdStartTag(StringBuffer &content, IPropertyTree *element, int indent, const char *attrstr=NULL, bool forceclose=false)
 {
-    //while (indent--)
-    //  content.append('\t');
     const char *name = element->queryName();
     appendEclXsdName(content.append('<'), name);
     if (strieq(name, "xs:element"))
@@ -1462,6 +1579,7 @@ int CWsEclBinding::getXsdDefinition(IEspContext &context, CHttpRequest *request,
             content.append("<xsd:complexType>");
             content.append("<xsd:all>");
             content.append("<xsd:element name=\"Exceptions\" type=\"tns:ArrayOfEspException\" minOccurs=\"0\"/>");
+            content.append("<xsd:element name=\"Wuid\" type=\"xsd:string\" minOccurs=\"0\"/>");
 
             Owned<IPropertyTreeIterator> result_xsds =xsdtree->getElements("Result");
             if (!result_xsds->first())
@@ -1688,9 +1806,12 @@ void buildParametersXml(IPropertyTree *parmtree, IProperties *parms)
             parmtree->setProp(xpath.str(), val);
         }
     }
-    StringBuffer xml;
-    toXML(parmtree, xml);
-    DBGLOG("parmtree: %s", xml.str());
+    if (getEspLogLevel()>LogNormal)
+    {
+        StringBuffer xml;
+        toXML(parmtree, xml);
+        DBGLOG("parmtree: %s", xml.str());
+    }
 }
 
 void appendValidInputBoxContent(StringBuffer &xml, const char *in)
@@ -1720,15 +1841,16 @@ void CWsEclBinding::getWsEcl2XmlRequest(StringBuffer& soapmsg, IEspContext &cont
 
     StringBuffer schemaXml;
     getSchema(schemaXml, context, request, wsinfo);
-    DBGLOG("request schema: %s", schemaXml.str());
+    if (getEspLogLevel()>LogNormal)
+        DBGLOG("request schema: %s", schemaXml.str());
     Owned<IXmlSchema> schema = createXmlSchemaFromString(schemaXml);
     if (schema.get())
     {
         IXmlType* type = schema->queryElementType(element);
         if (type)
         {
-            StringStack parent;
-            buildReqXml(parent, type, soapmsg, (!stricmp(xmltype, "roxiexml")) ? wsinfo.queryname.sget() : element.str(), parmtree, flags|REQXML_ROOT, ns);
+            StringArray parentTypes;
+            buildReqXml(parentTypes, type, soapmsg, (!stricmp(xmltype, "roxiexml")) ? wsinfo.queryname.sget() : element.str(), parmtree, flags|REQSF_ROOT, ns);
         }
     }
 }
@@ -1792,16 +1914,16 @@ void CWsEclBinding::getWsEclJsonRequest(StringBuffer& jsonmsg, IEspContext &cont
 
         StringBuffer schemaXml;
         getSchema(schemaXml, context, request, wsinfo);
-        DBGLOG("request schema: %s", schemaXml.str());
+        if (getEspLogLevel()>LogNormal)
+            DBGLOG("request schema: %s", schemaXml.str());
         Owned<IXmlSchema> schema = createXmlSchemaFromString(schemaXml);
         if (schema.get())
         {
             IXmlType* type = schema->queryElementType(element);
             if (type)
             {
-                StringStack parent;
-                int indent=0;
-                buildJsonMsg(parent, type, jsonmsg, wsinfo.queryname.sget(), parmtree, flags|REQXML_ROOT|REQXML_ESCAPEFORMATTERS, indent);
+                StringArray parentTypes;
+                buildJsonMsg(parentTypes, type, jsonmsg, wsinfo.queryname.sget(), parmtree, flags|REQSF_ROOT);
             }
         }
     }
@@ -1816,6 +1938,7 @@ void CWsEclBinding::getWsEclJsonRequest(StringBuffer& jsonmsg, IEspContext &cont
 void CWsEclBinding::getWsEclJsonResponse(StringBuffer& jsonmsg, IEspContext &context, CHttpRequest *request, const char *xml, WsEclWuInfo &wsinfo)
 {
     size32_t start = jsonmsg.length();
+    const char *jsonp = context.queryRequestParameters()->queryProp("jsonp");
     try
     {
         Owned<IPropertyTree> parmtree = createPTreeFromXMLString(xml, ipt_none, (PTreeReaderOptions)(ptr_ignoreWhiteSpace|ptr_ignoreNameSpaces));
@@ -1829,24 +1952,36 @@ void CWsEclBinding::getWsEclJsonResponse(StringBuffer& jsonmsg, IEspContext &con
             node = node->queryPropTree("Body");
         if (node->hasProp(element))
             node = node->queryPropTree(element);
+        const char *wuid = node->queryProp("Wuid");
         if (node->hasProp("Results"))
             node = node->queryPropTree("Results");
         if (node->hasProp("Result"))
             node = node->queryPropTree("Result");
 
-        jsonmsg.appendf("{\n  \"%s\": {\n    \"Results\": {\n", element.str());
+        if (jsonp && *jsonp)
+            jsonmsg.append(jsonp).append('(');
 
+        jsonmsg.appendf("{\"%s\": {", element.str());
         Owned<IPropertyTreeIterator> exceptions = node->getElements("Exception");
-        if (exceptions && exceptions->first())
+        Owned<IPropertyTreeIterator> datasets = node->getElements("Dataset");
+        if (wuid && *wuid)
+            appendJSONValue(jsonmsg, "Wuid", wuid);
+        if ((!exceptions || !exceptions->first()) && (!datasets || !datasets->first()))
         {
-            appendJSONName(jsonmsg.pad(3), "Exceptions").append("{\n");
-            appendJSONName(jsonmsg.pad(4), "Exception").append("[\n");
-            ForEach(*exceptions)
-                appendJSONExceptionItem(jsonmsg.pad(2), exceptions->query().getPropInt("Code"), exceptions->query().queryProp("Message"), NULL, NULL);
-            jsonmsg.append("\n   ]\n    }\n");
+            jsonmsg.append("  }\n}");
+            return;
         }
 
-        Owned<IPropertyTreeIterator> datasets = node->getElements("Dataset");
+        appendJSONName(jsonmsg, "Results").append("{\n");
+        if (exceptions && exceptions->first())
+        {
+            appendJSONName(jsonmsg, "Exceptions").append("{");
+            appendJSONName(jsonmsg, "Exception").append("[");
+            ForEach(*exceptions)
+                appendJSONExceptionItem(jsonmsg, exceptions->query().getPropInt("Code"), exceptions->query().queryProp("Message"), NULL, NULL);
+            jsonmsg.append("]}");
+        }
+
         ForEach(*datasets)
         {
             IPropertyTree &ds = datasets->query();
@@ -1863,22 +1998,28 @@ void CWsEclBinding::getWsEclJsonResponse(StringBuffer& jsonmsg, IEspContext &con
                         IXmlType* type = schema->queryElementType("Dataset");
                         if (type)
                         {
-                            StringStack parent;
-                            int indent=4;
                             StringBuffer outname(dsname);
-                            buildJsonMsg(parent, type, jsonmsg, outname.replace(' ', '_').str(), &ds, 0, indent);
+                            delimitJSON(jsonmsg);
+                            StringArray parentTypes;
+                            buildJsonMsg(parentTypes, type, jsonmsg, outname.replace(' ', '_').str(), &ds, 0);
                         }
                     }
                 }
             }
         }
-        jsonmsg.append("    }\n  }\n}");
+        jsonmsg.append("}}}");
+        if (jsonp && *jsonp)
+            jsonmsg.append(");");
     }
     catch (IException *e)
     {
         jsonmsg.setLength(start);
+        if (jsonp && *jsonp)
+            jsonmsg.append(jsonp).append('(');
         appendJSONException(jsonmsg.append('{'), e);
         jsonmsg.append('}');
+        if (jsonp && *jsonp)
+            jsonmsg.append(");");
     }
 }
 
@@ -2096,7 +2237,7 @@ int CWsEclBinding::getWsEcl2Form(CHttpRequest* request, CHttpResponse* response,
     return 0;
 }
 
-int CWsEclBinding::submitWsEclWorkunit(IEspContext & context, WsEclWuInfo &wsinfo, const char *xml, StringBuffer &out, unsigned flags, const char *viewname, const char *xsltname)
+int CWsEclBinding::submitWsEclWorkunit(IEspContext & context, WsEclWuInfo &wsinfo, const char *xml, StringBuffer &out, unsigned flags, TextMarkupFormat fmt, const char *viewname, const char *xsltname)
 {
     Owned <IWorkUnitFactory> factory = getSecWorkUnitFactory(*context.querySecManager(), *context.queryUser());
     Owned <IWorkUnit> workunit = factory->createWorkUnit(NULL, "wsecl", context.queryUserId());
@@ -2135,9 +2276,11 @@ int CWsEclBinding::submitWsEclWorkunit(IEspContext & context, WsEclWuInfo &wsinf
 
     runWorkUnit(wuid.str(), wsinfo.qsetname.sget());
 
+    bool async = context.queryRequestParameters()->hasProp("_async");
+
     //don't wait indefinately, in case submitted to an inactive queue wait max + 5 mins
     int wutimeout = 300000;
-    if (waitForWorkUnitToComplete(wuid.str(), wutimeout))
+    if (!async && waitForWorkUnitToComplete(wuid.str(), wutimeout))
     {
         Owned<IWuWebView> web = createWuWebView(wuid.str(), wsinfo.queryname.get(), getCFD(), true);
         if (!web)
@@ -2149,15 +2292,20 @@ int CWsEclBinding::submitWsEclWorkunit(IEspContext & context, WsEclWuInfo &wsinf
             web->renderResults(viewname, out);
         else if (xsltname)
             web->applyResultsXSLT(xsltname, out);
+        else if (fmt==MarkupFmt_JSON)
+            web->renderResultsJSON(out, context.queryRequestParameters()->queryProp("jsonp"));
         else
             web->expandResults(out, flags);
     }
     else
     {
-        DBGLOG("WS-ECL request timed out, WorkUnit %s", wuid.str());
+        if (!async)
+            DBGLOG("WS-ECL request timed out, WorkUnit %s", wuid.str());
+        Owned<IWuWebView> web = createWuWebView(wuid.str(), wsinfo.queryname.get(), getCFD(), true);
+        web->createWuidResponse(out, flags);
     }
 
-    DBGLOG("WS-ECL Request processed [using Doxie]");
+    DBGLOG("WS-ECL Request processed");
     return true;
 }
 
@@ -2252,16 +2400,9 @@ void CWsEclBinding::sendRoxieRequest(const char *target, StringBuffer &req, Stri
     SocketEndpoint ep;
     try
     {
-        Owned<IConstWUClusterInfo> clusterInfo = getTargetClusterInfo(target);
-        if (!clusterInfo)
-            throw MakeStringException(-1, "target cluster not found");
-
-        SCMStringBuffer process;
-        clusterInfo->getRoxieProcess(process);
-        ISmartSocketFactory *conn = wsecl->connMap.getValue(process.str());
+        ISmartSocketFactory *conn = wsecl->connMap.getValue(target);
         if (!conn)
-            throw MakeStringException(-1, "process cluster not found: %s", process.str());
-
+            throw MakeStringException(-1, "roxie target cluster not mapped: %s", target);
         ep = conn->nextEndpoint();
 
         Owned<IHttpClientContext> httpctx = getHttpClientContext();
@@ -2270,7 +2411,7 @@ void CWsEclBinding::sendRoxieRequest(const char *target, StringBuffer &req, Stri
 
         Owned<IHttpClient> httpclient = httpctx->createHttpClient(NULL, url);
         if (0 > httpclient->sendRequest("POST", contentType, req, resp, status))
-            throw MakeStringException(-1, "Process cluster communication error: %s", process.str());
+            throw MakeStringException(-1, "Roxie cluster communication error: %s", target);
     }
     catch (IException *e)
     {
@@ -2306,8 +2447,9 @@ int CWsEclBinding::onSubmitQueryOutput(IEspContext &context, CHttpRequest* reque
 
     StringBuffer soapmsg;
 
-    getSoapMessage(soapmsg, context, request, wsinfo, REQXML_TRIM|REQXML_ROOT);
-    DBGLOG("submitQuery soap: %s", soapmsg.str());
+    getSoapMessage(soapmsg, context, request, wsinfo, REQSF_TRIM|REQSF_ROOT);
+    if (getEspLogLevel()>LogNormal)
+        DBGLOG("submitQuery soap: %s", soapmsg.str());
 
     const char *thepath = request->queryPath();
 
@@ -2337,15 +2479,7 @@ int CWsEclBinding::onSubmitQueryOutput(IEspContext &context, CHttpRequest* reque
         }
     }
     else
-    {
-        submitWsEclWorkunit(context, wsinfo, soapmsg.str(), output, xmlflags);
-        if (outputJSON)
-        {
-            StringBuffer jsonresp;
-            getWsEclJsonResponse(jsonresp, context, request, output.str(), wsinfo);
-            output.swapWith(jsonresp);
-        }
-    }
+        submitWsEclWorkunit(context, wsinfo, soapmsg.str(), output, xmlflags, outputJSON ? MarkupFmt_JSON : MarkupFmt_XML);
 
     response->setContent(output.str());
     response->setContentType(outputJSON ? "application/json" : "application/xml");
@@ -2359,8 +2493,9 @@ int CWsEclBinding::onSubmitQueryOutputView(IEspContext &context, CHttpRequest* r
 {
     StringBuffer soapmsg;
 
-    getSoapMessage(soapmsg, context, request, wsinfo, REQXML_TRIM|REQXML_ROOT);
-    DBGLOG("submitQuery soap: %s", soapmsg.str());
+    getSoapMessage(soapmsg, context, request, wsinfo, REQSF_TRIM|REQSF_ROOT);
+    if (getEspLogLevel()>LogNormal)
+        DBGLOG("submitQuery soap: %s", soapmsg.str());
 
     const char *thepath = request->queryPath();
 
@@ -2385,7 +2520,7 @@ int CWsEclBinding::onSubmitQueryOutputView(IEspContext &context, CHttpRequest* r
     }
     else
     {
-        submitWsEclWorkunit(context, wsinfo, soapmsg.str(), html, 0, view, xsltfile.str());
+        submitWsEclWorkunit(context, wsinfo, soapmsg.str(), html, 0, MarkupFmt_XML, view, xsltfile.str());
     }
 
     response->setContent(html.str());
@@ -2536,7 +2671,7 @@ int CWsEclBinding::getWsEclDefinition(CHttpRequest* request, CHttpResponse* resp
 
             Owned<IPropertyTree> xsds_tree;
             if (xsds.length())
-                xsds_tree.setown(createPTreeFromXMLString(xsds.str()));
+                xsds_tree.setown(createPTreeFromXMLString(xsds.str(), ipt_ordered));
             if (xsds_tree)
             {
                 StringBuffer xpath;
@@ -2580,6 +2715,63 @@ int CWsEclBinding::getWsEclDefinition(CHttpRequest* request, CHttpResponse* resp
     return 0;
 }
 
+int CWsEclBinding::getRestURL(IEspContext *ctx, CHttpRequest *request, CHttpResponse *response, WsEclWuInfo &wsinfo, IProperties *parms)
+{
+    StringBuffer element(wsinfo.queryname);
+    element.append("Request");
+
+    StringBuffer schemaXml;
+
+    getSchema(schemaXml, *ctx, request, wsinfo);
+    Owned<IXmlSchema> schema = createXmlSchemaFromString(schemaXml);
+    if (schema.get())
+    {
+        IXmlType* type = schema->queryElementType(element);
+        if (type)
+        {
+            StringArray parentTypes;
+            StringArray path;
+
+            StringBuffer urlParams("?");
+            buildRestURL(parentTypes, path, type, urlParams, NULL, 0);
+
+            StringBuffer xml;
+            appendXMLOpenTag(xml, "resturl");
+            appendXMLTag(xml, "version", "3");
+            appendXMLTag(xml, "target", wsinfo.qsetname);
+            appendXMLTag(xml, "query", wsinfo.queryname);
+            appendXMLTag(xml, "urlParams", urlParams);
+            appendXMLCloseTag(xml, "resturl");
+
+            Owned<IXslProcessor> xslp = getXslProcessor();
+            Owned<IXslTransform> xform = xslp->createXslTransform();
+            xform->loadXslFromFile(StringBuffer(getCFD()).append("./xslt/wsecl3_url.xslt").str());
+            xform->setXmlSource(xml.str(), xml.length());
+
+            StringBuffer page;
+            xform->transform(page);
+
+            response->setContent(page);
+            response->setContentType("text/html; charset=UTF-8");
+            response->setStatus(HTTP_STATUS_OK);
+            response->send();
+        }
+    }
+    return 0;
+}
+
+void setResponseFormatByName(IEspContext *ctx, const char *respFormat)
+{
+    if (!ctx)
+        return;
+    ESPSerializationFormat fmt = ESPSerializationANY;
+    if (strieq(respFormat, "xml"))
+        fmt = ESPSerializationXML;
+    else if (strieq(respFormat, "json"))
+        fmt = ESPSerializationJSON;
+    ctx->setResponseFormat(fmt);
+}
+
 int CWsEclBinding::getWsEclExample(CHttpRequest* request, CHttpResponse* response, const char *thepath)
 {
     IProperties *parms = request->queryParameters();
@@ -2609,7 +2801,9 @@ int CWsEclBinding::getWsEclExample(CHttpRequest* request, CHttpResponse* respons
                 response->send();
             }
     }
-    context->setBindingValue(NULL);
+    else if (!stricmp(exampletype.str(), "url"))
+        return getRestURL(context, request, response, wsinfo, parms);
+
     return 0;
 }
 
@@ -2635,7 +2829,24 @@ int CWsEclBinding::onGet(CHttpRequest* request, CHttpResponse* response)
 
         StringBuffer methodName;
         nextPathNode(thepath, methodName);
+        if (strieq(methodName, "async"))
+        {
+            parms->setProp("_async", 1);
+            methodName.set("submit");
+        }
 
+        if(strieq(methodName.str(), "res"))
+        {
+           MemoryBuffer mb;
+           StringBuffer mimetype;
+           getWuResourceByPath(thepath, mb, mimetype);
+
+           response->setContent(mb.length(), mb.toByteArray());
+           response->setContentType(mimetype.str());
+           response->setStatus(HTTP_STATUS_OK);
+           response->send();
+           return 0;
+        }
         if (!stricmp(methodName.str(), "tabview"))
         {
             return getWsEcl2TabView(request, response, thepath);
@@ -2644,8 +2855,61 @@ int CWsEclBinding::onGet(CHttpRequest* request, CHttpResponse* response)
         {
             return getWsEcl2Form(request, response, thepath);
         }
+        else if (!stricmp(methodName.str(), "proxy"))
+        {
+            context->addTraceSummaryValue("wseclMode", "proxy");
+
+            StringBuffer wuid;
+            StringBuffer target;
+            StringBuffer qid;
+
+            splitLookupInfo(parms, thepath, wuid, target, qid);
+
+            StringBuffer format;
+            nextPathNode(thepath, format);
+            setResponseFormatByName(context, format);
+
+            if (!wsecl->connMap.getValue(target.str()))
+                throw MakeStringException(-1, "Target cluster not mapped to roxie process!");
+            Owned<IPropertyTree> pt = createPTreeFromHttpParameters(qid.str(), parms);
+            StringBuffer soapreq(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\""
+                  " xmlns:SOAP-ENC=\"http://schemas.xmlsoap.org/soap/encoding/\">"
+                    " <soap:Body>"
+                );
+            toXML(pt, soapreq);
+            soapreq.append("</soap:Body></soap:Envelope>");
+            StringBuffer output;
+            StringBuffer status;
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("roxie req: %s", soapreq.str());
+            sendRoxieRequest(target, soapreq, output, status, qid);
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("roxie resp: %s", output.str());
+
+            if (context->queryRequestParameters()->hasProp("display"))
+            {
+                unsigned pos = 0;
+                const char *start = output.str();
+                if (!strnicmp(start, "<?xml ", 6))
+                {
+                    const char *enddecl = strstr(start, "?>");
+                    if (enddecl)
+                        pos = enddecl - start + 2;
+                }
+                output.insert(pos, "<?xml-stylesheet type='text/xsl' href='/esp/xslt/xmlformatter.xsl' ?>");
+            }
+
+            response->setContent(output.str());
+            response->setContentType("application/xml");
+            response->setStatus("200 OK");
+            response->send();
+        }
         else if (!stricmp(methodName.str(), "submit"))
         {
+            context->addTraceSummaryValue("wseclMode", "submit");
+
             StringBuffer wuid;
             StringBuffer qs;
             StringBuffer qid;
@@ -2654,12 +2918,15 @@ int CWsEclBinding::onGet(CHttpRequest* request, CHttpResponse* response)
 
             StringBuffer format;
             nextPathNode(thepath, format);
+            setResponseFormatByName(context, format);
 
             WsEclWuInfo wsinfo(wuid.str(), qs.str(), qid.str(), context->queryUserId(), context->queryPassword());
             return onSubmitQueryOutput(*context, request, response, wsinfo, format.str());
         }
         else if (!stricmp(methodName.str(), "xslt"))
         {
+            context->addTraceSummaryValue("wseclMode", "xslt");
+
             StringBuffer wuid;
             StringBuffer qs;
             StringBuffer qid;
@@ -2750,6 +3017,7 @@ void createPTreeFromJsonString(const char *json, bool caseInsensitive, StringBuf
 void CWsEclBinding::handleJSONPost(CHttpRequest *request, CHttpResponse *response)
 {
     IEspContext *ctx = request->queryContext();
+    ctx->addTraceSummaryValue("wseclMode", "JSONPost");
     IProperties *parms = request->queryParameters();
     StringBuffer jsonresp;
 
@@ -2768,6 +3036,8 @@ void CWsEclBinding::handleJSONPost(CHttpRequest *request, CHttpResponse *respons
 
         StringBuffer action;
         nextPathNode(thepath, action);
+        if (strieq(action, "async"))
+            parms->setProp("_async", 1);
 
         StringBuffer lookup;
         nextPathNode(thepath, lookup);
@@ -2788,21 +3058,27 @@ void CWsEclBinding::handleJSONPost(CHttpRequest *request, CHttpResponse *respons
             nextPathNode(thepath, queryname);
         }
 
-        WsEclWuInfo wsinfo(wuid.str(), queryset.str(), queryname.str(), ctx->queryUserId(), ctx->queryPassword());
-        SCMStringBuffer clustertype;
-        wsinfo.wu->getDebugValue("targetclustertype", clustertype);
 
         StringBuffer content(request->queryContent());
         StringBuffer status;
-        if (strieq(clustertype.str(), "roxie"))
+        if (wsecl->connMap.getValue(queryset.str()))
         {
             StringBuffer output;
-            DBGLOG("json req: %s", content.str());
-            sendRoxieRequest(wsinfo.qsetname.get(), content, jsonresp, status, wsinfo.queryname, "application/json");
-            DBGLOG("json resp: %s", jsonresp.str());
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("roxie json req: %s", content.str());
+            const char *jsonp = ctx->queryRequestParameters()->queryProp("jsonp");
+            if (jsonp && *jsonp)
+                jsonresp.append(jsonp).append('(');
+            sendRoxieRequest(queryset.str(), content, jsonresp, status, queryname.str(), "application/json");
+            if (jsonp && *jsonp)
+                jsonresp.append(");");
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("roxie json resp: %s", jsonresp.str());
         }
         else
         {
+            WsEclWuInfo wsinfo(wuid.str(), queryset.str(), queryname.str(), ctx->queryUserId(), ctx->queryPassword());
+
             StringBuffer soapfromjson;
             soapfromjson.append(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -2812,9 +3088,9 @@ void CWsEclBinding::handleJSONPost(CHttpRequest *request, CHttpResponse *respons
                 );
             createPTreeFromJsonString(content.str(), false, soapfromjson, "Request");
             soapfromjson.append("</soap:Body></soap:Envelope>");
-            DBGLOG("soap from json req: %s", soapfromjson.str());
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("soap from json req: %s", soapfromjson.str());
 
-            StringBuffer soapresp;
             unsigned xmlflags = WWV_ADD_SOAP | WWV_ADD_RESULTS_TAG | WWV_ADD_RESPONSE_TAG | WWV_INCL_NAMESPACES | WWV_INCL_GENERATED_NAMESPACES;
             if (ctx->queryRequestParameters()->hasProp("display"))
                 xmlflags |= WWV_USE_DISPLAY_XSLT;
@@ -2823,9 +3099,9 @@ void CWsEclBinding::handleJSONPost(CHttpRequest *request, CHttpResponse *respons
             else
                 xmlflags |= WWV_OMIT_SCHEMAS;
 
-            submitWsEclWorkunit(*ctx, wsinfo, soapfromjson.str(), soapresp, xmlflags);
-            DBGLOG("HandleSoapRequest response: %s", soapresp.str());
-            getWsEclJsonResponse(jsonresp, *ctx, request, soapresp.str(), wsinfo);
+            submitWsEclWorkunit(*ctx, wsinfo, soapfromjson.str(), jsonresp, xmlflags, MarkupFmt_JSON);
+            if (getEspLogLevel()>LogNormal)
+                DBGLOG("HandleJSONRequest response: %s", jsonresp.str());
         }
 
     }
@@ -2858,6 +3134,7 @@ void CWsEclBinding::handleHttpPost(CHttpRequest *request, CHttpResponse *respons
 int CWsEclBinding::HandleSoapRequest(CHttpRequest* request, CHttpResponse* response)
 {
     IEspContext *ctx = request->queryContext();
+    ctx->addTraceSummaryValue("wseclMode", "SOAPPost");
     IProperties *parms = request->queryParameters();
 
     const char *thepath = request->queryPath();
@@ -2879,34 +3156,31 @@ int CWsEclBinding::HandleSoapRequest(CHttpRequest* request, CHttpResponse* respo
 
     StringBuffer action;
     nextPathNode(thepath, action);
+    if (strieq(action, "async"))
+        parms->setProp("_async", 1);
 
     StringBuffer lookup;
     nextPathNode(thepath, lookup);
 
     StringBuffer wuid;
-    StringBuffer queryset;
+    StringBuffer target;
     StringBuffer queryname;
 
     if (strieq(lookup.str(), "wuid"))
     {
         nextPathNode(thepath, wuid);
-        queryset.append(parms->queryProp("qset"));
+        target.append(parms->queryProp("qset"));
         queryname.append(parms->queryProp("qname"));
     }
     else if (strieq(lookup.str(), "query"))
     {
-        nextPathNode(thepath, queryset);
+        nextPathNode(thepath, target);
         nextPathNode(thepath, queryname);
     }
-
-    WsEclWuInfo wsinfo(wuid.str(), queryset.str(), queryname.str(), ctx->queryUserId(), ctx->queryPassword());
 
     StringBuffer content(request->queryContent());
     StringBuffer soapresp;
     StringBuffer status;
-
-    SCMStringBuffer clustertype;
-    wsinfo.wu->getDebugValue("targetclustertype", clustertype);
 
     unsigned xmlflags = WWV_ADD_SOAP | WWV_ADD_RESULTS_TAG | WWV_ADD_RESPONSE_TAG | WWV_INCL_NAMESPACES | WWV_INCL_GENERATED_NAMESPACES;
     if (ctx->queryRequestParameters()->hasProp("display"))
@@ -2916,19 +3190,29 @@ int CWsEclBinding::HandleSoapRequest(CHttpRequest* request, CHttpResponse* respo
     else
         xmlflags |= WWV_OMIT_SCHEMAS;
 
-    if (strieq(clustertype.str(), "roxie"))
+    if (wsecl->connMap.getValue(target))
     {
         StringBuffer content(request->queryContent());
         StringBuffer output;
-        sendRoxieRequest(wsinfo.qsetname.get(), content, output, status, wsinfo.queryname);
-        Owned<IWuWebView> web = createWuWebView(*wsinfo.wu, wsinfo.queryname.get(), getCFD(), true);
-        if (web.get())
-            web->expandResults(output.str(), soapresp, xmlflags);
+        sendRoxieRequest(target, content, output, status, queryname);
+        if (!(xmlflags  & WWV_CDATA_SCHEMAS))
+            soapresp.swapWith(output);
+        else
+        {
+            WsEclWuInfo wsinfo(wuid.str(), target.str(), queryname.str(), ctx->queryUserId(), ctx->queryPassword());
+            Owned<IWuWebView> web = createWuWebView(*wsinfo.wu, wsinfo.queryname.get(), getCFD(), true);
+            if (web.get())
+                web->expandResults(output.str(), soapresp, xmlflags);
+        }
     }
     else
+    {
+        WsEclWuInfo wsinfo(wuid.str(), target.str(), queryname.str(), ctx->queryUserId(), ctx->queryPassword());
         submitWsEclWorkunit(*ctx, wsinfo, content.str(), soapresp, xmlflags);
+    }
 
-    DBGLOG("HandleSoapRequest response: %s", soapresp.str());
+    if (getEspLogLevel()>LogNormal)
+        DBGLOG("HandleSoapRequest response: %s", soapresp.str());
 
     response->setContent(soapresp.str());
     response->setContentType("text/xml");

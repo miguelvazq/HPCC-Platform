@@ -738,6 +738,32 @@
 </soap:Envelope>
         */
 
+                    function popupZAPInfoForm()
+                    {
+                        mywindow = window.open ("/WsWorkunits/WUGetZAPInfo?WUID="+wid,
+                            "mywindow", "location=0,status=1,scrollbars=1,resizable=1,width=800,height=760");
+                        if (mywindow.opener == null)
+                            mywindow.opener = window;
+                        mywindow.focus();
+                        return false;
+                    }
+                    function createZAPInfo(wuid, espIP, thorIP, ESPBuildVersion, problemDesciption, history, timingInfo)
+                    {
+                        document.getElementById("ESPIPAddress").value=espIP;
+                        if (thorIP != '')
+                            document.getElementById("ESPIPAddress").value=thorIP;
+                        document.getElementById("BuildVersion").value=ESPBuildVersion;
+                        if (problemDesciption != '')
+                            document.getElementById("ProblemDescription").value=problemDesciption;
+                        if (history != '')
+                            document.getElementById("WhatChanged").value=history;
+                        if (timingInfo != '')
+                            document.getElementById("WhereSlow").value=timingInfo;
+
+                        document.forms['protect'].action = "/WsWorkunits/WUCreateZAPInfo";
+                        document.forms['protect'].encType="application/x-www-form-urlencoded";
+                        document.forms['protect'].submit();
+                    }
                ]]></xsl:text>
           </script>
             </head>

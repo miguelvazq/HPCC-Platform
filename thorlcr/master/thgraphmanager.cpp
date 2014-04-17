@@ -171,7 +171,7 @@ void CJobManager::updateWorkUnitLog(IWorkUnit &workunit)
     StringBuffer log, logUrl;
     logHandler->getLogName(log);
     createUNCFilename(log, logUrl, false);
-    workunit.addProcess("Thor", globals->queryProp("@name"), logUrl.str());
+    workunit.addProcess("Thor", globals->queryProp("@name"), 0, logUrl.str());
 }
 
 
@@ -663,7 +663,7 @@ bool CJobManager::executeGraph(IConstWorkUnit &workunit, const char *graphName, 
     workunit.getWuid(wuid);
     const char *totalTimeStr = "Total thor time";
     unsigned startTime = msTick();
-    unsigned totalTimeMs = workunit.getTimerDuration(totalTimeStr, NULL);
+    unsigned totalTimeMs = workunit.getTimerDuration(totalTimeStr);
 
     Owned<IConstWUQuery> query = workunit.getQuery(); 
     SCMStringBuffer soName;
@@ -741,8 +741,10 @@ bool CJobManager::executeGraph(IConstWorkUnit &workunit, const char *graphName, 
         unsigned graphTimeMs = msTick()-startTime;
         StringBuffer graphTimeStr;
         formatGraphTimerLabel(graphTimeStr, graphName);
-        wu->setTimerInfo(graphTimeStr, NULL, graphTimeMs, 1, 0);
-        wu->setTimerInfo(totalTimeStr, NULL, totalTimeMs+graphTimeMs, 1, 0);
+
+        updateWorkunitTimeStat(wu, "thor", graphName, "time", graphTimeStr, milliToNano(graphTimeMs), 1, 0);
+        updateWorkunitTimeStat(wu, "thor", "workunit", "ThorTime", totalTimeStr, milliToNano(totalTimeMs+graphTimeMs), 1, 0);
+
         StringBuffer tsStr("Thor - ");
         wu->setTimeStamp(tsStr.append(graphName).str(), GetCachedHostName(), "Finished");
         
@@ -775,10 +777,15 @@ void abortThor(IException *e, bool abortCurrentJob)
 {
     if (-1 == queryExitCode()) setExitCode(1);
     Owned<CJobManager> jM = ((CJobManager *)getJobManager());
+    Owned<IException> _e;
     if (0 == aborting)
     {
         aborting = 1;
-        if (!e) e = MakeThorException(TE_AbortException, "THOR ABORT");
+        if (!e)
+        {
+            _e.setown(MakeThorException(TE_AbortException, "THOR ABORT"));
+            e = _e;
+        }
         EXCLOG(e,"abortThor");
         LOG(MCdebugProgress, thorJob, "abortThor called");
         if (jM)

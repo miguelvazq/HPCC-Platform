@@ -32,12 +32,12 @@ protected:
     Owned<CSlavePartMapping> mapping;
     IHash *hash;
     Owned<ProgressInfo> inputProgress;
+    OwnedRoxieString fileName;
 
 public:
     CDiskReadMasterBase(CMasterGraphElement *info);
-    void init();
-    void serializeSlaveData(MemoryBuffer &dst, unsigned slave);
-    void done();
+    virtual void init();
+    virtual void serializeSlaveData(MemoryBuffer &dst, unsigned slave);
     virtual void validateFile(IDistributedFile *file) { }
     void deserializeStats(unsigned node, MemoryBuffer &mb);
     void getXGMML(unsigned idx, IPropertyTree *edge);

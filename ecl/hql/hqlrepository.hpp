@@ -30,16 +30,12 @@ extern HQL_API IEclRepository * createCompoundRepositoryF(IEclRepository * repos
 extern HQL_API IEclRepository * createCompoundRepository(EclRepositoryArray & repositories);
 extern HQL_API IEclRepository * createRepository(IEclSourceCollection * source, const char * rootScopeFullName = NULL);
 extern HQL_API IEclRepository * createRepository(EclSourceCollectionArray & sources);
-extern HQL_API IEclRepository * createNestedRepository(_ATOM name, IEclRepository * root);
+extern HQL_API IEclRepository * createNestedRepository(IIdAtom * name, IEclRepository * root);
 
 extern HQL_API void getRootScopes(HqlScopeArray & rootScopes, IHqlScope * scope, HqlLookupContext & ctx);
 extern HQL_API void getRootScopes(HqlScopeArray & rootScopes, IEclRepository * repository, HqlLookupContext & ctx);
 extern HQL_API void getImplicitScopes(HqlScopeArray & implicitScopes, IEclRepository * repository, IHqlScope * scope, HqlLookupContext & ctx);
 extern HQL_API void importRootModulesToScope(IHqlScope * scope, HqlLookupContext & ctx);
-
-
-extern HQL_API void lookupAllRootDefinitions(IHqlScope * scope, HqlLookupContext & ctx);
-extern HQL_API void lookupAllRootDefinitions(IEclRepository * repository);
 
 extern HQL_API IHqlScope * getResolveDottedScope(const char * modname, unsigned lookupFlags, HqlLookupContext & ctx);
 extern HQL_API IHqlExpression * getResolveAttributeFullPath(const char * attrname, unsigned lookupFlags, HqlLookupContext & ctx);

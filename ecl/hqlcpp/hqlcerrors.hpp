@@ -69,7 +69,7 @@
 #define HQLERR_RowTooLarge                      4043
 #define HQLERR_ShouldHaveBeenHoisted            4044
 #define HQLERR_NoArgumentsInValidator           4045
-#define HQLERR_NotSupportInRoxie                4046
+
 #define HQLERR_InputMergeNotSorted              4047
 #define HQLERR_TooComplicatedToPreload          4048
 #define HQLERR_KeyedNotKeyed                    4049
@@ -92,7 +92,6 @@
 #define HQLERR_BadJoinConditionAtMost           4067
 #define HQLERR_BadKeyedJoinConditionAtMost      4068
 #define HQLERR_FullJoinNeedDataset              4069
-#define HQLERR_AtmostFailMatchCondition         4070
 #define HQLERR_KeyedLimitNotKeyed               4071
 #define HQLERR_ExtendMismatch                   4072
 #define HQLERR_DuplicateNameOutput              4073
@@ -209,6 +208,8 @@
 #define HQLERR_MaximumSizeLessThanMinimum_XY    4188
 #define HQLERR_UnexpectedOptionValue_XY         4189
 #define HQLERR_VariableRowMustBeLinked          4190
+#define HQLERR_UserCodeNotAllowed               4191
+#define HQLERR_StreamInputUsedDirectly          4192
 
 //Warnings....
 #define HQLWRN_PersistDataNotLikely             4500
@@ -252,6 +253,8 @@
 #define HQLWRN_GroupedGlobalFew                 4540
 #define HQLWRN_AmbiguousRollupCondition         4541
 #define HQLWRN_AmbiguousRollupNoGroup           4542
+#define HQLWRN_GlobalActionDependendOnScope     4543
+#define HQLWRN_NoThorContextDependent           4544
 
 //Temporary errors
 #define HQLERR_OrderOnVarlengthStrings          4601
@@ -267,8 +270,6 @@
 #define HQLERR_ThorNotSupportStepping           4617
 #define HQLERR_OnceCannotAccessStored           4618
 #define HQLERR_ThorCombineOnlyLocal             4619
-
-#define HQLERR_ErrorAlreadyReported             4799            // special case...
 
 //Internal errors....
 #define HQLERR_NoClearOnLocalDataset            4800
@@ -303,6 +304,7 @@
 #define HQLERR_ReadSpillBeforeWrite             4835
 #define HQLERR_DependencyWithinGraph            4836
 #define HQLERR_UnknownCompoundAssign            4837
+#define HQLERR_ReadSpillBeforeWriteFix          4838
 //#define HQLERR_Max                            4999
 
 //---- Text for all errors (make it easy to internationalise) ---------------------------
@@ -352,7 +354,6 @@
 #define HQLERR_RowTooLarge_Text                 "Row size %u exceeds the maximum specified (%u)"
 #define HQLERR_ShouldHaveBeenHoisted_Text       "Select expression should have been hoisted"
 #define HQLERR_NoArgumentsInValidator_Text      "%s() cannot have a parameter inside a VALIDATE"
-#define HQLERR_NotSupportInRoxie_Text           "%s is not supported in roxie queries"
 #define HQLERR_InputMergeNotSorted_Text         "Input to MERGE does not appear to be sorted"
 #define HQLERR_TooComplicatedToPreload_Text     "Expression is too complicated to preload"
 #define HQLERR_KeyedNotKeyed_Text               "KEYED(%s) couldn't be looked up in a key."
@@ -375,7 +376,6 @@
 #define HQLERR_BadJoinConditionAtMost_Text      "ATMOST JOIN cannot be evaluated with this join condition%s"
 #define HQLERR_BadKeyedJoinConditionAtMost_Text "ATMOST JOIN cannot be evaluated with this join condition%s"
 #define HQLERR_FullJoinNeedDataset_Text         "RIGHT for a full keyed join must be a disk based DATASET"
-#define HQLERR_AtmostFailMatchCondition_Text    "ATMOST(%s) failed to match part of the join condition"
 #define HQLERR_KeyedLimitNotKeyed_Text          "LIMIT(%s, KEYED) could not be merged into an index read"
 #define HQLERR_ExtendMismatch_Text              "EXTEND is required on all outputs to NAMED(%s)"
 #define HQLERR_DuplicateNameOutput_Text         "Duplicate output to NAMED(%s).  EXTEND/OVERWRITE required"
@@ -492,6 +492,8 @@
 #define HQLERR_MaximumSizeLessThanMinimum_XY_Text "Maximum size (%u) for this record is lower than the minimum (%u)"
 #define HQLERR_UnexpectedOptionValue_XY_Text    "Unexpected value for option %s: %s"
 #define HQLERR_VariableRowMustBeLinked_Text     "External function '%s' cannot return a non-linked variable length row"
+#define HQLERR_UserCodeNotAllowed_Text          "Workunit-supplied code is not permitted on this system"
+#define HQLERR_StreamInputUsedDirectly_Text     "Library input used directly in a child query"
 
 //Warnings.
 #define HQLWRN_CannotRecreateDistribution_Text  "Cannot recreate the distribution for a persistent dataset"
@@ -503,7 +505,7 @@
 #define HQLWRN_CsvMaxLengthMismatch_Text        "CSV read: Max length of record (%d) exceeds the max length (%d) specified on the csv attribute"
 #define HQLWRN_KeyedFoldedToGap_Text            "KEYED(%s) follows component %s which is always matched in the key%s"
 #define HQLWRN_FoldRemoveKeyed_Text             "The key condition for field (%s) on key%s is always true"
-#define HQLWRN_GlobalDoesntSeemToBe_Text        "Expression%s marked as global seems to be context dependent"
+#define HQLWRN_GlobalDoesntSeemToBe_Text        "Global expression%s appears to access a parent dataset - this may cause a dataset not active error"
 #define HQLWRN_GroupedJoinIsLookupJoin_Text     "JOIN(,GROUPED) is implemented as a MANY LOOKUP join.  This may be inefficient in thor."
 #define HQLWRN_ImplicitJoinLimit_Text           "Implicit LIMIT(%d) added to keyed join%s"
 #define HQLWRN_ImplicitReadLimit_Text           "Neither LIMIT() nor CHOOSEN() supplied for index read on %s"
@@ -525,6 +527,8 @@
 #define HQLWRN_GroupedGlobalFew_Text            "Global few expression is grouped"
 #define HQLWRN_AmbiguousRollupCondition_Text    "ROLLUP condition on '%s' is also modified in the transform"
 #define HQLWRN_AmbiguousRollupNoGroup_Text      "ROLLUP condition - no fields are preserved in the transform - not converted to GROUPed ROLLUP"
+#define HQLWRN_GlobalActionDependendOnScope_Text "Global action appears to be context dependent - this may cause a dataset not active error"
+#define HQLWRN_NoThorContextDependent_Text      "NOTHOR expression%s appears to access a parent dataset - this may cause a dataset not active error"
 
 #define HQLERR_OrderOnVarlengthStrings_Text     "Rank/Ranked not supported on variable length strings"
 #define HQLERR_DistributionNoSequence_Text      "DISTRIBUTION() only supported at the outer level"
@@ -571,6 +575,7 @@
 #define HQLERR_ReadSpillBeforeWrite_Text        "INTERNAL: Attempt to read spill file %s before it is written"
 #define HQLERR_DependencyWithinGraph_Text       "INTERNAL: Dependency within a graph incorrectly generated for hThor (%u)"
 #define HQLERR_UnknownCompoundAssign_Text       "INTERNAL: Unrecognised compound assign %s"
+#define HQLERR_ReadSpillBeforeWriteFix_Text     "INTERNAL: Attempt to read spill file %s before it is written.  Try adding #option ('allowThroughSpill', false); to the query."
 
 #define WARNINGAT(e, x)                 reportWarning(e, x, x##_Text)
 #define WARNINGAT1(e, x, a)             reportWarning(e, x, x##_Text, a)

@@ -46,10 +46,12 @@ public:
     }
     virtual bool wait(bool exception, unsigned timeout)
     {
+        Owned<IException> e;
         CTimeMon tm(timeout);
         unsigned remaining = timeout;
         CMessageBuffer msg;
         msg.append(false);
+        msg.append(false); // no exception
         if (INFINITE != timeout && tm.timedout(&remaining))
         {
             if (exception)
@@ -74,21 +76,34 @@ public:
         }
         bool aborted;
         msg.read(aborted);
+        bool hasExcept;
+        msg.read(hasExcept);
+        if (hasExcept)
+            e.setown(deserializeException(msg));
         if (aborted)
         {
-            if (exception)
-                throw createBarrierAbortException();
-            else
+            if (!exception)
                 return false;
+            if (e)
+                throw e.getClear();
+            else
+                throw createBarrierAbortException();
         }   
         return true;
     }
-    virtual void cancel()
+    virtual void cancel(IException *e)
     {
         if (receiving)
             comm->cancel(comm->queryGroup().rank(), tag);
         CMessageBuffer msg;
         msg.append(true);
+        if (e)
+        {
+            msg.append(true);
+            serializeException(e, msg);
+        }
+        else
+            msg.append(false);
         if (!comm->send(msg, 0, tag, LONGTIMEOUT))
             throw MakeStringException(0, "CBarrierSlave::cancel - Timeout sending to master");
     }
@@ -163,7 +178,7 @@ void CSlaveActivity::startInput(IThorDataLink *itdl, const char *extra)
 #endif
 }
 
-void CSlaveActivity::stopInput(IThorDataLink *itdl, const char *extra)
+void CSlaveActivity::stopInput(IRowStream *itdl, const char *extra)
 {
     StringBuffer s("Stopping input for");
     if (extra)
@@ -377,7 +392,7 @@ bool CSlaveGraph::recvActivityInitData(size32_t parentExtractSz, const byte *par
 {
     bool ret = true;
     unsigned needActInit = 0;
-    Owned<IThorActivityIterator> iter = getTraverseIterator();
+    Owned<IThorActivityIterator> iter = getConnectedIterator();
     ForEach(*iter)
     {
         CGraphElementBase &element = (CGraphElementBase &)iter->query();
@@ -411,7 +426,7 @@ bool CSlaveGraph::recvActivityInitData(size32_t parentExtractSz, const byte *par
             assertex(!parentExtractSz || NULL!=parentExtract);
             msg.append(parentExtractSz);
             msg.append(parentExtractSz, parentExtract);
-            Owned<IThorActivityIterator> iter = getTraverseIterator();
+            Owned<IThorActivityIterator> iter = getConnectedIterator();
             ForEach(*iter)
             {
                 CSlaveGraphElement &element = (CSlaveGraphElement &)iter->query();
@@ -437,7 +452,7 @@ bool CSlaveGraph::recvActivityInitData(size32_t parentExtractSz, const byte *par
             if (queryOwner() && !isGlobal())
             {
                 // initialize any for which no data was sent
-                Owned<IThorActivityIterator> iter = getTraverseIterator();
+                Owned<IThorActivityIterator> iter = getConnectedIterator();
                 ForEach(*iter)
                 {
                     CSlaveGraphElement &element = (CSlaveGraphElement &)iter->query();
@@ -515,7 +530,7 @@ void CSlaveGraph::start()
 void CSlaveGraph::connect()
 {
     CriticalBlock b(progressCrit);
-    Owned<IThorActivityIterator> iter = getTraverseIterator();
+    Owned<IThorActivityIterator> iter = getConnectedIterator();
     ForEach(*iter)
         iter->query().doconnect();
 }
@@ -632,7 +647,7 @@ void CSlaveGraph::done()
         progressActive = false;
         progressToCollect = true; // NB: ensure collected after end of graph
     }
-    if (!aborted && (!queryOwner() || isGlobal()))
+    if (!aborted && graphDone && (!queryOwner() || isGlobal()))
         getDoneSem.wait(); // must wait on master
     if (!queryOwner())
     {
@@ -693,7 +708,7 @@ bool CSlaveGraph::serializeStats(MemoryBuffer &mb)
         if (collect)
         {
             unsigned sPos = mb.length();
-            Owned<IThorActivityIterator> iter = getTraverseIterator();
+            Owned<IThorActivityIterator> iter = getConnectedIterator();
             ForEach (*iter)
             {
                 CGraphElementBase &element = iter->query();
@@ -734,7 +749,7 @@ void CSlaveGraph::serializeDone(MemoryBuffer &mb)
     unsigned cPos = mb.length();
     unsigned count=0;
     mb.append(count);
-    Owned<IThorActivityIterator> iter = getTraverseIterator();
+    Owned<IThorActivityIterator> iter = getConnectedIterator();
     ForEach (*iter)
     {
         CGraphElementBase &element = iter->query();
@@ -938,12 +953,11 @@ public:
 
     virtual void getExternalResultRaw(unsigned & tlen, void * & tgt, const char * wuid, const char * stepname, unsigned sequence, IXmlToRowTransformer * xmlTransformer, ICsvToRowTransformer * csvTransformer) { throwUnexpected(); }
 
-    virtual void addWuException(const char * text, unsigned code, unsigned severity)
+    virtual void addWuException(const char * text, unsigned code, unsigned severity, const char * source)
     {
         DBGLOG("%s", text);
         Owned<IThorException> e = MakeThorException(code, "%s", text);
-        e->setAction(tea_warning);
-        e->setOrigin("user");
+        e->setOrigin(source);
         e->setAction(tea_warning);
         e->setSeverity((WUExceptionSeverity)severity);
         job.fireException(e);
@@ -1005,6 +1019,11 @@ public:
         else
             foreignNode.set(globals->queryProp("@DALISERVERS"));
         return ::getGlobalUniqueIds(num, &foreignNode);
+    }
+    virtual bool allowDaliAccess() const
+    {
+        // NB. includes access to foreign Dalis.
+        return globals->getPropBool("Debug/@slaveDaliClient");
     }
 };
 
@@ -1107,7 +1126,7 @@ void CJobSlave::startJob()
     unsigned minFreeSpace = (unsigned)getWorkUnitValueInt("MINIMUM_DISK_SPACE", 0);
     if (minFreeSpace)
     {
-        unsigned __int64 freeSpace = getFreeSpace(queryBaseDirectory());
+        unsigned __int64 freeSpace = getFreeSpace(queryBaseDirectory(grp_unknown, 0));
         if (freeSpace < ((unsigned __int64)minFreeSpace)*0x100000)
         {
             SocketEndpoint ep;

@@ -144,8 +144,8 @@ interface IDistributedFilePart: implements IInterface
 
     virtual bool isHost(unsigned copy=0) = 0;                                   // file is located on this machine
 
-    virtual offset_t getFileSize(bool allowphysical,bool forcephysical)=0;                  // gets the part filesize (NB this will be the *expanded* size)
-    virtual offset_t getDiskSize()=0;                                                       // gets the part size on disk (NB this will be the compressed size)
+    virtual offset_t getFileSize(bool allowphysical,bool forcephysical)=0; // gets the part filesize (NB this will be the *expanded* size)
+    virtual offset_t getDiskSize(bool allowphysical,bool forcephysical)=0; // gets the part size on disk (NB this will be the compressed size)
     virtual bool    getModifiedTime(bool allowphysical,bool forcephysical,CDateTime &dt)=0; // gets the part date time
 
     virtual bool getCrc(unsigned &crc) = 0;             // block compressed returns false (not ~0)
@@ -168,6 +168,105 @@ typedef IIteratorOf<IDistributedFilePart> IDistributedFilePartIterator;
 
 class CDFAction ;
 
+#define DFUQFilterSeparator '|' // | is used as a separator because it is not a valid character for logical file name
+
+enum DFUQFilterType
+{
+    DFUQFTwildcardMatch,
+    DFUQFThasProp,
+    DFUQFTcontainString,
+    DFUQFTbooleanMatch,
+    DFUQFTstringRange,
+    DFUQFTintegerRange,
+    DFUQFTinteger64Range,
+    DFUQFTspecial
+};
+
+enum DFUQSpecialFilter
+{
+    DFUQSFFileNameWithPrefix = 1,
+    DFUQSFFileType = 2
+};
+
+enum DFUQFileTypeFilter
+{
+    DFUQFFTall = 1,
+    DFUQFFTsuperfileonly = 2,
+    DFUQFFTnonsuperfileonly = 3
+};
+
+enum DFUQFilterField
+{
+    DFUQFFfiletype = 0,
+    DFUQFFdescription = 1,
+    DFUQFFdirectory = 2,
+    DFUQFFgroup = 3,
+    DFUQFFtimemodified = 4,
+    DFUQFFname = 5,
+    DFUQFFnumclusters = 6,
+    DFUQFFnumparts = 7,
+    DFUQFFpartmask = 8,
+    DFUQFForigname = 9,
+    DFUQFFattr = 10,
+    DFUQFFattrjob = 11,
+    DFUQFFattrowner = 12,
+    DFUQFFattrrecordcount = 13,
+    DFUQFFattrrecordsize = 14,
+    DFUQFFattrsize = 15,
+    DFUQFFattrcompressedsize = 16,
+    DFUQFFattrworkunit = 17,
+    DFUQFFcluster = 18,
+    DFUQFFclusterdefaultbasedir = 19,
+    DFUQFFclusterdefaultrepldir = 20,
+    DFUQFFclustermapflags = 21,
+    DFUQFFclustername = 22,
+    DFUQFFpart = 23,
+    DFUQFFpartname = 24,
+    DFUQFFpartnum = 25,
+    DFUQFFpartsize = 26,
+    DFUQFFsuperowner = 27,
+    DFUQFFsuperownername = 28,
+    DFUQFFsubfile = 29,
+    DFUQFFsubfilename = 30,
+    DFUQFFsubfilenum = 31,
+    DFUQFFterm = 32,
+    DFUQFFreverse = 256,
+    DFUQFFnocase = 512,
+    DFUQFFnumeric = 1024,
+    DFUQFFwild = 2048
+};
+
+enum DFUQResultField
+{
+    DFUQRFname = 0,
+    DFUQRFdescription = 1,
+    DFUQRFgroup = 2,
+    DFUQRFkind = 3,
+    DFUQRFtimemodified = 4,
+    DFUQRFjob = 5,
+    DFUQRFowner = 6,
+    DFUQRFrecordcount = 7,
+    DFUQRForigrecordcount = 8,
+    DFUQRFrecordsize = 9,
+    DFUQRFsize = 10,
+    DFUQRForigsize = 11,
+    DFUQRFworkunit = 12,
+    DFUQRFcluster = 13,
+    DFUQRFnumsubfiles = 14,
+    DFUQRFaccessed = 15,
+    DFUQRFnumparts = 16,
+    DFUQRFcompressedsize = 17,
+    DFUQRFdirectory = 18,
+    DFUQRFpartmask = 19,
+    DFUQRFterm = 20,
+    DFUQRFreverse = 256,
+    DFUQRFnocase = 512,
+    DFUQRFnumeric = 1024
+};
+
+extern da_decl const char* getDFUQFilterFieldName(DFUQFilterField feild);
+extern da_decl const char* getDFUQResultFieldName(DFUQResultField feild);
+
 /**
  * File operations can be included in a transaction to ensure that multiple
  * updates are handled atomically. This is the interface to a transaction
@@ -178,21 +277,11 @@ interface IDistributedFileTransaction: extends IInterface
 {
     virtual void start()=0;
     virtual void commit()=0;
-    virtual void autoCommit()=0; // if transaction not active, commit straight away
     virtual void rollback()=0;
     virtual bool active()=0;
+// TBD: shouldn't really be necessary, lookups should auto-add to transaction
     virtual IDistributedFile *lookupFile(const char *lfn,unsigned timeout=INFINITE)=0;
     virtual IDistributedSuperFile *lookupSuperFile(const char *slfn,unsigned timeout=INFINITE)=0;
-    virtual IDistributedSuperFile *lookupSuperFileCached(const char *slfn,unsigned timeout=INFINITE)=0;
-    virtual IUserDescriptor *queryUser()=0;
-    virtual bool addDelayedDelete(CDfsLogicalFileName &lfn,unsigned timeoutms=INFINITE)=0; // used internally to delay deletes until commit
-    virtual void descend()=0;  // descend into a recursive call (can't autoCommit if depth is not zero)
-    virtual void ascend()=0;   // ascend back from the deep, one step at a time
-
-    // MORE: These need refactoring
-    virtual void addAction(CDFAction *action)=0; // internal (so why is this on a public interface?)
-    virtual void addFile(IDistributedFile *file)=0; // TODO: avoid this being necessary
-    virtual void clearFiles()=0; // internal (so why is this on a public interface?)
 };
 
 interface IDistributedSuperFileIterator: extends IIteratorOf<IDistributedSuperFile>
@@ -241,9 +330,6 @@ interface IDistributedFile: extends IInterface
 
     virtual unsigned numCopies(unsigned partno) = 0;                            // number of copies
 
-    virtual bool removePhysicalPartFiles(const char *cluster=NULL,IMultiException *exceptions=NULL) = 0;          // removes all physical part files
-                                                                                // returns true if no major errors
-
     virtual bool existsPhysicalPartFiles(unsigned short port) = 0;              // returns true if physical patrs all exist (on primary OR secondary)
 
     virtual bool renamePhysicalPartFiles(const char *newlfn,const char *cluster=NULL,IMultiException *exceptions=NULL,const char *newbasedir=NULL) = 0;           // renames all physical part files
@@ -251,6 +337,7 @@ interface IDistributedFile: extends IInterface
 
 
     virtual __int64 getFileSize(bool allowphysical,bool forcephysical)=0;       // gets the total file size (forcephysical doesn't use cached value)
+    virtual __int64 getDiskSize(bool allowphysical,bool forcephysical)=0;       // gets the part size on disk (NB this will be the compressed size)
     virtual bool getFileCheckSum(unsigned &checksum)=0;                         // gets a single checksum for the logical file, based on the part crc's
     virtual unsigned getPositionPart(offset_t pos,offset_t &base)=0;            // get the part for a given position and the base offset of that part
 
@@ -272,7 +359,7 @@ interface IDistributedFile: extends IInterface
     virtual void setECL(const char *ecl) = 0;
 
     virtual void addCluster(const char *clustername,const ClusterPartDiskMapSpec &mspec) = 0;
-    virtual void removeCluster(const char *clustername) = 0;    // doesn't delete parts
+    virtual bool removeCluster(const char *clustername) = 0;    // doesn't delete parts
     virtual bool checkClusterCompatible(IFileDescriptor &fdesc, StringBuffer &err) = 0;
     virtual void updatePartDiskMapping(const char *clustername,const ClusterPartDiskMapSpec &spec)=0;
 
@@ -281,7 +368,7 @@ interface IDistributedFile: extends IInterface
 
     virtual bool getFormatCrc(unsigned &crc) =0;   // CRC for record format 
     virtual bool getRecordSize(size32_t &rsz) =0;   
-    virtual bool getRecordLayout(MemoryBuffer &layout) =0;   
+    virtual bool getRecordLayout(MemoryBuffer &layout) =0;
 
 
     virtual void enqueueReplicate()=0;
@@ -324,6 +411,9 @@ interface IDistributedSuperFile: extends IDistributedFile
                                 bool remcontents=false,     // if true removes contents of subfile (assuming it is a superfile)
                                 IDistributedFileTransaction *transaction=NULL)=0;
                             // Note does not delete subfile
+    virtual bool removeOwnedSubFiles(bool remsub,           // if true removes subfiles from DFS
+                                     IDistributedFileTransaction *transaction=NULL)=0;
+                            // Note does not delete subfile
     virtual bool swapSuperFile( IDistributedSuperFile *_file,               // swaps sub files
                                 IDistributedFileTransaction *transaction)=0;
 
@@ -339,6 +429,7 @@ interface IDistributedSuperFile: extends IDistributedFile
                                 // returns file for part (not linked) NULL if not found
 };
 
+extern da_decl unsigned getSuperFileSubs(IDistributedSuperFile *super, IArrayOf<IDistributedFile> &subFiles, bool superSub=false);
 
 interface ISimpleSuperFileEnquiry: extends IInterface // lightweight local
 {
@@ -444,7 +535,7 @@ interface IDistributedFileDirectory: extends IInterface
                                         unsigned timeout=INFINITE
                                     ) = 0;  // links, returns NULL if not found
 
-    virtual IDistributedFile *lookup(   const CDfsLogicalFileName &logicalname,
+    virtual IDistributedFile *lookup(   CDfsLogicalFileName &logicalname,
                                         IUserDescriptor *user,
                                         bool writeaccess=false,
                                         bool hold = false,
@@ -457,12 +548,14 @@ interface IDistributedFileDirectory: extends IInterface
     virtual IDistributedFileIterator *getIterator(const char *wildname, bool includesuper, IUserDescriptor *user) = 0;
             // wildname is in form scope/name and may contain wild components for either
     virtual IDFAttributesIterator *getDFAttributesIterator(const char *wildname, IUserDescriptor *user, bool recursive=true, bool includesuper=false, INode *foreigndali=NULL, unsigned foreigndalitimeout=FOREIGN_DALI_TIMEOUT) = 0;
+    virtual IPropertyTreeIterator *getDFAttributesTreeIterator(const char *filters, DFUQResultField* localFilters,
+        const char *localFilterBuf, IUserDescriptor *user, INode *foreigndali=NULL, unsigned foreigndalitimeout=FOREIGN_DALI_TIMEOUT) = 0;
     virtual IDFAttributesIterator *getForeignDFAttributesIterator(const char *wildname, IUserDescriptor *user, bool recursive=true, bool includesuper=false, const char *foreigndali="", unsigned foreigndalitimeout=FOREIGN_DALI_TIMEOUT) = 0;
 
     virtual IDFScopeIterator *getScopeIterator(IUserDescriptor *user, const char *subscope=NULL,bool recursive=true,bool includeempty=false)=0;
 
     // Removes files and super-files with format: context/file@cluster
-    virtual bool removeEntry(const char *name, IUserDescriptor *user, IDistributedFileTransaction *transaction=NULL, unsigned timeoutms=INFINITE) = 0;
+    virtual bool removeEntry(const char *name, IUserDescriptor *user, IDistributedFileTransaction *transaction=NULL, unsigned timeoutms=INFINITE, bool throwException=false) = 0;
     virtual void renamePhysical(const char *oldname,const char *newname,IUserDescriptor *user,IDistributedFileTransaction *transaction) = 0;                         // renames the physical parts as well as entry
     virtual void removeEmptyScope(const char *scope) = 0;   // does nothing if called on non-empty scope
     
@@ -498,7 +591,7 @@ interface IDistributedFileDirectory: extends IInterface
     // Local 'lightweight' routines
     virtual void promoteSuperFiles(unsigned numsf,const char **sfnames,const char *addsubnames,bool delsub,bool createonlyonesuperfile,IUserDescriptor *user,unsigned timeout, StringArray &outunlinked)=0;
     virtual bool getFileSuperOwners(const char *logicalname, StringArray &owners)=0; // local only
-    virtual ISimpleSuperFileEnquiry * getSimpleSuperFileEnquiry(const char *logicalname,const char *dbgtitle,unsigned timeout=INFINITE)=0; // NB must be local!
+    virtual ISimpleSuperFileEnquiry * getSimpleSuperFileEnquiry(const char *logicalname,const char *dbgtitle,IUserDescriptor *udesc,unsigned timeout=INFINITE)=0; // NB must be local!
 
     virtual IDFSredirection & queryRedirection()=0;
 
@@ -560,6 +653,8 @@ interface IDistributedFileDirectory: extends IInterface
                                            StringArray &names, UnsignedArray &counts) = 0;
 
     virtual IDFProtectedIterator *lookupProtectedFiles(const char *owner=NULL,bool notsuper=false,bool superonly=false)=0; // if owner = NULL then all
+    virtual IDFAttributesIterator* getLogicalFilesSorted(IUserDescriptor* udesc, DFUQResultField *sortOrder, const void* filters, DFUQResultField *localFilters,
+            const void *specialFilterBuf, unsigned startOffset, unsigned maxNum, __int64 *cacheHint, unsigned *total) = 0;
 
     virtual unsigned setDefaultTimeout(unsigned timems) = 0;                                // sets default timeout for SDS connections and locking
                                                                                             // returns previous value
@@ -585,18 +680,18 @@ interface INamedGroupIterator: extends IInterface
 
 interface INamedGroupStore: implements IGroupResolver
 {
-    
     virtual IGroup *lookup(const char *logicalgroupname) = 0;
     virtual INamedGroupIterator *getIterator() = 0;
-    virtual INamedGroupIterator *getIterator(IGroup *match,bool exact=false) = 0;
-    virtual void add(const char *logicalgroupname,IGroup *group,bool cluster=false, const char *dir=NULL) = 0;
+    virtual INamedGroupIterator *getIterator(IGroup *match, bool exact=false) = 0;
+    virtual void add(const char *logicalgroupname,IGroup *group, bool cluster=false, const char *dir=NULL, GroupType groupType = grp_unknown) = 0;
     virtual void remove(const char *logicalgroupname) = 0;
     virtual bool find(IGroup *grp, StringBuffer &lname, bool add=false) = 0;
     virtual void addUnique(IGroup *group,StringBuffer &lname,const char *dir=NULL) = 0;
     virtual void swapNode(const IpAddress &from, const IpAddress &to) = 0;
-    virtual IGroup *lookup(const char *logicalgroupname, StringBuffer &dir) = 0;
-    virtual unsigned setDefaultTimeout(unsigned timems) = 0;                                    // sets default timeout for SDS connections and locking                                                                                         // returns previous value
-
+    virtual IGroup *lookup(const char *logicalgroupname, StringBuffer &dir, GroupType &groupType) = 0;
+    virtual unsigned setDefaultTimeout(unsigned timems) = 0;     // sets default timeout for SDS connections and locking
+    virtual unsigned setRemoteTimeout(unsigned timems) = 0;      // sets default timeout for remote SDS connections and locking
+    virtual void resetCache() = 0;      // resets any cached lookups
 };
 
 extern da_decl INamedGroupStore  &queryNamedGroupStore();

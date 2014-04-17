@@ -25,6 +25,55 @@
     </xs:annotation>
     <xs:complexType>
       <xs:choice maxOccurs="unbounded">
+
+        <xs:element name="RoxieFarmProcess" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:appinfo>
+              <title>Ports</title>
+            </xs:appinfo>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="port" type="xs:nonNegativeInteger" use="optional" default="9876">
+              <xs:annotation>
+                <xs:appinfo>
+                  <required>true</required>
+                  <tooltip>the network port on which the Roxie servers accept connections</tooltip>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="numThreads" type="xs:nonNegativeInteger" use="optional" default="30">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Number of simultaneous queries Roxie servers will accept on this port</tooltip>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="listenQueue" type="xs:nonNegativeInteger" use="optional" default="200">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Number of pending connections that can be accepted</tooltip>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="requestArrayThreads" type="xs:nonNegativeInteger" use="optional" default="5">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Number of simultaneous queries Roxie servers will process using the MERGE option of SOAPCALL</tooltip>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="aclName" type="xpathType" use="optional">
+              <xs:annotation>
+                <xs:appinfo>
+                  <tooltip>Name of any Access Control List to use</tooltip>
+                  <title>ACL</title>
+                  <xpath>$process/ACL</xpath>
+                </xs:appinfo>
+              </xs:annotation>
+            </xs:attribute>
+          </xs:complexType>
+        </xs:element>
+
         <xs:element name="RoxieServerProcess" maxOccurs="unbounded">
           <xs:annotation>
             <xs:appinfo>
@@ -41,73 +90,9 @@
                 </xs:appinfo>
               </xs:annotation>
             </xs:attribute>
-            <xs:attribute name="port" type="xs:nonNegativeInteger" use="optional" default="9876">
-              <xs:annotation>
-                <xs:appinfo>
-                  <required>true</required>
-                  <tooltip>the network port on which the Roxie server accepts connections</tooltip>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="dataDirectory" type="absolutePath" use="required"/>
-            <xs:attribute name="numThreads" type="xs:nonNegativeInteger" use="optional" default="30">
-              <xs:annotation>
-                <xs:appinfo>
-                  <tooltip>Number of simultaneous queries this Roxie server will accept on this port</tooltip>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="listenQueue" type="xs:nonNegativeInteger" use="optional" default="200">
-              <xs:annotation>
-                <xs:appinfo>
-                  <tooltip>Number of pending connections that can be accepted</tooltip>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="requestArrayThreads" type="xs:nonNegativeInteger" use="optional" default="5">
-              <xs:annotation>
-                <xs:appinfo>
-                  <tooltip>Number of simultaneous queries this Roxie server will process using the MERGE option of SOAPCALL</tooltip>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="aclName" type="xpathType" use="optional">
-              <xs:annotation>
-                <xs:appinfo>
-                  <tooltip>Name of any Access Control List to use</tooltip>
-                  <title>ACL</title>
-                  <xpath>$process/ACL</xpath>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
           </xs:complexType>
         </xs:element>
-        <xs:element name="RoxieSlaveProcess" maxOccurs="unbounded">
-          <xs:annotation>
-            <xs:appinfo>
-              <viewType>RoxieSlaves</viewType>
-              <title>Agents</title>
-            </xs:appinfo>
-          </xs:annotation>
-          <xs:complexType>
-            <xs:attribute name="computer" type="computerType" use="required"/>
-            <xs:attribute name="netAddress" type="ipAddress">
-              <xs:annotation>
-                <xs:appinfo>
-                  <viewType>readonly</viewType>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="channel" type="xs:nonNegativeInteger" use="required">
-              <xs:annotation>
-                <xs:appinfo>
-                  <tooltip>Channel number for this agent</tooltip>
-                </xs:appinfo>
-              </xs:annotation>
-            </xs:attribute>
-            <xs:attribute name="dataDirectory" type="absolutePath" use="required"/>
-          </xs:complexType>
-        </xs:element>
+
         <xs:element name="ACL" maxOccurs="unbounded">
           <xs:annotation>
             <xs:appinfo>
@@ -370,14 +355,6 @@
           </xs:appinfo>
         </xs:annotation>
       </xs:attribute>
-      <xs:attribute name="numChannels" type="xs:nonNegativeInteger" use="optional">
-        <xs:annotation>
-          <xs:appinfo>
-            <tooltip>Number of channels in this Roxie cluster. Should be equal to the number of agents, normally</tooltip>
-            <viewType>readonly</viewType>
-          </xs:appinfo>
-        </xs:annotation>
-      </xs:attribute>
       <xs:attribute name="directory" type="absolutePath" use="optional" default="${EXEC_PREFIX}/lib/${DIR_NAME}/roxie/">
         <xs:annotation>
           <xs:appinfo>
@@ -396,6 +373,7 @@
       </xs:attribute>
       <xs:attributeGroup ref="LDAP"/>
       <xs:attributeGroup ref="Options"/>
+      <xs:attributeGroup ref="Redundancy"/>
       <xs:attributeGroup ref="Tracing"/>
       <xs:attributeGroup ref="UDP"/>
       <xs:attributeGroup ref="Cache"/>
@@ -449,14 +427,14 @@
     <xs:attribute name="checkFileDate" type="xs:boolean" use="optional" default="true">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Compare file dates of physical files with the information stored in state file when RoxieConfig was executed.</tooltip>
+          <tooltip>Compare file dates of physical files with the information in DFS.</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="copyResources" type="xs:boolean" use="optional" default="true">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Copies any missing data files/keys from the position they were in when RoxieConfig was executed.</tooltip>
+          <tooltip>Copies any missing data files/keys from the position they were in when query was deployed.</tooltip>
           <autogenforwizard>1</autogenforwizard>
           <autogendefaultvalue>false</autogendefaultvalue>
           <autogendefaultformultinode>true</autogendefaultformultinode>
@@ -480,49 +458,49 @@
     <xs:attribute name="defaultHighPriorityTimeLimit" type="xs:nonNegativeInteger" use="optional" default="0">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Maximum run time (in ms) for any single active high-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Maximum run time (in ms) for any single active high-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultHighPriorityTimeWarning" type="xs:nonNegativeInteger" use="optional" default="5000">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Time (in ms) before generating SNMP warning for a high-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Time (in ms) before generating SNMP warning for a high-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultLowPriorityTimeLimit" type="xs:nonNegativeInteger" use="optional" default="0">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Maximum run time (in ms) for any single active low-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Maximum run time (in ms) for any single active low-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultLowPriorityTimeWarning" type="xs:nonNegativeInteger" use="optional" default="0">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Time (in ms) before generating SNMP warning for a low-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Time (in ms) before generating SNMP warning for a low-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultMemoryLimit" type="xs:nonNegativeInteger" use="optional" default="0">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Maximum amount of memory available for row data in any single active query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Maximum amount of memory available for row data in any single active query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultSLAPriorityTimeLimit" type="xs:nonNegativeInteger" use="optional" default="0">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Maximum run time (in ms) for any single active SLA-high-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Maximum run time (in ms) for any single active SLA-high-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="defaultSLAPriorityTimeWarning" type="xs:nonNegativeInteger" use="optional" default="5000">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Time (in ms) before generating SNMP warning for a SLA-high-priority query (if not overriden in roxieconfig)</tooltip>
+          <tooltip>Time (in ms) before generating SNMP warning for a SLA-high-priority query (if not overriden)</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
@@ -565,6 +543,13 @@
       <xs:annotation>
         <xs:appinfo>
           <tooltip>Timeout (in ms) before high priority requests are resent to agents</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="ignoreOrphans" type="xs:boolean" use="optional" default="true">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Treat out-of-date local files as if they were not present.</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
@@ -669,6 +654,13 @@
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
+    <xs:attribute name="reloadRetriesFailed" type="xs:boolean" use="optional" default="true">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Retry loading of failed queries whenever QuerySet reloads</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
     <xs:attribute name="remoteFilesExpire" type="xs:integer" use="optional" default="3600000">
       <xs:annotation>
         <xs:appinfo>
@@ -698,7 +690,8 @@
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="slaveThreads" type="xs:nonNegativeInteger" use="optional" default="30">
+
+   <xs:attribute name="slaveThreads" type="xs:nonNegativeInteger" use="optional" default="30">
       <xs:annotation>
         <xs:appinfo>
           <tooltip>Number of threads processing agent requests</tooltip>
@@ -757,10 +750,54 @@
     <xs:attribute name="useRemoteResources" type="xs:boolean" use="optional" default="true">
       <xs:annotation>
         <xs:appinfo>
-          <tooltip>Loads any missing data files/keys from the position they were in when RoxieConfig was executed.</tooltip>
+          <tooltip>Reads any missing data files/keys from the position they were in when deployed.</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>
+  </xs:attributeGroup>
+  <xs:attributeGroup name="Redundancy">
+
+    <xs:attribute name="cyclicOffset" type="xs:nonNegativeInteger" use="optional" default="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Offset for cyclic redundancy mode</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+
+    <xs:attribute name="channelsPerNode" type="xs:nonNegativeInteger" use="optional" default="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Number of channels/data locations to use per node, in overloaded mode</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+
+    <xs:attribute name="numDataCopies" type="xs:nonNegativeInteger" use="optional" default="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Number of copies of the data in redundant modes</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+
+    <xs:attribute name="slaveConfig" use="optional" default="">
+      <xs:annotation>
+        <xs:appinfo>
+           <tooltip>Roxie data redundancy mode</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="simple"/>
+          <xs:enumeration value="overloaded"/>
+          <xs:enumeration value="full redundancy"/>
+          <xs:enumeration value="cyclic redundancy"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+
+
   </xs:attributeGroup>
   <xs:attributeGroup name="Tracing">
     <xs:attribute name="traceLevel" type="xs:nonNegativeInteger" use="optional" default="1">
@@ -1029,18 +1066,48 @@
       </xs:annotation>
     </xs:attribute>
   </xs:attributeGroup>
+  <xs:attributeGroup name="Ports">
+    <xs:attribute name="multicastPort" type="xs:nonNegativeInteger" use="optional" default="8887">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Port used for multicast (server->slave) data</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="serverFlowPort" type="xs:nonNegativeInteger" use="optional" default="9000">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Port used for UDP (slave->server) server flow control messages</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="dataPort" type="xs:nonNegativeInteger" use="optional" default="9001">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Port used for UDP (slave->server) data</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="clientFlowPort" type="xs:nonNegativeInteger" use="optional" default="9002">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Port used for UDP (slave->server) client flow control messages</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="snifferPort" type="xs:nonNegativeInteger" use="optional" default="9003">
+      <xs:annotation>
+        <xs:appinfo>
+          <tooltip>Port used for UDP (slave->server) sniffer</tooltip>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:attributeGroup>
   <xs:attributeGroup name="Debug">
     <xs:attribute name="checkCompleted" type="xs:boolean" use="optional" default="true">
       <xs:annotation>
         <xs:appinfo>
           <tooltip>Check pending replies when agent gets a retry request</tooltip>
-        </xs:appinfo>
-      </xs:annotation>
-    </xs:attribute>
-      <xs:attribute name="checkPrimaries" type="xs:boolean" use="optional" default="true">
-      <xs:annotation>
-        <xs:appinfo>
-          <tooltip>Verify that topology specifies a different agent first for each channel</tooltip>
         </xs:appinfo>
       </xs:annotation>
     </xs:attribute>

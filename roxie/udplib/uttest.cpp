@@ -435,6 +435,7 @@ public:
 
     ~SortMaster()
     {
+        delete [] nodeData;
         delete [] nextNode;
         delete [] receiveSem;
         delete [] receivesCompleted;
@@ -442,7 +443,7 @@ public:
 
     int requestToSend(int sendingNode)
     {
-        int receivingNode;
+        int receivingNode = 0;
         if (simpleSequential)
         {
             {

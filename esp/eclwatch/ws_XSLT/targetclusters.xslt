@@ -302,7 +302,7 @@
         </td>
         <td align="left" width="20">
           <a href="javascript:showDetails('{$type}', '{$name}');">
-            <img id="view_details_{$name}" border="0" src="&filePathEntity;/img/keyfile.png" align="middle"/>
+            <img id="view_details_{$name}" border="0" src="&filePathEntity;/img/keyfile.png" alt="View details" title="View details" align="middle"/>
           </a>
         </td>
         <!--xsl:if test="type='RoxieCluster'">
@@ -360,6 +360,14 @@
                       <xsl:with-param name="caption" select="'ECL CC Servers'"/>
                       <xsl:with-param name="nodes" select="TpEclCCServers/TpEclServer"/>
                       <xsl:with-param name="compType" select="'EclCCServerProcess'"/>
+                      <xsl:with-param name="cluster" select="$name"/>
+                    </xsl:call-template>
+                  </xsl:if>
+                  <xsl:if test="count(TpEclServers/TpEclServer)">
+                    <xsl:call-template name="showMachines">
+                      <xsl:with-param name="caption" select="'ECL Servers'"/>
+                      <xsl:with-param name="nodes" select="TpEclServers/TpEclServer"/>
+                      <xsl:with-param name="compType" select="'EclServerProcess'"/>
                       <xsl:with-param name="cluster" select="$name"/>
                     </xsl:call-template>
                   </xsl:if>
@@ -469,7 +477,8 @@
                   <xsl:text disable-output-escaping="yes">&amp;inner=/WsTopology/TpGetComponentFile%3fFileType%3dcfg%26CompType%3d</xsl:text>
                   <xsl:value-of select="concat($type2, 'Cluster%26CompName%3d', Name, '%26Directory%3d', $absolutePath, '%26OsType%3d', OS)"/>
                 </xsl:variable>
-                <img onclick="getConfigXML('{$href0}')" border="0" src="&filePathEntity;/img/config.png" alt="View configuration file..." width="14" height="14"/>
+                <img onclick="getConfigXML('{$href0}')" border="0" src="&filePathEntity;/img/config.png" alt="View configuration file..." 
+                  title="View configuration file..." width="14" height="14"/>
                 <xsl:value-of select="Directory"/>
               </td>
             </tr>
@@ -520,7 +529,7 @@
             <xsl:for-each select="TpMachines/*">
               <xsl:variable name="showDir">
                 <xsl:choose>
-                  <xsl:when test="$compType='EclCCServerProcess' or $compType='EclSchedulerProcess'">
+                  <xsl:when test="$compType='EclCCServerProcess' or $compType='EclServerProcess' or $compType='EclSchedulerProcess'">
                     <xsl:value-of select="Directory"/>
                   </xsl:when>
                   <xsl:when test="$compType='EclAgentProcess'">
@@ -531,6 +540,7 @@
               <xsl:variable name="type4">
                 <xsl:choose>
                   <xsl:when test="$compType='EclCCServerProcess'">Ecl CC Server Process</xsl:when>
+                  <xsl:when test="$compType='EclServerProcess'">Ecl Server Process</xsl:when>
                   <xsl:when test="$compType='EclAgentProcess'">Ecl Agent Process</xsl:when>
                   <xsl:when test="$compType='EclSchedulerProcess'">Ecl Scheduler Process</xsl:when>
                 </xsl:choose>
@@ -691,7 +701,7 @@
                               <xsl:value-of select="OS"/>
                               <xsl:text disable-output-escaping="yes">);</xsl:text>
                             </xsl:attribute>
-                            <img border="0" src="&filePathEntity;/img/base.gif" alt="View log file" width="19" height="16"/>
+                            <img border="0" src="&filePathEntity;/img/base.gif" alt="View log file" title="View log file" width="19" height="16"/>
                           </a>
                         </xsl:if>
                       </td>
@@ -714,7 +724,8 @@
                               <xsl:text disable-output-escaping="yes">%26OsType%3d</xsl:text>
                               <xsl:value-of select="OS"/>
                             </xsl:variable>
-                            <img onclick="getConfigXML('{$href0}')" border="0" src="/esp/files_/img/config.png" alt="View deployed configuration file" width="14" height="14"/>
+                            <img onclick="getConfigXML('{$href0}')" border="0" src="/esp/files_/img/config.png" alt="View deployed configuration file"
+                              title="View configuration file..." width="14" height="14"/>
                           </xsl:when>
                           <xsl:otherwise>
                             <img border="0" src="/esp/files_/img/blank.png" width="14" height="14"/>
@@ -808,7 +819,8 @@
                               <xsl:text disable-output-escaping="yes">%26OsType%3d</xsl:text>
                               <xsl:value-of select="OS"/>
                             </xsl:attribute>
-                            <img border="0" src="/esp/files_/img/config.png" alt="View deployed configuration file" width="14" height="14"/>
+                            <img border="0" src="/esp/files_/img/config.png" alt="View deployed configuration file"
+                              title="View configuration file..." width="14" height="14"/>
                           </a>
                           <xsl:value-of select="Directory"/>
                         </td>

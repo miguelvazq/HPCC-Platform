@@ -148,7 +148,7 @@ inline static int validJSONUtf8ChrLen(unsigned char c)
         return 0;
     if ('\\' == c)
         return 2;
-    return utf8CharLen(&c);
+    return utf8CharLen(c);
 }
 
 inline static bool isAttribute(const char *xpath) { return (xpath && *xpath == '@'); }
@@ -307,7 +307,7 @@ public:
 };
 
 
-class jlib_decl PTree : public CInterface, implements IPropertyTree
+class jlib_decl PTree : public CInterfaceOf<IPropertyTree>
 {
 friend class SingleIdIterator;
 friend class PTLocalIteratorBase;
@@ -315,9 +315,6 @@ friend class PTIdMatchIterator;
 friend class ChildMap;
 
 public:
-    IMPLEMENT_IINTERFACE;
-    virtual bool IsShared() const { return CInterface::IsShared(); }
-
     PTree(MemoryBuffer &mb);
     PTree(const char *_name=NULL, byte _flags=0, IPTArrayValue *_value=NULL, ChildMap *_children=NULL);
     ~PTree();

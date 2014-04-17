@@ -57,11 +57,11 @@ class CsvWriteActivityMaster : public CWriteMasterBase
 {
 public:
     CsvWriteActivityMaster(CMasterGraphElement *info) : CWriteMasterBase(info) {}
-    void done()
+    virtual void done()
     {
         IPropertyTree &props = fileDesc->queryProperties();
-        props.setPropBool("@csv", true);
         props.setProp("@format", "utf8n");
+        props.setProp("@kind", "csv");
         IHThorCsvWriteArg *helper=(IHThorCsvWriteArg *)queryHelper();
         ICsvParameters *csvParameters = helper->queryCsvParameters();
         StringBuffer separator;

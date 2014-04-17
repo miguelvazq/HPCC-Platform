@@ -51,16 +51,8 @@
 
 static void setHashResources(IHqlExpression * expr, CResources & resources, const CResourceOptions & options)
 {
-    if (options.useMpForDistribute)
-    {
-        unsigned memneeded = MEM_Const_Minimal+resources.clusterSize*4*DISTRIBUTE_SINGLE_BUFFER_SIZE+DISTRIBUTE_PULL_BUFFER_SIZE;
-        resources.set(RESslavememory, memneeded).set(REShashdist, 1);
-    }
-    else
-    {
-        resources.set(RESslavememory, MEM_Const_Minimal+DISTRIBUTE_PULL_BUFFER_SIZE).set(REShashdist, 1);
-        resources.setManyToManySockets(2);
-    }
+    unsigned memneeded = MEM_Const_Minimal+resources.clusterSize*4*DISTRIBUTE_SINGLE_BUFFER_SIZE+DISTRIBUTE_PULL_BUFFER_SIZE;
+    resources.set(RESslavememory, memneeded).set(REShashdist, 1);
 }
 
 
@@ -82,11 +74,11 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
     case no_selfjoin:
     case no_denormalize:
     case no_denormalizegroup:
-        if (isKeyedJoin(expr) || expr->hasProperty(_lightweight_Atom))
+        if (isKeyedJoin(expr) || expr->hasAttribute(_lightweight_Atom))
             resources.setLightweight();
-        else if (expr->hasProperty(lookupAtom))
+        else if (expr->hasAttribute(lookupAtom))
         {
-            if (expr->hasProperty(fewAtom))
+            if (expr->hasAttribute(fewAtom))
             {
                 resources.setLightweight().set(RESslavememory, MEM_Const_Minimal+LOOKUPJOINL_SMART_BUFFER_SIZE);
                 resources.setManyToMasterSockets(1);
@@ -97,14 +89,19 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
                 resources.setManyToMasterSockets(1);
             }
         }
-        else if (expr->hasProperty(hashAtom))
+        else if (expr->hasAttribute(smartAtom))
+        {
+            resources.setHeavyweight();
+            setHashResources(expr, resources, options);
+        }
+        else if (expr->hasAttribute(hashAtom))
         {
             resources.setHeavyweight();
             setHashResources(expr, resources, options);
         }
         else
         {
-            resources.setHeavyweight().set(RESslavememory, MEM_Const_Minimal+SORT_BUFFER_TOTAL+JOINR_SMART_BUFFER_SIZE);
+            resources.setHeavyweight().set(RESslavememory, MEM_Const_Minimal+SORT_BUFFER_TOTAL+JOIN_SMART_BUFFER_SIZE);
             if (!isLocal)
             {
 #ifndef SORT_USING_MP
@@ -114,7 +111,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
         }
         break;
     case no_dedup:
-        if (isGrouped || (!expr->hasProperty(allAtom) && !expr->hasProperty(hashAtom)))
+        if (isGrouped || (!expr->hasAttribute(allAtom) && !expr->hasAttribute(hashAtom)))
         {
             resources.setLightweight();
             if (!isGrouped && !isLocal)
@@ -151,7 +148,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
         setHashResources(expr, resources, options);
         break;
     case no_subsort:
-        if (expr->hasProperty(manyAtom))
+        if (expr->hasAttribute(manyAtom))
             resources.setHeavyweight();
         else
             resources.setLightweight();
@@ -159,12 +156,12 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
     case no_sort:
         if (isGrouped)
         {
-            if (expr->hasProperty(manyAtom))
+            if (expr->hasAttribute(manyAtom))
                 resources.setHeavyweight();
             else
                 resources.setLightweight();
         }
-        else if (expr->hasProperty(fewAtom) && isLocal)
+        else if (expr->hasAttribute(fewAtom) && isLocal)
             resources.setLightweight();
         else if (isLocal)
             resources.setHeavyweight();
@@ -193,7 +190,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
             else
             {
                 resources.setLightweight();
-                if (expr->hasProperty(_workflowPersist_Atom) && expr->hasProperty(distributedAtom))
+                if (expr->hasAttribute(_workflowPersist_Atom) && expr->hasAttribute(distributedAtom))
                     setHashResources(expr, resources, options);         // may require a hash distribute
             }
             break;
@@ -201,7 +198,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
     case no_output:
         {
             IHqlExpression * filename = expr->queryChild(1);
-            if (expr->hasProperty(_spill_Atom))
+            if (expr->hasAttribute(_spill_Atom))
             {
                 //resources.setLightweight();   // assume no resources(!)
             }
@@ -243,7 +240,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
     case no_hqlproject:
         resources.setLightweight();
         //Add a flag onto count project to indicate it is a different variety.
-        if (expr->hasProperty(_countProject_Atom) && !isLocal)
+        if (expr->hasAttribute(_countProject_Atom) && !isLocal)
             resources.set(RESslavememory, COUNTPROJECT_SMART_BUFFER_SIZE);
         break;
     case no_enth:
@@ -252,7 +249,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
             resources.set(RESslavememory, CHOOSESETS_SMART_BUFFER_SIZE);
         break;
     case no_metaactivity:
-        if (expr->hasProperty(pullAtom))
+        if (expr->hasAttribute(pullAtom))
             resources.setLightweight().set(RESslavememory, PULL_SMART_BUFFER_SIZE);
         break;
     case no_setresult:
@@ -262,7 +259,7 @@ void getResources(IHqlExpression * expr, CResources & resources, const CResource
         break;
     case no_choosesets:
         resources.setLightweight();
-        if (!isLocal || expr->hasProperty(enthAtom) || expr->hasProperty(lastAtom))
+        if (!isLocal || expr->hasAttribute(enthAtom) || expr->hasAttribute(lastAtom))
             resources.set(RESslavememory, CHOOSESETS_SMART_BUFFER_SIZE);
         break;
     case no_iterate:
@@ -335,8 +332,10 @@ inline ResourcerInfo * queryResourceInfo(IHqlExpression * expr) { return (Resour
 
 inline bool isResourcedActivity(IHqlExpression * expr)
 {
+    if (!expr)
+        return false;
     ResourcerInfo * extra = queryResourceInfo(expr);
-    return (extra && (extra->isActivity || extra->containsActivity));
+    return extra && extra->isResourcedActivity();
 }
 
 bool isWorthForcingHoist(IHqlExpression * expr)
@@ -471,7 +470,7 @@ bool lightweightAndReducesDatasetSize(IHqlExpression * expr)
     case no_newusertable:
         return reducesRowSize(expr);
     case no_dedup:
-        if (isGroupedActivity(expr) || (!expr->hasProperty(allAtom) && !expr->hasProperty(hashAtom)))
+        if (isGroupedActivity(expr) || (!expr->hasAttribute(allAtom) && !expr->hasAttribute(hashAtom)))
             return true;
         break;
     case no_aggregate:
@@ -494,7 +493,7 @@ bool lightweightAndReducesDatasetSize(IHqlExpression * expr)
         return true;
     case no_group:
         //removing grouping will reduce size of the spill file.
-        if (expr->queryType()->queryGroupInfo() == NULL)
+        if (!isGrouped(expr))
             return true;
         break;
     }
@@ -535,7 +534,7 @@ IHqlExpression * CResourceOptions::createSpillName(bool isGraphResult)
 
 IHqlExpression * appendUniqueAttr(IHqlExpression * expr)
 {
-    return replaceOwnedProperty(expr, createUniqueId());
+    return replaceOwnedAttribute(expr, createUniqueId());
 }
 
 
@@ -608,7 +607,7 @@ void ResourceGraphLink::trace(const char * name)
 {
 #ifdef TRACE_RESOURCING
     PrintLog("%s: %lx source(%lx,%lx) sink(%lx,%lx) %s", name, this, sourceGraph.get(), sourceNode->queryBody(), sinkGraph.get(), sinkNode ? sinkNode->queryBody() : NULL, 
-             linkKind == ConditionalLink ? "conditional" : linkKind == SequenceLink ? "sequence" : "");
+             linkKind == SequenceLink ? "sequence" : "");
 #endif
 }
 
@@ -646,10 +645,14 @@ ResourceGraphInfo::ResourceGraphInfo(CResourceOptions * _options) : resources(_o
     mergedConditionSource = false;
     hasConditionSource = false;
     hasSequentialSource = false;
+    hasRootActivity = false;
     isDead = false;
     startedGeneratingResourced = false;
     inheritedExpandedDependencies = false;
     cachedDependent.other = NULL;
+    cachedDependent.ignoreSources = false;
+    cachedDependent.updateSequence = 0;
+    cachedDependent.value = false;
 }
 
 ResourceGraphInfo::~ResourceGraphInfo()
@@ -663,8 +666,8 @@ bool ResourceGraphInfo::addCondition(IHqlExpression * condition)
         conditions.append(*LINK(condition));
 
 #ifdef SPOT_UNCONDITIONAL_CONDITIONS
-        _ATOM name = condition->queryName();
-        _ATOM invName = NULL;
+        IAtom * name = condition->queryName();
+        IAtom * invName = NULL;
         if (name == trueAtom)
             invName = falseAtom;
         else if (name == falseAtom)
@@ -731,12 +734,34 @@ bool ResourceGraphInfo::allocateResources(const CResources & value, const CResou
 }
 
 
-bool ResourceGraphInfo::containsActiveSinks()
+bool ResourceGraphInfo::canMergeActionAsSibling(bool sequential) const
+{
+    //sequential requires root actions in separate graphs
+    if (sequential && hasRootActivity)
+        return false;
+    //Dependent actions need to be in a separate graph if this flag is set.
+    if (options->actionLinkInNewGraph && !hasRootActivity)
+        return false;
+    return true;
+}
+
+bool ResourceGraphInfo::containsActiveSinks() const
 {
     ForEachItemIn(idx, sinks)
     {
         ResourcerInfo * info = queryResourceInfo(sinks.item(idx).sourceNode);
         if (!info->expandRatherThanSpill(false))
+            return true;
+    }
+    return false;
+}
+
+bool ResourceGraphInfo::containsActionSink() const
+{
+    ForEachItemIn(idx, sinks)
+    {
+        IHqlExpression * sink = sinks.item(idx).sourceNode;
+        if (sink->isAction())
             return true;
     }
     return false;
@@ -853,7 +878,7 @@ bool ResourceGraphInfo::isVeryCheap()
 }
 
 
-bool ResourceGraphInfo::mergeInSource(ResourceGraphInfo & other, const CResources & limit, bool isConditionalLink)
+bool ResourceGraphInfo::mergeInSource(ResourceGraphInfo & other, const CResources & limit)
 {
     bool mergeConditions = false;
     if (!isUnconditional)
@@ -896,11 +921,11 @@ bool ResourceGraphInfo::mergeInSource(ResourceGraphInfo & other, const CResource
     if (hasSequentialSource && other.hasSequentialSource)
         return false;
 
-    mergeGraph(other, isConditionalLink, mergeConditions);
+    mergeGraph(other, mergeConditions);
     return true;
 }
 
-void ResourceGraphInfo::mergeGraph(ResourceGraphInfo & other, bool isConditionalLink, bool mergeConditions)
+void ResourceGraphInfo::mergeGraph(ResourceGraphInfo & other, bool mergeConditions)
 {
 #ifdef TRACE_RESOURCING
     DBGLOG("Merging%s source into%s sink", other.isUnconditional ? "" : " conditional", isUnconditional ? "" : " conditional");
@@ -929,7 +954,7 @@ void ResourceGraphInfo::mergeGraph(ResourceGraphInfo & other, bool isConditional
 
     //We need to stop spills being an arm of a conditional branch - otherwise they won't get executed.
     //so see if we have merged any conditional branches in
-    if (isConditionalLink || other.mergedConditionSource)
+    if (other.mergedConditionSource)
         mergedConditionSource = true;
 
     if (mergeConditions)
@@ -959,7 +984,7 @@ bool ResourceGraphInfo::mergeInSibling(ResourceGraphInfo & other, const CResourc
     if (options->checkResources() && !allocateResources(other.resources, limit))
         return false;
 
-    mergeGraph(other, false, false);
+    mergeGraph(other, false);
     return true;
 }
 
@@ -973,9 +998,20 @@ void ResourceGraphInfo::removeResources(const CResources & value)
 
 //---------------------------------------------------------------------------
 
-static void appendCloneProperty(HqlExprArray & args, IHqlExpression * expr, _ATOM name)
+unsigned ChildDependentArray::findOriginal(IHqlExpression * expr)
 {
-    IHqlExpression * prop = expr->queryProperty(name);
+    ForEachItem(i)
+    {
+        if (item(i).original == expr)
+            return i;
+    }
+    return NotFound;
+}
+//---------------------------------------------------------------------------
+
+static void appendCloneAttribute(HqlExprArray & args, IHqlExpression * expr, IAtom * name)
+{
+    IHqlExpression * prop = expr->queryAttribute(name);
     if (prop)
         args.append(*LINK(prop));
 }
@@ -988,6 +1024,7 @@ ResourcerInfo::ResourcerInfo(IHqlExpression * _original, CResourceOptions * _opt
     gatheredDependencies = false;
     containsActivity = false;
     isActivity = false;
+    isRootActivity = false;
     transformed = NULL;
     conditionSourceCount = 0;
     pathToExpr = PathUnknown;
@@ -998,8 +1035,11 @@ ResourcerInfo::ResourcerInfo(IHqlExpression * _original, CResourceOptions * _opt
     balanced = true;
     currentSource = 0;
     linkedFromChild = false;
+    forceHoist = false;
     neverSplit = false;
     isConditionalFilter = false;
+    projectResult = true; // projected must also be non empty to actually project this dataset
+    visited = false;
 }
 
 void ResourcerInfo::setConditionSource(IHqlExpression * condition, bool isFirst)            
@@ -1017,18 +1057,30 @@ bool ResourcerInfo::addCondition(IHqlExpression * condition)
     return graph->addCondition(condition);
 }
 
+void ResourcerInfo::addProjected(IHqlExpression * next)
+{
+    if (projectResult && !projected.contains(*next))
+        projected.append(*LINK(next));
+}
+
+void ResourcerInfo::clearProjected()
+{
+    projectResult = false;
+    projected.kill();
+}
+
+
 void ResourcerInfo::addSpillFlags(HqlExprArray & args, bool isRead)
 {
-    IHqlExpression * grouping = (IHqlExpression *)original->queryType()->queryGroupInfo();
-    if (grouping)
+    if (isGrouped(original))
         args.append(*createAttribute(groupedAtom));
 
     if (outputToUseForSpill)
     {
         assertex(isRead);
-        appendCloneProperty(args, outputToUseForSpill, __compressed__Atom);
-        appendCloneProperty(args, outputToUseForSpill, jobTempAtom);
-        appendCloneProperty(args, outputToUseForSpill, _spill_Atom);
+        appendCloneAttribute(args, outputToUseForSpill, __compressed__Atom);
+        appendCloneAttribute(args, outputToUseForSpill, jobTempAtom);
+        appendCloneAttribute(args, outputToUseForSpill, _spill_Atom);
     }
     else
     {
@@ -1054,7 +1106,7 @@ void ResourcerInfo::addSpillFlags(HqlExprArray & args, bool isRead)
             ForEachItemIn(i1, graph->sinks)
             {
                 ResourceGraphLink & cur = graph->sinks.item(i1);
-                if ((cur.sourceNode == original) && (cur.linkKind == ConditionalLink || !cur.sinkGraph->isUnconditional))
+                if ((cur.sourceNode == original) && !cur.sinkGraph->isUnconditional)
                     numUses--;
             }
             numUses += calcNumConditionalUses();
@@ -1157,11 +1209,18 @@ IHqlExpression * ResourcerInfo::createAggregation(IHqlExpression * expr)
 
 bool ResourcerInfo::useGraphResult()
 {
+    if (options->useResultsForChildSpills && linkedFromChild)
+        return true;
+
+    if (options->alwaysUseGraphResults)
+        return true;
+
     if (!options->useGraphResults)
         return false;
 
     if (linkedFromChild)
         return true;
+
     //Roxie converts spills into splitters, so best to retain them
     if (options->targetClusterType == RoxieCluster)
         return false;
@@ -1203,7 +1262,10 @@ IHqlExpression * ResourcerInfo::createSpilledRead(IHqlExpression * spillReason)
     bool loseDistribution = true;
     if (useGraphResult())
     {
-        args.append(*LINK(record));
+        if (spilledDataset)
+            args.append(*LINK(spilledDataset));
+        else
+            args.append(*LINK(record));
         args.append(*LINK(options->graphIdExpr));
         args.append(*createSpillName());
         if (isGrouped(original))
@@ -1216,10 +1278,14 @@ IHqlExpression * ResourcerInfo::createSpilledRead(IHqlExpression * spillReason)
             args.append(*LINK(recordCountAttr));
         if (options->targetThor() && original->isDataset() && !options->isChildQuery)
             args.append(*createAttribute(_distributed_Atom));
-        if (original->isDictionary())
-            dataset.setown(createDictionary(no_getgraphresult, args));
+
+        node_operator readOp = spilledDataset ? no_readspill : no_getgraphresult;
+        if (original->isDatarow())
+            dataset.setown(createRow(readOp, args));
+        else if (original->isDictionary())
+            dataset.setown(createDictionary(readOp, args));
         else
-            dataset.setown(createDataset(no_getgraphresult, args));
+            dataset.setown(createDataset(readOp, args));
         loseDistribution = false;
     }
     else if (useGlobalResult())
@@ -1284,10 +1350,25 @@ IHqlExpression * ResourcerInfo::createSpilledWrite(IHqlExpression * transformed)
     if (useGraphResult())
     {
         assertex(options->graphIdExpr);
-        args.append(*LINK(transformed));
+
+        if (options->createSpillAsDataset && !linkedFromChild)
+        {
+            IHqlExpression * value = LINK(transformed);
+            if (value->isDatarow())
+                value = createDatasetFromRow(value);
+            spilledDataset.setown(createDataset(no_commonspill, value));
+            args.append(*LINK(spilledDataset));
+        }
+        else
+            args.append(*LINK(transformed));
+
         args.append(*LINK(options->graphIdExpr));
         args.append(*createSpillName());
         args.append(*createAttribute(_spill_Atom));
+        if (linkedFromChild)
+            args.append(*createAttribute(_accessedFromChild_Atom));
+        if (spilledDataset)
+            return createValue(no_writespill, makeVoidType(), args);
         return createValue(no_setgraphresult, makeVoidType(), args);
     }
     else if (useGlobalResult())
@@ -1333,6 +1414,19 @@ bool ResourcerInfo::okToSpillThrough()
     return (options->allowThroughSpill && !options->createSpillAsDataset);
 }
 
+void ResourcerInfo::noteUsedFromChild(bool _forceHoist)
+{
+    linkedFromChild = true;
+    outputToUseForSpill = NULL;
+    if (_forceHoist)
+        forceHoist = true;
+}
+
+unsigned ResourcerInfo::numInternalUses()
+{
+    return numUses - numExternalUses - aggregates.ordinality();
+}
+
 bool ResourcerInfo::spillSharesSplitter()
 {
     if (outputToUseForSpill || useGraphResult() || useGlobalResult())
@@ -1342,6 +1436,11 @@ bool ResourcerInfo::spillSharesSplitter()
     if (!isSplit() || !balanced)
         return false;
     return true;
+}
+
+void ResourcerInfo::setRootActivity()
+{
+    isRootActivity = true;
 }
 
 IHqlExpression * ResourcerInfo::createSpiller(IHqlExpression * transformed, bool reuseSplitter)
@@ -1460,6 +1559,8 @@ bool ResourcerInfo::expandRatherThanSpill(bool noteOtherSpills)
         ResourcerInfo * info = queryResourceInfo(expr);
         if (info && info->neverSplit)
             return true;
+        if (info && info->forceHoist)
+            return false;
 
         node_operator op = expr->getOperator();
         switch (op)
@@ -1502,7 +1603,7 @@ bool ResourcerInfo::expandRatherThanSpill(bool noteOtherSpills)
         case no_workunit_dataset:
             return !isProcessed && !isFiltered;
         case no_getgraphresult:
-            return !expr->hasProperty(_streaming_Atom);         // we must not duplicate streaming inputs!
+            return !expr->hasAttribute(_streaming_Atom);         // we must not duplicate streaming inputs!
         case no_keyindex:
         case no_newkeyindex:
             if (!isFiltered)
@@ -1534,7 +1635,7 @@ bool ResourcerInfo::expandRatherThanSpill(bool noteOtherSpills)
             isProcessed = true;
             break;
         case no_hqlproject:
-            if (expr->hasProperty(_countProject_Atom) || expr->hasProperty(prefetchAtom))
+            if (expr->hasAttribute(_countProject_Atom) || expr->hasAttribute(prefetchAtom))
                 return false;
             expr = expr->queryChild(0);
             isProcessed = true;
@@ -1732,17 +1833,17 @@ bool ResourcerInfo::isSpilledWrite()
 
 IHqlExpression * ResourcerInfo::wrapRowOwn(IHqlExpression * expr)
 {
-    if (!original->isDataset() && !original->isDictionary())
+    if (!original->isDataset() && !original->isDictionary() && !expr->isDatarow())
         expr = createRow(no_selectnth, expr, getSizetConstant(1));
     return expr;
 }
 
 //---------------------------------------------------------------------------
 
-EclResourcer::EclResourcer(IErrorReceiver * _errors, IConstWorkUnit * _wu, ClusterType _targetClusterType, unsigned _clusterSize, const HqlCppOptions & _translatorOptions)
+EclResourcer::EclResourcer(IErrorReceiver & _errors, IConstWorkUnit * _wu, ClusterType _targetClusterType, unsigned _clusterSize, const HqlCppOptions & _translatorOptions)
 { 
     wu.set(_wu);
-    errors = _errors;
+    errors = &_errors;
     lockTransformMutex(); 
     targetClusterType = _targetClusterType; 
     clusterSize = _clusterSize ? _clusterSize : FIXED_CLUSTER_SIZE;
@@ -1782,15 +1883,10 @@ EclResourcer::EclResourcer(IErrorReceiver * _errors, IConstWorkUnit * _wu, Clust
     }
 
 
-    options.useMpForDistribute = (targetClusterType == ThorLCRCluster);
-    
-    if (_translatorOptions.hasResourceUseMpForDistribute)
-        options.useMpForDistribute = _translatorOptions.resourceUseMpForDistribute;
-
     options.isChildQuery = false;
     options.targetClusterType = targetClusterType;
     options.filteredSpillThreshold = _translatorOptions.filteredReadSpillThreshold;
-    options.allowThroughSpill = _translatorOptions.allowThroughSpill;
+    options.allowThroughSpill = (targetClusterType != RoxieCluster) && (targetClusterType != ThorLCRCluster) && _translatorOptions.allowThroughSpill;
     options.allowThroughResult = (targetClusterType != RoxieCluster) && (targetClusterType != ThorLCRCluster);
     options.cloneFilteredIndex = (targetClusterType != RoxieCluster);
     options.spillSharedConditionals = (targetClusterType == RoxieCluster);
@@ -1801,8 +1897,9 @@ EclResourcer::EclResourcer(IErrorReceiver * _errors, IConstWorkUnit * _wu, Clust
     options.minimiseSpills = _translatorOptions.minimiseSpills;
     spillMultiCondition = _translatorOptions.spillMultiCondition;
     spotThroughAggregate = _translatorOptions.spotThroughAggregate && (targetClusterType != RoxieCluster) && (targetClusterType != ThorLCRCluster);
-    options.noConditionalLinks = (targetClusterType == RoxieCluster);
+    options.noConditionalLinks = (targetClusterType != HThorCluster);
     options.hoistResourced = _translatorOptions.hoistResourced;
+    options.alwaysUseGraphResults = _translatorOptions.alwaysUseGraphResults;
     options.useGraphResults = false;        // modified by later call
     options.groupedChildIterators = _translatorOptions.groupedChildIterators;
     options.allowSplitBetweenSubGraphs = false;//(targetClusterType == RoxieCluster);
@@ -1814,6 +1911,10 @@ EclResourcer::EclResourcer(IErrorReceiver * _errors, IConstWorkUnit * _wu, Clust
     options.createSpillAsDataset = _translatorOptions.optimizeSpillProject && (targetClusterType != HThorCluster);
     options.combineSiblings = _translatorOptions.combineSiblingGraphs && (targetClusterType != HThorCluster) && (targetClusterType != RoxieCluster);
     options.optimizeSharedInputs = _translatorOptions.optimizeSharedGraphInputs && options.combineSiblings;
+    options.actionLinkInNewGraph = _translatorOptions.actionLinkInNewGraph || (targetClusterType == HThorCluster);
+    options.convertCompoundToExecuteWhen = false;
+    options.useResultsForChildSpills = _translatorOptions.useResultsForChildSpills;
+    spilled = false;
 }
 
 EclResourcer::~EclResourcer()               
@@ -1825,8 +1926,6 @@ EclResourcer::~EclResourcer()
 void EclResourcer::setChildQuery(bool value) 
 { 
     options.isChildQuery = value; 
-    if (value)
-        options.createSpillAsDataset = false;
 }
 
 void EclResourcer::setNewChildQuery(IHqlExpression * graphIdExpr, unsigned numResults) 
@@ -1957,13 +2056,22 @@ inline bool projectSelectorDatasetToField(IHqlExpression * row)
     return ((row->getOperator() == no_selectnth) && getFieldCount(row->queryRecord()) > 1);
 }
 
+static IHqlExpression * skipScalarWrappers(IHqlExpression * value)
+{
+    loop
+    {
+        node_operator op = value->getOperator();
+        if ((op != no_globalscope) && (op != no_thisnode) && (op != no_evalonce))
+            return value;
+        value = value->queryChild(0);
+    }
+}
 
 static HqlTransformerInfo eclHoistLocatorInfo("EclHoistLocator");
 class EclHoistLocator : public NewHqlTransformer
 {
 public:
-    EclHoistLocator(HqlExprCopyArray & _originalMatches, HqlExprArray & _matches, BoolArray & _singleNode, BoolArray & _alwaysHoistMatches)
-        : NewHqlTransformer(eclHoistLocatorInfo), originalMatched(_originalMatches), matched(_matches), singleNode(_singleNode), alwaysHoistMatches(_alwaysHoistMatches)
+    EclHoistLocator(ChildDependentArray & _matched) : NewHqlTransformer(eclHoistLocatorInfo), matched(_matched)
     {
         alwaysSingle = true;
     }
@@ -1976,31 +2084,34 @@ public:
 
     void noteDataset(IHqlExpression * expr, IHqlExpression * hoisted, bool alwaysHoist)
     {
-        unsigned match = originalMatched.find(*expr);
+        unsigned match = matched.findOriginal(expr);
         if (match == NotFound)
         {
             if (!hoisted)
                 hoisted = expr;
 
-            originalMatched.append(*expr);
-            matched.append(*LINK(hoisted));
-            alwaysHoistMatches.append(alwaysHoist);
-            singleNode.append(alwaysSingle);
+            CChildDependent & depend = * new CChildDependent(expr, hoisted, alwaysHoist, alwaysSingle, false);
+            matched.append(depend);
         }
         else
         {
-            if (alwaysHoist && !alwaysHoistMatches.item(match))
-                alwaysHoistMatches.replace(true, match);
-            if (alwaysSingle && !singleNode.item(match))
-                singleNode.replace(true, match);
+            CChildDependent & prev = matched.item(match);
+            if (alwaysHoist && !prev.alwaysHoist)
+                prev.alwaysHoist = true;
+            if (alwaysSingle && !prev.isSingleNode)
+                prev.isSingleNode = true;
         }
     }
 
     void noteScalar(IHqlExpression * expr, IHqlExpression * value)
     {
-        if (!originalMatched.contains(*expr))
+        unsigned match = matched.findOriginal(expr);
+        if (match == NotFound)
         {
+            value = skipScalarWrappers(value);
+
             OwnedHqlExpr hoisted;
+            IHqlExpression * projected = NULL;
             if (value->getOperator() == no_select)
             {
                 bool isNew;
@@ -2008,23 +2119,14 @@ public:
                 if(isNew || row->isDatarow())
                 {
                     if (projectSelectorDatasetToField(row))
-                    {
-                        IHqlExpression * ds = row->queryChild(0);
+                        projected = value;
 
-                        //Project down to a single field.so implicit fields can still be optimized
-                        IHqlExpression * field = value->queryChild(1);
-                        OwnedHqlExpr record = createRecord(field);
-                        OwnedHqlExpr self = getSelf(record);
-                        OwnedHqlExpr activeDs = createRow(no_activetable, LINK(ds->queryNormalizedSelector()));
-                        OwnedHqlExpr selected = replaceSelector(value, row, activeDs);
-                        OwnedHqlExpr assign = createAssign(createSelectExpr(LINK(self), LINK(field)), selected.getClear());
-                        OwnedHqlExpr transform = createValue(no_newtransform, makeTransformType(record->getType()), LINK(assign));
-                        OwnedHqlExpr projectedDs = createDataset(no_newusertable, LINK(ds), createComma(LINK(record), LINK(transform)));
-                        hoisted.setown(replaceChild(row, 0, projectedDs));
-                    }
-
-                    if (!hoisted)
-                        hoisted.set(row);
+                    hoisted.set(row);
+                }
+                else
+                {
+                    //very unusual - possibly a thisnode(myfield) hoisted from an allnodes
+                    //use a createrow of a single element in the default behavour below
                 }
             }
             else if (value->getOperator() == no_createset)
@@ -2037,7 +2139,7 @@ public:
                 if (selected->getOperator() == no_select)
                     field.set(selected->queryChild(1));
                 else
-                    field.setown(createField(valueAtom, selected->getType(), NULL));
+                    field.setown(createField(valueId, selected->getType(), NULL));
                 OwnedHqlExpr record = createRecord(field);
                 OwnedHqlExpr self = getSelf(record);
                 OwnedHqlExpr assign = createAssign(createSelectExpr(LINK(self), LINK(field)), LINK(selected));
@@ -2047,7 +2149,7 @@ public:
 
             if (!hoisted)
             {
-                OwnedHqlExpr field = createField(valueAtom, value->getType(), NULL);
+                OwnedHqlExpr field = createField(valueId, value->getType(), NULL);
                 OwnedHqlExpr record = createRecord(field);
                 OwnedHqlExpr self = getSelf(record);
                 OwnedHqlExpr assign = createAssign(createSelectExpr(LINK(self), LINK(field)), LINK(value));
@@ -2055,28 +2157,23 @@ public:
                 hoisted.setown(createRow(no_createrow, LINK(transform)));
             }
 
-            originalMatched.append(*expr);
-            matched.append(*hoisted.getClear());
-            alwaysHoistMatches.append(true);
-            singleNode.append(true);
+            CChildDependent & depend = * new CChildDependent(expr, hoisted, true, true, true);
+            depend.projected = projected;
+            matched.append(depend);
         }
     }
 
 protected:
-    HqlExprCopyArray & originalMatched;
-    HqlExprArray & matched;
-    BoolArray & singleNode;
-    BoolArray & alwaysHoistMatches;
+    ChildDependentArray & matched;
     bool alwaysSingle;
 };
-
 
 
 class EclChildSplitPointLocator : public EclHoistLocator
 {
 public:
-    EclChildSplitPointLocator(IHqlExpression * _original, HqlExprCopyArray & _selectors, HqlExprCopyArray & _originalMatches, HqlExprArray & _matches, BoolArray & _singleNode, BoolArray & _alwaysHoistMatches, bool _groupedChildIterators)
-    : EclHoistLocator(_originalMatches, _matches, _singleNode, _alwaysHoistMatches), selectors(_selectors), groupedChildIterators(_groupedChildIterators)
+    EclChildSplitPointLocator(IHqlExpression * _original, HqlExprCopyArray & _selectors, ChildDependentArray & _matches, bool _groupedChildIterators)
+    : EclHoistLocator(_matches), selectors(_selectors), groupedChildIterators(_groupedChildIterators)
     { 
         original = _original;
         okToSelect = false; 
@@ -2109,7 +2206,7 @@ protected:
     void findSplitPoints(IHqlExpression * expr)
     {
         //containsNonActiveDataset() would be nice - but that isn't percolated outside assigns etc.
-        if (containsAnyDataset(expr) || containsMustHoist(expr))
+        if (containsAnyDataset(expr) || containsMustHoist(expr) || !expr->isIndependentOfScope())
         {
             if (!gathered)
             {
@@ -2150,38 +2247,40 @@ protected:
         switch (op)
         {
         case no_select:
-            //Only interested in the leftmost no_select
-            if (expr->hasProperty(newAtom))
             {
-                IHqlExpression * ds = expr->queryChild(0);
-                if (isEvaluateable(ds))
+                bool isNew;
+                IHqlExpression * ds = querySelectorDataset(expr, isNew);
+                if (isNew)
                 {
-                    //MORE: Following isn't a very nice test - stops implicit denormalize getting messed up
-                    if (expr->isDataset())
-                        break;
-                    
-                    //Debtable.....
-                    //Don't hoist counts on indexes or dataset - it may mean they are evaluated more frequently than need be.
-                    //If dependencies and root graphs are handled correctly this could be deleted.
-                    if (isCompoundAggregate(ds))
-                        break;
-
-                    if (!expr->isDatarow() && !expr->isDataset() && !expr->isDictionary())
+                    if (isEvaluateable(ds))
                     {
-                        if (queryHoistDataset(ds))
+                        //MORE: Following isn't a very nice test - stops implicit denormalize getting messed up
+                        if (expr->isDataset())
+                            break;
+
+                        //Debtable.....
+                        //Don't hoist counts on indexes or dataset - it may mean they are evaluated more frequently than need be.
+                        //If dependencies and root graphs are handled correctly this could be deleted.
+                        if (isCompoundAggregate(ds))
+                            break;
+
+                        if (!expr->isDatarow() && !expr->isDataset() && !expr->isDictionary())
                         {
-                            noteScalar(expr, expr);
-                            return;
+                            if (queryHoistDataset(ds))
+                            {
+                                noteScalar(expr, expr);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            if (queryNoteDataset(ds))
+                                return;
                         }
                     }
-                    else
-                    {
-                        if (queryNoteDataset(ds))
-                            return;
-                    }
                 }
+                break;
             }
-            break;
         case no_createset:
             {
                 IHqlExpression * ds = expr->queryChild(0);
@@ -2214,6 +2313,8 @@ protected:
             return;
         case no_globalscope:
         case no_evalonce:
+            if (expr->hasAttribute(optAtom) && !expr->isIndependentOfScope())
+                break;
             if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
                 noteDataset(expr, expr->queryChild(0), true);
             else
@@ -2222,7 +2323,7 @@ protected:
         case no_thisnode:
             throwUnexpected();
         case no_getgraphresult:
-            if (expr->hasProperty(_streaming_Atom) || expr->hasProperty(_distributed_Atom))
+            if (expr->hasAttribute(_streaming_Atom) || expr->hasAttribute(_distributed_Atom))
             {
                 noteDataset(expr, expr, true);
                 return;
@@ -2243,7 +2344,7 @@ protected:
                 switch (ds->getOperator())
                 {
                 case no_getgraphresult:
-                    if (!expr->hasProperty(_streaming_Atom) && !expr->hasProperty(_distributed_Atom))
+                    if (!expr->hasAttribute(_streaming_Atom) && !expr->hasAttribute(_distributed_Atom))
                         break;
                     //fallthrough
                 case no_getgraphloopresult:
@@ -2300,10 +2401,10 @@ protected:
             {
                 IHqlExpression * cond = expr->queryChild(0);
                 analyseExpr(cond);
-                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
+                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary() || expr->isAction())
                     conditionalDepth++;
                 doAnalyseChildren(expr, 1);
-                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary())
+                if (expr->isDataset() || expr->isDatarow() || expr->isDictionary() || expr->isAction())
                     conditionalDepth--;
                 break;
             }
@@ -2317,6 +2418,17 @@ protected:
                     conditionalDepth--;
                 break;
             }
+        case no_attr_expr:
+            //Ignore internal tracking attributes e.g., _selectors_Atom
+            if (!isInternalAttributeName(expr->queryName()))
+            {
+                //Default action for no_attr_expr is to not walk children, but we need to here.
+                bool wasExecutedOnce = executedOnce;
+                executedOnce = true;
+                analyseChildren(expr);
+                executedOnce = wasExecutedOnce;
+            }
+            break;
         default:
             NewHqlTransformer::analyseExpr(expr);
             break;
@@ -2479,10 +2591,10 @@ protected:
 
 
 
-void EclResourcer::gatherChildSplitPoints(IHqlExpression * expr, BoolArray & alwaysHoistChild, ResourcerInfo * info, unsigned first, unsigned last)
+void EclResourcer::gatherChildSplitPoints(IHqlExpression * expr, ResourcerInfo * info, unsigned first, unsigned last)
 {
     //NB: Don't call member functions to ensure correct nesting of transform mutexes.
-    EclChildSplitPointLocator locator(expr, activeSelectors, info->originalChildDependents, info->childDependents, info->childSingleNode, alwaysHoistChild, options.groupedChildIterators);
+    EclChildSplitPointLocator locator(expr, activeSelectors, info->childDependents, options.groupedChildIterators);
     unsigned max = expr->numChildren();
 
     //If child queries are supported then don't hoist the expressions if they might only be evaluated once
@@ -2516,8 +2628,8 @@ void EclResourcer::gatherChildSplitPoints(IHqlExpression * expr, BoolArray & alw
 class EclThisNodeLocator : public EclHoistLocator
 {
 public:
-    EclThisNodeLocator(HqlExprCopyArray & _originalMatches, HqlExprArray & _matches, BoolArray & _singleNode, BoolArray & _alwaysHoistMatches)
-        : EclHoistLocator(_originalMatches, _matches, _singleNode, _alwaysHoistMatches)
+    EclThisNodeLocator(ChildDependentArray & _matches)
+        : EclHoistLocator(_matches)
     { 
         allNodesDepth = 0;
     }
@@ -2613,45 +2725,23 @@ static bool isPotentialCompoundSteppedIndexRead(IHqlExpression * expr)
     }
 }
 
-bool EclResourcer::findSplitPoints(IHqlExpression * expr)
+bool EclResourcer::findSplitPoints(IHqlExpression * expr, bool isProjected)
 {
     ResourcerInfo * info = queryResourceInfo(expr);
-    bool savedInsideNeverSplit = insideNeverSplit;
-    bool savedInsideSteppedNeverSplit = insideSteppedNeverSplit;
-    if (insideSteppedNeverSplit && info)
+    if (info && info->visited)
     {
-        if (!isPotentialCompoundSteppedIndexRead(expr) && (expr->getOperator() != no_datasetlist))
-            insideSteppedNeverSplit = false;
-    }
-
-    if (info && info->numUses)
-    {
-        if (insideNeverSplit || insideSteppedNeverSplit)
-            info->neverSplit = true;
-        if (info->isAlreadyInScope && (info->numUses == 0) && expr->isDatarow())
-        {
-            // A row is already bound to a temporary
-            info->isActivity = true;
-            info->containsActivity = true;
-            info->numUses++;
-
-            //More: May need to force child activities to not be resourced (e.g., if somehow visited via another path)
-            //info->preserve = true;
-            return info->containsActivity;
-        }
+        if (!isProjected)
+            info->clearProjected();
 
         if (info->isAlreadyInScope || info->isActivity || !info->containsActivity)
-        {
-            info->numUses++;
             return info->containsActivity;
-        }
     }
     else
     {
         info = queryCreateResourceInfo(expr);
-        info->numUses++;
-        if (insideNeverSplit || insideSteppedNeverSplit)
-            info->neverSplit = true;
+        info->visited = true;
+        if (!isProjected)
+            info->clearProjected();
 
         bool isActivity = true;
         switch (expr->getOperator())
@@ -2660,7 +2750,7 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
             //either a select from a setresult or use of a child-dataset
             if (isNewSelector(expr))
             {
-                info->containsActivity = findSplitPoints(expr->queryChild(0));
+                info->containsActivity = findSplitPoints(expr->queryChild(0), false);
                 assertex(queryResourceInfo(expr->queryChild(0))->isActivity);
             }
             if (expr->isDataset() || expr->isDatarow())
@@ -2671,16 +2761,16 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
             return info->containsActivity;
         case no_mapto:
             throwUnexpected();
-            info->containsActivity = findSplitPoints(expr->queryChild(1));
-            return info->containsActivity;
         case no_activerow:
             info->isActivity = true;
             info->containsActivity = false;
             return false;
+        case no_rowset:                         // don't resource this as an activity
+            isActivity = false;
+            break;
         case no_attr:
         case no_attr_expr:
         case no_attr_link:
-        case no_rowset:                         // don't resource this as an activity
         case no_getgraphloopresultset:
             info->isActivity = false;
             info->containsActivity = false;
@@ -2703,6 +2793,227 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
                 isActivity = false;
                 break;
             }
+        }
+
+        ITypeInfo * type = expr->queryType();
+        if (!type || type->isScalar())
+            return false;
+
+        info->isActivity = isActivity;
+        info->containsActivity = true;
+    }
+
+    unsigned first = getFirstActivityArgument(expr);
+    unsigned last = first + getNumActivityArguments(expr);
+
+    if (options.hoistResourced)
+    {
+        switch (expr->getOperator())
+        {
+        case no_allnodes:
+            {
+                //MORE: This needs to recursively walk and lift any contained no_selfnode, but don't go past another nested no_allnodes;
+                EclThisNodeLocator locator(info->childDependents);
+                locator.analyseChild(expr->queryChild(0), true);
+                break;
+            }
+        case no_childquery:
+            throwUnexpected();
+        default:
+            {
+                for (unsigned idx=first; idx < last; idx++)
+                {
+                    IHqlExpression * cur = expr->queryChild(idx);
+                    findSplitPoints(cur, false);
+                }
+                gatherChildSplitPoints(expr, info, first, last);
+                break;
+            }
+        }
+
+        ForEachItemIn(i2, info->childDependents)
+        {
+            CChildDependent & cur = info->childDependents.item(i2);
+            ResourcerInfo * hoistedInfo = queryCreateResourceInfo(cur.hoisted);
+            if (cur.projected)
+                hoistedInfo->addProjected(cur.projected);
+            else
+                hoistedInfo->clearProjected();
+
+            if (cur.alwaysHoist)
+                findSplitPoints(cur.hoisted, (cur.projected != NULL));
+
+            allChildDependents.append(OLINK(cur));
+        }
+    }
+    else
+    {
+        for (unsigned idx=first; idx < last; idx++)
+            findSplitPoints(expr->queryChild(idx), false);
+    }
+
+    return info->containsActivity;
+}
+
+
+void EclResourcer::findSplitPoints(HqlExprArray & exprs)
+{
+    //Finding items that should be hoisted from child queries, and evaluated at this level is tricky:
+    //* After hoisting a child expression, that may in turn contain other child expressions.
+    //* Some child expressions are only worth hoisting if they are a simple function of something
+    //  that will be evaluated here.
+    //* If we're creating a single project for each x[1] then that needs to be done after all the
+    //  expressions to hoist have been found.
+    //* The usage counts have to correct - including
+    //* The select child dependents for a ds[n] need to be inherited by the project(ds)[n]
+    //=>
+    //First walk the expression tree gathering all the expressions that will be used.
+    //Project the expressions that need projecting.
+    //Finally walk the tree again, this time calculating the correct usage counts.
+    //
+    //On reflection the hoisting and projecting could be implemented as a completely separate transformation.
+    //However, it shares a reasonable amount of the logic with the rest of the resourcing, so keep together
+    //for the moment.
+    ForEachItemIn(idx, exprs)
+        findSplitPoints(&exprs.item(idx), false);
+
+    extendSplitPoints();
+    projectChildDependents();
+
+    deriveUsageCounts(exprs);
+}
+
+void EclResourcer::extendSplitPoints()
+{
+    //NB: findSplitPoints might call this array to be extended
+    for (unsigned i1=0; i1 < allChildDependents.ordinality(); i1++)
+    {
+        CChildDependent & cur = allChildDependents.item(i1);
+        if (!cur.alwaysHoist && isWorthForcingHoist(cur.hoisted))
+            findSplitPoints(cur.hoisted, (cur.projected != NULL));
+    }
+}
+
+IHqlExpression * EclResourcer::projectChildDependent(IHqlExpression * expr)
+{
+    ResourcerInfo * info = queryResourceInfo(expr);
+    if (!info || !info->projectResult || info->projected.empty())
+        return expr;
+
+    if (info->projectedExpr)
+        return info->projectedExpr;
+
+    assertex(expr->getOperator() == no_selectnth);
+    IHqlExpression * row = expr;
+    assertex(projectSelectorDatasetToField(row));
+
+    unsigned totalFields = getFieldCount(row->queryRecord());
+    if (totalFields == info->projected.ordinality())
+    {
+        info->clearProjected();
+        return expr;
+    }
+
+    //Create a projection containing each of the fields that are used from the child queries.
+    IHqlExpression * ds = row->queryChild(0);
+    HqlExprArray fields;
+    HqlExprArray values;
+    ForEachItemIn(i, info->projected)
+    {
+        IHqlExpression * value = &info->projected.item(i);
+        IHqlExpression * field = value->queryChild(1);
+        LinkedHqlExpr projectedField = field;
+        //Check for a very unusual situation where the same field is projected from two different sub records
+        while (fields.contains(*projectedField))
+            projectedField.setown(cloneFieldMangleName(field));  // Generates a new mangled name each time
+
+        OwnedHqlExpr activeDs = createRow(no_activetable, LINK(ds->queryNormalizedSelector()));
+        fields.append(*LINK(projectedField));
+        values.append(*replaceSelector(value, row, activeDs));
+    }
+
+    OwnedHqlExpr projectedRecord = createRecord(fields);
+    OwnedHqlExpr self = getSelf(projectedRecord);
+    HqlExprArray assigns;
+    ForEachItemIn(i2, fields)
+    {
+        IHqlExpression * field = &fields.item(i2);
+        IHqlExpression * value = &values.item(i2);
+        assigns.append(*createAssign(createSelectExpr(LINK(self), LINK(field)), LINK(value)));
+    }
+    OwnedHqlExpr transform = createValue(no_newtransform, makeTransformType(projectedRecord->getType()), assigns);
+    OwnedHqlExpr projectedDs = createDataset(no_newusertable, LINK(ds), createComma(LINK(projectedRecord), LINK(transform)));
+    info->projectedExpr.setown(replaceChild(row, 0, projectedDs));
+
+    findSplitPoints(info->projectedExpr, false);
+
+    //Ensure child dependents that are no longer used are not processed - otherwise the usage counts will be wrong.
+    ForEachItemIn(ic, info->childDependents)
+    {
+        CChildDependent & cur = info->childDependents.item(ic);
+        //Clearing these ensures that isResourcedActivity returns false;
+        cur.hoisted.clear();
+        cur.projectedHoisted.clear();
+    }
+
+    return info->projectedExpr;
+}
+
+void EclResourcer::projectChildDependents()
+{
+    ForEachItemIn(i2, allChildDependents)
+    {
+        CChildDependent & cur = allChildDependents.item(i2);
+        if (isResourcedActivity(cur.hoisted))
+            cur.projectedHoisted.set(projectChildDependent(cur.hoisted));
+    }
+}
+
+void EclResourcer::deriveUsageCounts(IHqlExpression * expr)
+{
+    ResourcerInfo * info = queryResourceInfo(expr);
+    if (!info || !(info->containsActivity || info->isActivity))
+        return;
+
+    bool savedInsideNeverSplit = insideNeverSplit;
+    bool savedInsideSteppedNeverSplit = insideSteppedNeverSplit;
+    if (insideSteppedNeverSplit && info)
+    {
+        if (!isPotentialCompoundSteppedIndexRead(expr) && (expr->getOperator() != no_datasetlist) && expr->getOperator() != no_inlinetable)
+            insideSteppedNeverSplit = false;
+    }
+
+    if (info->numUses)
+    {
+        if (insideNeverSplit || insideSteppedNeverSplit)
+            info->neverSplit = true;
+
+        if (info->isAlreadyInScope || info->isActivity || !info->containsActivity)
+        {
+            info->numUses++;
+            return;
+        }
+    }
+    else
+    {
+        info->numUses++;
+        if (insideNeverSplit || insideSteppedNeverSplit)
+            info->neverSplit = true;
+
+        switch (expr->getOperator())
+        {
+        case no_select:
+            //either a select from a setresult or use of a child-dataset
+            if (isNewSelector(expr))
+                deriveUsageCounts(expr->queryChild(0));
+            return;
+        case no_activerow:
+        case no_attr:
+        case no_attr_expr:
+        case no_attr_link:
+        case no_rowset:                         // don't resource this as an activity
+        case no_getgraphloopresultset:
+            return;
         case no_keyedlimit:
             if (options.preventKeyedSplit)
                 insideNeverSplit = true;
@@ -2713,7 +3024,7 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
             else
             {
                 LinkedHqlExpr invariant;
-                OwnedHqlExpr cond = extractFilterConditions(invariant, expr, expr->queryNormalizedSelector(), false);
+                OwnedHqlExpr cond = extractFilterConditions(invariant, expr, expr->queryNormalizedSelector(), false, false);
                 if (invariant)
                     info->isConditionalFilter = true;
             }
@@ -2722,7 +3033,7 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
         case no_newusertable:
         case no_aggregate:
         case no_newaggregate:
-            if (options.preventKeyedSplit && expr->hasProperty(keyedAtom))
+            if (options.preventKeyedSplit && expr->hasAttribute(keyedAtom))
                 insideNeverSplit = true;
             break;
         case no_stepped:
@@ -2757,81 +3068,31 @@ bool EclResourcer::findSplitPoints(IHqlExpression * expr)
         {
             insideNeverSplit = savedInsideNeverSplit;
             insideSteppedNeverSplit = savedInsideSteppedNeverSplit;
-            return false;
+            return;
         }
-
-        info->isActivity = isActivity;
-        info->containsActivity = true;
     }
 
     unsigned first = getFirstActivityArgument(expr);
     unsigned last = first + getNumActivityArguments(expr);
 
-    if (options.hoistResourced)
-    {
-        BoolArray alwaysHoistChild;
-        switch (expr->getOperator())
-        {
-        case no_allnodes:
-            {
-                //MORE: This needs to recursively walk and lift any contained no_selfnode, but don't go past another nested no_allnodes;
-                EclThisNodeLocator locator(info->originalChildDependents, info->childDependents, info->childSingleNode, alwaysHoistChild);
-                locator.analyseChild(expr->queryChild(0), true);
-                break;
-            }
-        case no_childquery:
-            throwUnexpected();
-        default:
-            {
-                for (unsigned idx=first; idx < last; idx++)
-                {
-                    IHqlExpression * cur = expr->queryChild(idx);
-                    findSplitPoints(cur);
-                }
-                insideNeverSplit = savedInsideNeverSplit;
-                insideSteppedNeverSplit = savedInsideSteppedNeverSplit;
-                gatherChildSplitPoints(expr, alwaysHoistChild, info, first, last);
-                break;
-            }
-        }
-
-        insideNeverSplit = false;
-        insideSteppedNeverSplit = false;
-        ForEachItemIn(i2, info->childDependents)
-        {
-            IHqlExpression & cur = info->childDependents.item(i2);
-            if (alwaysHoistChild.item(i2))
-                findSplitPoints(&cur);
-            else
-                conditionalChildren.append(cur);
-        }
-    }
-    else
-    {
-        for (unsigned idx=first; idx < last; idx++)
-            findSplitPoints(expr->queryChild(idx));
-    }
+    for (unsigned idx=first; idx < last; idx++)
+        deriveUsageCounts(expr->queryChild(idx));
 
     insideNeverSplit = savedInsideNeverSplit;
     insideSteppedNeverSplit = savedInsideSteppedNeverSplit;
-    return info->containsActivity;
 }
 
 
-void EclResourcer::findSplitPoints(HqlExprArray & exprs)
+void EclResourcer::deriveUsageCounts(const HqlExprArray & exprs)
 {
-    ForEachItemIn(idx, exprs)
-        findSplitPoints(&exprs.item(idx));
-    extendSplitPoints();
-}
+    ForEachItemIn(idx2, exprs)
+        deriveUsageCounts(&exprs.item(idx2));
 
-void EclResourcer::extendSplitPoints()
-{
-    for (unsigned i=0; i < conditionalChildren.ordinality(); i++)
+    ForEachItemIn(i2, allChildDependents)
     {
-        IHqlExpression & cur = conditionalChildren.item(i);
-        if (isWorthForcingHoist(&cur))
-            findSplitPoints(&cur);
+        CChildDependent & cur = allChildDependents.item(i2);
+        if (isResourcedActivity(cur.projectedHoisted))
+            deriveUsageCounts(cur.projectedHoisted);
     }
 }
 
@@ -2886,12 +3147,24 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
                 thisGraph->hasSequentialSource = true;
         }
         info->graph.set(thisGraph);
+        if (info->isRootActivity)
+            thisGraph->hasRootActivity = true;
 
         switch (expr->getOperator())
         {
         case no_compound:
             //NB: First argument is forced into a separate graph
-            createInitialGraph(expr->queryChild(0), expr, NULL, UnconditionalLink, true);
+            if (options.convertCompoundToExecuteWhen)
+            {
+                createInitialGraph(expr->queryChild(0), expr, thisGraph, UnconditionalLink, true);
+            }
+            else
+            {
+                HqlExprArray actions;
+                expr->queryChild(0)->unwindList(actions, no_actionlist);
+                ForEachItemIn(i, actions)
+                    createInitialGraph(&actions.item(i), expr, NULL, UnconditionalLink, true);
+            }
             createInitialGraph(expr->queryChild(1), expr, thisGraph, UnconditionalLink, false);
             return;
         case no_executewhen:
@@ -2905,9 +3178,10 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
         case no_newkeyindex:
             return;
         case no_parallel:
+        case no_actionlist:
             {
                 ForEachChild(i, expr)
-                    createInitialGraph(expr->queryChild(i), expr, thisGraph, UnconditionalLink, true);
+                    createInitialGraph(expr->queryChild(i), expr, thisGraph, UnconditionalLink, options.actionLinkInNewGraph);
                 return;
             }
         case no_if:
@@ -2916,7 +3190,7 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
             //conditional nodes, the child branches are marked as conditional
             childLinkKind = UnconditionalLink;
             thisGraph->mergedConditionSource = true;
-            if (!options.noConditionalLinks || expr->isAction())
+            if (!options.noConditionalLinks || (expr->isAction() && options.actionLinkInNewGraph))
                 forceNewChildGraph = true;
             break;
         case no_filter:
@@ -2929,12 +3203,13 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
             break;
 //      case no_nonempty:
         case no_sequential:
+        case no_orderedactionlist:
             {
                 unsigned first = getFirstActivityArgument(expr);
                 unsigned last = first + getNumActivityArguments(expr);
-                createInitialGraph(expr->queryChild(first), expr, thisGraph, SequenceLink, true);
+                createInitialGraph(expr->queryChild(first), expr, thisGraph, SequenceLink, options.actionLinkInNewGraph);
                 for (unsigned idx = first+1; idx < last; idx++)
-                    createInitialGraph(expr->queryChild(idx), expr, thisGraph, SequenceLink, true);
+                    createInitialGraph(expr->queryChild(idx), expr, thisGraph, SequenceLink, options.actionLinkInNewGraph);
                 return;
             }
         case no_case:
@@ -2949,10 +3224,10 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
                 //Needs the grouping to be saved in the same way.  Could cope with compressed matching, but not
                 //much point - since fairly unlikely.
                 IHqlExpression * filename = expr->queryChild(1);
-                if (filename && (filename->getOperator() == no_constant) && !expr->hasProperty(xmlAtom) && !expr->hasProperty(csvAtom))
+                if (filename && (filename->getOperator() == no_constant) && !expr->hasAttribute(xmlAtom) && !expr->hasAttribute(csvAtom))
                 {
                     IHqlExpression * dataset = expr->queryChild(0);
-                    if (expr->hasProperty(groupedAtom) == (dataset->queryType()->queryGroupInfo() != NULL))
+                    if (expr->hasAttribute(groupedAtom) == isGrouped(dataset))
                     {
                         StringBuffer filenameText;
                         filename->queryValue()->getStringValue(filenameText);
@@ -2979,9 +3254,9 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
 
     ForEachItemIn(i2, info->childDependents)
     {
-        IHqlExpression & cur = info->childDependents.item(i2);
-        if (isResourcedActivity(&cur))
-            createInitialGraph(&cur, expr, thisGraph, SequenceLink, true);
+        CChildDependent & cur = info->childDependents.item(i2);
+        if (isResourcedActivity(cur.projectedHoisted))
+            createInitialGraph(cur.projectedHoisted, expr, thisGraph, SequenceLink, true);
     }
 }
 
@@ -2989,7 +3264,14 @@ void EclResourcer::createInitialGraph(IHqlExpression * expr, IHqlExpression * ow
 void EclResourcer::createInitialGraphs(HqlExprArray & exprs)
 {
     ForEachItemIn(idx, exprs)
-        createInitialGraph(&exprs.item(idx), NULL, NULL, UnconditionalLink, false);
+    {
+        IHqlExpression * rootExpr = &exprs.item(idx);
+        ResourcerInfo * info = queryResourceInfo(rootExpr);
+        assertex(info->isActivity);
+        info->setRootActivity();
+
+        createInitialGraph(rootExpr, NULL, NULL, UnconditionalLink, false);
+    }
 }
 
 void EclResourcer::createInitialRemoteGraph(IHqlExpression * expr, IHqlExpression * owner, ResourceGraphInfo * ownerGraph, bool forceNewGraph)
@@ -3019,7 +3301,10 @@ void EclResourcer::createInitialRemoteGraph(IHqlExpression * expr, IHqlExpressio
         switch (expr->getOperator())
         {
         case no_compound:
-            createInitialRemoteGraph(expr->queryChild(0), expr, NULL, true);
+            if (options.convertCompoundToExecuteWhen)
+                createInitialRemoteGraph(expr->queryChild(0), expr, thisGraph, true);
+            else
+                createInitialRemoteGraph(expr->queryChild(0), expr, NULL, true);
             createInitialRemoteGraph(expr->queryChild(1), expr, thisGraph, false);
             return;
         case no_executewhen:
@@ -3051,9 +3336,9 @@ void EclResourcer::markChildDependentsAsUnconditional(ResourcerInfo * info, IHql
     {
         ForEachItemIn(i2, info->childDependents)
         {
-            IHqlExpression & cur = info->childDependents.item(i2);
-            if (isResourcedActivity(&cur))
-                markAsUnconditional(&cur, NULL, condition);
+            CChildDependent & cur = info->childDependents.item(i2);
+            if (isResourcedActivity(cur.projectedHoisted))
+                markAsUnconditional(cur.projectedHoisted, NULL, condition);
         }
     }
 }
@@ -3140,7 +3425,19 @@ void EclResourcer::markAsUnconditional(IHqlExpression * expr, ResourceGraphInfo 
         }
         markChildDependentsAsUnconditional(info, condition);
         return;
+    case no_compound:
+        if (!options.convertCompoundToExecuteWhen)
+        {
+            HqlExprArray actions;
+            expr->queryChild(0)->unwindList(actions, no_actionlist);
+            ForEachItemIn(i, actions)
+                markAsUnconditional(&actions.item(i), NULL, NULL);
+            markAsUnconditional(expr->queryChild(1), ownerGraph, condition);
+            return;
+        }
+        break;
     case no_sequential:
+    case no_orderedactionlist:
 //  case no_nonempty:
         if (!options.isChildQuery)
         {
@@ -3465,7 +3762,7 @@ void EclResourcer::addDependencyUse(IHqlExpression * search, ResourceGraphInfo *
             //Don't give a warning if get/set is within the same activity (e.g., within a local())
             if (&dependencySource.exprs.item(index) != expr)
             //errors->reportWarning(HQLWRN_RecursiveDependendencies, HQLWRN_RecursiveDependendencies_Text, *codeGeneratorAtom, 0, 0, 0);
-                errors->reportError(HQLWRN_RecursiveDependendencies, HQLWRN_RecursiveDependendencies_Text, *codeGeneratorAtom, 0, 0, 0);
+                errors->reportError(HQLWRN_RecursiveDependendencies, HQLWRN_RecursiveDependendencies_Text, codeGeneratorId->str(), 0, 0, 0);
         }
         else
         {
@@ -3546,16 +3843,16 @@ bool EclResourcer::addExprDependency(IHqlExpression * expr, ResourceGraphInfo * 
         return isNewSelector(expr);
     case no_workunit_dataset:
         {
-            IHqlExpression * sequence = queryPropertyChild(expr, sequenceAtom, 0);
-            IHqlExpression * name = queryPropertyChild(expr, nameAtom, 0);
+            IHqlExpression * sequence = queryAttributeChild(expr, sequenceAtom, 0);
+            IHqlExpression * name = queryAttributeChild(expr, nameAtom, 0);
             OwnedHqlExpr value = createAttribute(resultAtom, LINK(sequence), LINK(name));
             addDependencyUse(value, curGraph, activityExpr);
             return false;
         }
     case no_getresult:
         {
-            IHqlExpression * sequence = queryPropertyChild(expr, sequenceAtom, 0);
-            IHqlExpression * name = queryPropertyChild(expr, namedAtom, 0);
+            IHqlExpression * sequence = queryAttributeChild(expr, sequenceAtom, 0);
+            IHqlExpression * name = queryAttributeChild(expr, namedAtom, 0);
             OwnedHqlExpr value = createAttribute(resultAtom, LINK(sequence), LINK(name));
             addDependencyUse(value, curGraph, activityExpr);
             return false;
@@ -3576,8 +3873,8 @@ bool EclResourcer::addExprDependency(IHqlExpression * expr, ResourceGraphInfo * 
     case no_setresult:
     case no_extractresult:
         {
-            IHqlExpression * sequence = queryPropertyChild(expr, sequenceAtom, 0);
-            IHqlExpression * name = queryPropertyChild(expr, namedAtom, 0);
+            IHqlExpression * sequence = queryAttributeChild(expr, sequenceAtom, 0);
+            IHqlExpression * name = queryAttributeChild(expr, namedAtom, 0);
             OwnedHqlExpr value = createAttribute(resultAtom, LINK(sequence), LINK(name));
             addDependencySource(value, curGraph, activityExpr);
             return true;
@@ -3619,7 +3916,10 @@ void EclResourcer::addChildDependencies(IHqlExpression * expr, ResourceGraphInfo
 void EclResourcer::addDependencies(IHqlExpression * expr, ResourceGraphInfo * graph, IHqlExpression * activityExpr)
 {
     ResourcerInfo * info = queryResourceInfo(expr);
-    if (info && info->containsActivity)
+    if (!info)
+        return;
+
+    if (info->containsActivity)
     {
         if (info->isActivity)
         {
@@ -3647,14 +3947,15 @@ void EclResourcer::addDependencies(IHqlExpression * expr, ResourceGraphInfo * gr
 
     ForEachItemIn(i, info->childDependents)
     {
-        IHqlExpression & cur = info->childDependents.item(i);
-        if (isResourcedActivity(&cur))
+        CChildDependent & cur = info->childDependents.item(i);
+        if (isResourcedActivity(cur.projectedHoisted))
         {
-            addDependencies(&cur, NULL, NULL);
-            ResourcerInfo * sourceInfo = queryResourceInfo(&cur);
-            if (info->childSingleNode.item(i))
-                sourceInfo->noteUsedFromChild();
-            ResourceGraphLink * link = new ResourceGraphDependencyLink(sourceInfo->graph, &cur, graph, expr);
+            addDependencies(cur.projectedHoisted, NULL, NULL);
+
+            ResourcerInfo * sourceInfo = queryResourceInfo(cur.projectedHoisted);
+            if (cur.isSingleNode)
+                sourceInfo->noteUsedFromChild(cur.forceHoist);
+            ResourceGraphLink * link = new ResourceGraphDependencyLink(sourceInfo->graph, cur.projectedHoisted, graph, expr);
             graph->dependsOn.append(*link);
             links.append(*link);
         }
@@ -3704,7 +4005,7 @@ void EclResourcer::spotUnbalancedSplitters(IHqlExpression * expr, unsigned which
             switch (expr->getOperator())
             {
             case no_addfiles:
-                if (expr->hasProperty(_ordered_Atom) || expr->hasProperty(_orderedPull_Atom) || isGrouped(expr))
+                if (expr->hasAttribute(_ordered_Atom) || expr->hasAttribute(_orderedPull_Atom) || isGrouped(expr))
                     modify = true;
                 break;
             default:
@@ -3973,11 +4274,14 @@ mergeAgain:
                                 if (curLink.sinkNode != sourceResourceInfo->outputToUseForSpill)
                                     ok = false;
                             }
+                            if (sequential && source->containsActionSink())
+                                ok = false;
+
                             unsigned curSourceDepth = source->getDepth();
                             //MORE: Merging identical conditionals?
                             if (ok && queryMergeGraphLink(curLink) &&
                                 !sourceResourceInfo->expandRatherThanSplit() &&
-                                cur.mergeInSource(*source, *resourceLimit, (curLink.linkKind == ConditionalLink)))
+                                cur.mergeInSource(*source, *resourceLimit))
                             {
                                 //NB: Following cannot remove sources below the current index.
                                 replaceGraphReferences(source, &cur);
@@ -4025,6 +4329,12 @@ void EclResourcer::mergeSiblings()
             ResourceGraphInfo & cur = graphs.item(idx);
             if ((cur.getDepth() == curDepth) && !cur.isDead)
             {
+                if (cur.containsActionSink())
+                {
+                    if (!cur.canMergeActionAsSibling(sequential))
+                        continue;
+                }
+
                 ForEachItemIn(idxSource, cur.sources)
                 {
                     ResourceGraphLink & curLink = cur.sources.item(idxSource);
@@ -4038,9 +4348,14 @@ void EclResourcer::mergeSiblings()
                     {
                         ResourceGraphLink & secondLink = source->sinks.item(iSink);
                         ResourceGraphInfo * sink = secondLink.sinkGraph;
+                        bool ok = false;
                         if (sink && (sink != &cur) && !sink->isDead && sourceNode->queryBody() == secondLink.sourceNode->queryBody())
                         {
-                            if (cur.mergeInSibling(*sink, *resourceLimit))
+                            ok = true;
+                            if (sequential && !sink->canMergeActionAsSibling(sequential))
+                                ok = false;
+
+                            if (ok && cur.mergeInSibling(*sink, *resourceLimit))
                             {
                                 //NB: Following cannot remove sources below the current index.
                                 replaceGraphReferences(sink, &cur);
@@ -4236,36 +4551,37 @@ protected:
 };
 
 
-static IHqlExpression * getScalarReplacement(IHqlExpression * original, IHqlExpression * replacement)
+static IHqlExpression * getScalarReplacement(CChildDependent & cur, ResourcerInfo * hoistedInfo, IHqlExpression * replacement)
 {
-    IHqlExpression * value = original;
     //First skip any wrappers which are there to cause things to be hoisted.
-    loop
-    {
-        node_operator op = value->getOperator();
-        if ((op != no_globalscope) && (op != no_thisnode) && (op != no_evalonce))
-            break;
-        value = value->queryChild(0);
-    }
+    IHqlExpression * value = skipScalarWrappers(cur.original);
 
     //Now modify the spilled result depending on how the spilled result was created (see EclHoistLocator::noteScalar() above)
     if (value->getOperator() == no_select)
     {
-        IHqlExpression * field = value->queryChild(1);
         bool isNew;
         IHqlExpression * ds = querySelectorDataset(value, isNew);
         if(isNew || ds->isDatarow())
         {
-            if (projectSelectorDatasetToField(ds))
-                return createNewSelectExpr(LINK(replacement), LINK(field));
+            if (cur.hoisted != cur.projectedHoisted)
+            {
+                assertex(cur.projected);
+                unsigned match = hoistedInfo->projected.find(*cur.projected);
+                assertex(match != NotFound);
+                IHqlExpression * projectedRecord = cur.projectedHoisted->queryRecord();
+                IHqlExpression * projectedField = projectedRecord->queryChild(match);
+                return createNewSelectExpr(LINK(replacement), LINK(projectedField));
+            }
             return replaceSelectorDataset(value, replacement);
         }
+        //Very unusual - can occur when a thisnode(somefield) is extracted from an allnodes.
+        //It will have gone through the default case in the noteScalar() code
     }
     else if (value->getOperator() == no_createset)
     {
         IHqlExpression * record = replacement->queryRecord();
         IHqlExpression * field = record->queryChild(0);
-        return createValue(no_createset, original->getType(), LINK(replacement), createSelectExpr(LINK(replacement->queryNormalizedSelector()), LINK(field)));
+        return createValue(no_createset, cur.original->getType(), LINK(replacement), createSelectExpr(LINK(replacement->queryNormalizedSelector()), LINK(field)));
     }
 
     IHqlExpression * record = replacement->queryRecord();
@@ -4281,23 +4597,29 @@ IHqlExpression * EclResourcer::replaceResourcedReferences(ResourcerInfo * info, 
     LinkedHqlExpr mapped = expr;
     if (info && (info->childDependents.ordinality()))
     {
+        HqlExprCopyArray originals;
         HqlExprArray replacements;
-        ForEachItemIn(i, info->originalChildDependents)
+        ForEachItemIn(i, info->childDependents)
         {
-            IHqlExpression & cur = info->childDependents.item(i);
-            LinkedHqlExpr replacement = &cur;
-            if (isResourcedActivity(&cur))
-                replacement.setown(createResourced(&cur, NULL, false, false));
+            CChildDependent & cur = info->childDependents.item(i);
+            if (!isResourcedActivity(cur.projectedHoisted))
+                continue;
 
-            IHqlExpression * original = &info->originalChildDependents.item(i);
+            OwnedHqlExpr replacement = createResourced(cur.projectedHoisted, NULL, false, false);
+
+            IHqlExpression * original = cur.original;
             if (!original->isDataset() && !original->isDatarow() && !original->isDictionary())
-                replacement.setown(getScalarReplacement(original, replacement));
+                replacement.setown(getScalarReplacement(cur, queryResourceInfo(cur.hoisted), replacement));
 
+            originals.append(*original);
             replacements.append(*replacement.getClear());
         }
 
-        ChildDependentReplacer replacer(info->originalChildDependents, replacements);
-        mapped.setown(replacer.transformRoot(mapped));
+        if (originals.ordinality())
+        {
+            ChildDependentReplacer replacer(originals, replacements);
+            mapped.setown(replacer.transformRoot(mapped));
+        }
     }
     return mapped.getClear();
 }
@@ -4338,7 +4660,15 @@ IHqlExpression * EclResourcer::doCreateResourced(IHqlExpression * expr, Resource
     case no_keyed:
         return LINK(expr);
     case no_compound:
-        transformed.setown(createResourced(expr->queryChild(1), ownerGraph, expandInParent, false));
+        if (options.convertCompoundToExecuteWhen)
+        {
+            //NB: Arguments to no_executewhen are the reverse of no_compound.
+            args.append(*createResourced(expr->queryChild(1), ownerGraph, expandInParent, false));
+            args.append(*createResourced(expr->queryChild(0), ownerGraph, expandInParent, false));
+            transformed.setown(createDataset(no_executewhen, args));
+        }
+        else
+            transformed.setown(createResourced(expr->queryChild(1), ownerGraph, expandInParent, false));
         break;
     case no_executewhen:
         {
@@ -4357,7 +4687,7 @@ IHqlExpression * EclResourcer::doCreateResourced(IHqlExpression * expr, Resource
             {
                 args.append(*LINK(newDs));
                 unwindChildren(args, expr, 1);
-                if (!expr->hasProperty(newAtom) && isNewSelector(expr) && (newDs->getOperator() != no_select))
+                if (!expr->hasAttribute(newAtom) && isNewSelector(expr) && (newDs->getOperator() != no_select))
                     args.append(*LINK(queryNewSelectAttrExpr()));
                 same = false;
             }
@@ -4532,16 +4862,25 @@ IHqlExpression * EclResourcer::createResourced(IHqlExpression * expr, ResourceGr
             }
             else
             {
-                IHqlExpression * uid = info->transformed->queryProperty(_uid_Atom);
-                source = createValue(no_callsideeffect, makeVoidType(), LINK(uid));
-                //source = LINK(info->transformed);
+                IHqlExpression * transformed = info->transformed;
+                if (transformed->getOperator() == no_definesideeffect)
+                {
+                    IHqlExpression * uid = info->transformed->queryAttribute(_uid_Atom);
+                    assertex(uid);
+                    source = createValue(no_callsideeffect, makeVoidType(), LINK(uid));
+                }
+                else
+                    source = LINK(transformed);
             }
         }
 
         if (isShared)
         {
-            source = createDatasetF(no_split, source, createAttribute(balancedAtom), createUniqueId(), NULL);
-            ownerGraph->addSharedInput(expr->queryBody(), source);
+            if (!source->isAction())
+            {
+                source = createDatasetF(no_split, source, createAttribute(balancedAtom), createUniqueId(), NULL);
+                ownerGraph->addSharedInput(expr->queryBody(), source);
+            }
         }
 
         return source;
@@ -4553,7 +4892,7 @@ IHqlExpression * EclResourcer::createResourced(IHqlExpression * expr, ResourceGr
     }
 
     OwnedHqlExpr resourced = doCreateResourced(expr, ownerGraph, expandInParent, defineSideEffect);
-    if (queryAddUniqueToActivity(resourced))// && !resourced->hasProperty(_internal_Atom))
+    if (queryAddUniqueToActivity(resourced))// && !resourced->hasAttribute(_internal_Atom))
         resourced.setown(appendUniqueAttr(resourced));
 
     if (!expandInParent)
@@ -4619,7 +4958,7 @@ void EclResourcer::createResourced(ResourceGraphInfo * graph, HqlExprArray & tra
         graph->isDead = true;
     else
     {
-        if (options.useGraphResults)
+        if (options.useGraphResults || options.alwaysUseGraphResults)
             args.append(*createAttribute(childAtom));
         graph->createdGraph.setown(createValue(no_subgraph, makeVoidType(), args));
         transformed.append(*LINK(graph->createdGraph));
@@ -4743,9 +5082,7 @@ void EclResourcer::display(StringBuffer & out)
             out.padTo(len+30);
             out.appendf("  Sink: %d %s", sortedGraphs.find(*link.sinkGraph), getOpString(link.sinkNode->getOperator()));
         }
-        if (link.linkKind == ConditionalLink)
-            out.append(" <conditional>");
-        else if (link.linkKind == SequenceLink)
+        if (link.linkKind == SequenceLink)
             out.append(" <sequence>");
         out.newline();
     }
@@ -4760,8 +5097,48 @@ void EclResourcer::trace()
 
 //---------------------------------------------------------------------------
 
-void EclResourcer::resourceGraph(HqlExprArray & exprs, HqlExprArray & transformed)
+static void expandLists(node_operator op, HqlExprArray & args, IHqlExpression * expr);
+static void expandChildren(node_operator op, HqlExprArray & args, IHqlExpression * expr)
 {
+    ForEachChild(idx, expr)
+        expandLists(op, args, expr->queryChild(idx));
+}
+
+static void expandLists(node_operator op, HqlExprArray & args, IHqlExpression * expr)
+{
+    switch (expr->getOperator())
+    {
+    case no_sequential:
+    case no_orderedactionlist:
+        if (op != no_parallel)
+            expandChildren(no_sequential, args, expr);
+        else
+            args.append(*LINK(expr));
+        break;
+    case no_comma:
+    case no_compound:
+    case no_actionlist:
+    case no_parallel:
+        if (op != no_sequential)
+            expandChildren(no_parallel, args, expr);
+        else
+            args.append(*LINK(expr));
+        break;
+    case no_null:
+        break;
+    default:
+        args.append(*LINK(expr));
+        break;
+    }
+}
+
+
+void EclResourcer::resourceGraph(IHqlExpression * expr, HqlExprArray & transformed)
+{
+    HqlExprArray exprs;
+    node_operator expandOp = options.isChildQuery ? no_any : no_parallel;
+    expandLists(expandOp, exprs, expr);
+
     //NB: This only resources a single level of queries.  SubQueries should be resourced in a separate
     //pass so that commonality between different activities/subgraphs isn't introduced/messed up.
     findSplitPoints(exprs);
@@ -4788,8 +5165,11 @@ void EclResourcer::resourceGraph(HqlExprArray & exprs, HqlExprArray & transforme
 }
 
 
-void EclResourcer::resourceRemoteGraph(HqlExprArray & exprs, HqlExprArray & transformed)
+void EclResourcer::resourceRemoteGraph(IHqlExpression * expr, HqlExprArray & transformed)
 {
+    HqlExprArray exprs;
+    expandLists(no_any, exprs, expr);
+
     //NB: This only resources a single level of queries.  SubQueries should be resourced in a separate
     //pass so that commonality between different activities/subgraphs isn't introduced/messed up.
     findSplitPoints(exprs);
@@ -4809,38 +5189,15 @@ void EclResourcer::resourceRemoteGraph(HqlExprArray & exprs, HqlExprArray & tran
 
 //---------------------------------------------------------------------------
 
-void expandLists(HqlExprArray & args, IHqlExpression * expr)
-{
-    switch (expr->getOperator())
-    {
-    case no_comma:
-    case no_compound:
-    case no_parallel:       
-    case no_actionlist:
-        // for the moment, expand root parallel nodes, it generates much better code.
-        // I should really come up with a better way of implementing sequential/parallel.
-        {
-            ForEachChild(idx, expr)
-                expandLists(args, expr->queryChild(idx));
-            break;
-        }
-    default:
-        args.append(*LINK(expr));
-        break;
-    }
-}
-
 IHqlExpression * resourceThorGraph(HqlCppTranslator & translator, IHqlExpression * expr, ClusterType targetClusterType, unsigned clusterSize, IHqlExpression * graphIdExpr)
 {
     HqlExprArray transformed;
     {
-        EclResourcer resourcer(translator.queryErrors(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
+        EclResourcer resourcer(translator.queryErrorProcessor(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
         if (graphIdExpr)
             resourcer.setNewChildQuery(graphIdExpr, 0);
 
-        HqlExprArray exprs;
-        expandLists(exprs, expr);
-        resourcer.resourceGraph(exprs, transformed);
+        resourcer.resourceGraph(expr, transformed);
     }
     hoistNestedCompound(translator, transformed);
     return createActionList(transformed);
@@ -4849,57 +5206,62 @@ IHqlExpression * resourceThorGraph(HqlCppTranslator & translator, IHqlExpression
 
 static IHqlExpression * doResourceGraph(HqlCppTranslator & translator, HqlExprCopyArray * activeRows, IHqlExpression * expr, 
                                         ClusterType targetClusterType, unsigned clusterSize,
-                                        IHqlExpression * graphIdExpr, unsigned * numResults, bool isChild, bool useGraphResults, bool sequential)
+                                        IHqlExpression * graphIdExpr, unsigned numResults, bool isChild, bool useGraphResults)
 {
     HqlExprArray transformed;
+    unsigned totalResults;
     {
-        EclResourcer resourcer(translator.queryErrors(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
+        EclResourcer resourcer(translator.queryErrorProcessor(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
         if (isChild)
             resourcer.setChildQuery(true);
-        resourcer.setNewChildQuery(graphIdExpr, *numResults);
+        resourcer.setNewChildQuery(graphIdExpr, numResults);
         resourcer.setUseGraphResults(useGraphResults);
-        resourcer.setSequential(sequential);
+
+        if (isSequentialActionList(expr))
+            resourcer.setSequential(true);
 
         if (activeRows)
             resourcer.tagActiveCursors(*activeRows);
 
-        HqlExprArray exprs;
-        expandLists(exprs, expr);
-
-        resourcer.resourceGraph(exprs, transformed);
-        *numResults = resourcer.numGraphResults();
+        resourcer.resourceGraph(expr, transformed);
+        totalResults = resourcer.numGraphResults();
     }
+
     hoistNestedCompound(translator, transformed);
-    return createActionList(transformed);
+
+    if (totalResults == 0)
+        totalResults = 1;
+    transformed.append(*createAttribute(numResultsAtom, getSizetConstant(totalResults)));
+    transformed.append(*LINK(graphIdExpr));
+    if (isSequentialActionList(expr))
+        transformed.append(*createAttribute(sequentialAtom));
+    return createValue(no_subgraph, makeVoidType(), transformed);
 }
 
 
-IHqlExpression * resourceLibraryGraph(HqlCppTranslator & translator, IHqlExpression * expr, ClusterType targetClusterType, unsigned clusterSize, IHqlExpression * graphIdExpr, unsigned * numResults)
+IHqlExpression * resourceLibraryGraph(HqlCppTranslator & translator, IHqlExpression * expr, ClusterType targetClusterType, unsigned clusterSize, IHqlExpression * graphIdExpr, unsigned numResults)
 {
-    return doResourceGraph(translator, NULL, expr, targetClusterType, clusterSize, graphIdExpr, numResults, false, true, false);       //?? what value for isChild (e.g., thor library call).  Need to gen twice?
+    return doResourceGraph(translator, NULL, expr, targetClusterType, clusterSize, graphIdExpr, numResults, false, true);       //?? what value for isChild (e.g., thor library call).  Need to gen twice?
 }
 
 
-IHqlExpression * resourceNewChildGraph(HqlCppTranslator & translator, HqlExprCopyArray & activeRows, IHqlExpression * expr, ClusterType targetClusterType, IHqlExpression * graphIdExpr, unsigned * numResults, bool sequential)
+IHqlExpression * resourceNewChildGraph(HqlCppTranslator & translator, HqlExprCopyArray & activeRows, IHqlExpression * expr, ClusterType targetClusterType, IHqlExpression * graphIdExpr, unsigned numResults)
 {
-    return doResourceGraph(translator, &activeRows, expr, targetClusterType, 0, graphIdExpr, numResults, true, true, sequential);
+    return doResourceGraph(translator, &activeRows, expr, targetClusterType, 0, graphIdExpr, numResults, true, true);
 }
 
-IHqlExpression * resourceLoopGraph(HqlCppTranslator & translator, HqlExprCopyArray & activeRows, IHqlExpression * expr, ClusterType targetClusterType, IHqlExpression * graphIdExpr, unsigned * numResults, bool insideChildQuery)
+IHqlExpression * resourceLoopGraph(HqlCppTranslator & translator, HqlExprCopyArray & activeRows, IHqlExpression * expr, ClusterType targetClusterType, IHqlExpression * graphIdExpr, unsigned numResults, bool insideChildQuery)
 {
-    return doResourceGraph(translator, &activeRows, expr, targetClusterType, 0, graphIdExpr, numResults, insideChildQuery, true, false);
+    return doResourceGraph(translator, &activeRows, expr, targetClusterType, 0, graphIdExpr, numResults, insideChildQuery, true);
 }
 
 IHqlExpression * resourceRemoteGraph(HqlCppTranslator & translator, IHqlExpression * expr, ClusterType targetClusterType, unsigned clusterSize)
 {
     HqlExprArray transformed;
     {
-        EclResourcer resourcer(translator.queryErrors(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
+        EclResourcer resourcer(translator.queryErrorProcessor(), translator.wu(), targetClusterType, clusterSize, translator.queryOptions());
 
-        HqlExprArray exprs;
-        expandLists(exprs, expr);
-
-        resourcer.resourceRemoteGraph(exprs, transformed);
+        resourcer.resourceRemoteGraph(expr, transformed);
     }
     hoistNestedCompound(translator, transformed);
     return createActionList(transformed);
@@ -4929,7 +5291,7 @@ a single splitter.
 class SpillActivityTransformer : public NewHqlTransformer
 {
 public:
-    SpillActivityTransformer();
+    SpillActivityTransformer(bool _createGraphResults);
 
 protected:
     virtual void analyseExpr(IHqlExpression * expr);
@@ -4945,11 +5307,13 @@ protected:
         ANewTransformInfo * info = queryTransformExtra(body);
         info->spareByte1 = true;
     }
+protected:
+    bool createGraphResults;
 };
 
 static HqlTransformerInfo spillActivityTransformerInfo("SpillActivityTransformer");
-SpillActivityTransformer::SpillActivityTransformer() 
-: NewHqlTransformer(spillActivityTransformerInfo)
+SpillActivityTransformer::SpillActivityTransformer(bool _createGraphResults)
+: NewHqlTransformer(spillActivityTransformerInfo), createGraphResults(_createGraphResults)
 { 
 }
 
@@ -4958,21 +5322,23 @@ void SpillActivityTransformer::analyseExpr(IHqlExpression * expr)
     IHqlExpression * body = expr->queryBody();
     if (alreadyVisited(body))
         return;
-    if (body->getOperator() == no_split)
+
+    //If splitters are commoned up ensure unbalanced splitters stay unbalanced.
+    if ((body->getOperator() == no_split) && !body->hasAttribute(balancedAtom))
     {
-        IHqlExpression * input = body->queryChild(0);
-        if (input->getOperator() == no_split)
+        IHqlExpression * splitter = NULL;
+        IHqlExpression * cur = body->queryChild(0);
+        loop
         {
-            loop
-            {
-                IHqlExpression * cur = input->queryChild(0);
-                if (cur->getOperator() != no_split)
-                    break;
-                input = cur;
-            }
-            if (!body->hasProperty(balancedAtom))
-                setUnbalanced(input->queryBody());
+            node_operator op = cur->getOperator();
+            if (op == no_split)
+                splitter = cur;
+            else if (op != no_commonspill)
+                break;
+            cur = cur->queryChild(0);
         }
+        if (splitter)
+            setUnbalanced(splitter->queryBody());
     }
     NewHqlTransformer::analyseExpr(expr);
 }
@@ -4987,18 +5353,20 @@ IHqlExpression * SpillActivityTransformer::createTransformed(IHqlExpression * ex
     {
     case no_split:
         {
-            IHqlExpression * input = expr->queryChild(0);
+            OwnedHqlExpr input = transform(expr->queryChild(0));
             if (input->getOperator() == no_split)
-                return transform(input);
+                return input.getClear();
             OwnedHqlExpr transformed = NewHqlTransformer::createTransformed(expr);
-            if (transformed->hasProperty(balancedAtom) && isUnbalanced(expr))
-                return removeProperty(transformed, balancedAtom);
+            if (transformed->hasAttribute(balancedAtom) && isUnbalanced(expr))
+                return removeAttribute(transformed, balancedAtom);
             return transformed.getClear();
         }
     case no_writespill:
         {
             HqlExprArray args;
             transformChildren(expr, args);
+            if (createGraphResults)
+                return createValue(no_setgraphresult, makeVoidType(), args);
             return createValue(no_output, makeVoidType(), args);
         }
     case no_commonspill:
@@ -5006,9 +5374,14 @@ IHqlExpression * SpillActivityTransformer::createTransformed(IHqlExpression * ex
     case no_readspill:
         {
             OwnedHqlExpr ds = transform(expr->queryChild(0));
+            node_operator readOp = createGraphResults ? no_getgraphresult : no_table;
+
             HqlExprArray args;
-            args.append(*transform(expr->queryChild(1)));
+            if (!createGraphResults)
+                args.append(*transform(expr->queryChild(1)));
             args.append(*LINK(ds->queryRecord()));
+            if (createGraphResults)
+                args.append(*transform(expr->queryChild(1)));
             ForEachChildFrom(i, expr, 2)
             {
                 IHqlExpression * cur = expr->queryChild(i);
@@ -5017,15 +5390,24 @@ IHqlExpression * SpillActivityTransformer::createTransformed(IHqlExpression * ex
             IHqlExpression * recordCountAttr = queryRecordCountInfo(expr);
             if (recordCountAttr)
                 args.append(*LINK(recordCountAttr));
-            return createDataset(no_table, args);
+
+            OwnedHqlExpr ret;
+            if (ds->isDatarow())
+                ret.setown(createRow(readOp, args));
+            else if (ds->isDictionary())
+                ret.setown(createDictionary(readOp, args));
+            else
+                ret.setown(createDataset(readOp, args));
+            const bool loseDistribution = false;
+            return preserveTableInfo(ret, ds, loseDistribution, NULL);
         }
     }
     return NewHqlTransformer::createTransformed(expr);
 }
 
-IHqlExpression * convertSpillsToActivities(IHqlExpression * expr)
+IHqlExpression * convertSpillsToActivities(IHqlExpression * expr, bool createGraphResults)
 {
-    SpillActivityTransformer transformer;
+    SpillActivityTransformer transformer(createGraphResults);
     transformer.analyse(expr, 0);
     return transformer.transformRoot(expr);
 }

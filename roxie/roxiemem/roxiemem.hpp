@@ -20,6 +20,7 @@
 #include "jlib.hpp"
 #include "jlog.hpp"
 #include "jdebug.hpp"
+#include "jstats.h"
 #include "errorlist.h"
 
 #ifdef _WIN32
@@ -55,6 +56,8 @@
 // MAX_ACTIVITY_ID is further subdivided:
 #define ALLOCATORID_CHECK_MASK          0x00300000
 #define ALLOCATORID_MASK                0x000fffff
+#define UNKNOWN_ROWSET_ID               0x000F8421              // Use as the allocatorId for a rowset from an unknown activity
+#define UNKNOWN_ACTIVITY                123456789
 
 #define ALLOC_ALIGNMENT                 sizeof(void *)          // Minimum alignment of data allocated from the heap manager
 #define PACKED_ALIGNMENT                4                       // Minimum alignment of packed blocks
@@ -71,16 +74,18 @@ interface IRowAllocatorCache : extends IInterface
     virtual unsigned getActivityId(unsigned cacheId) const = 0;
     virtual StringBuffer &getActivityDescriptor(unsigned cacheId, StringBuffer &out) const = 0;
     virtual void onDestroy(unsigned cacheId, void *row) const = 0;
+    virtual void onClone(unsigned cacheId, void *row) const = 0;
     virtual void checkValid(unsigned cacheId, const void *row) const = 0;
 };
 
 //This interface allows activities that hold on to large numbers of rows to be called back to try and free up
 //memory.  E.g., sorts can spill to disk, read ahead buffers can reduce the number being readahead etc.
-//Lower priority callbacks are called before higher priority.
+//Lower cost callbacks are called before higher cost.
 //The freeBufferedRows will call all callbacks with critical=false, before calling with critical=true
+const static unsigned SpillAllCost = (unsigned)-1;
 interface IBufferedRowCallback
 {
-    virtual unsigned getPriority() const = 0; // lower values get freed up first.
+    virtual unsigned getSpillCost() const = 0; // lower values get freed up first.
     virtual bool freeBufferedRows(bool critical) = 0; // return true if and only if managed to free something.
 };
 
@@ -93,6 +98,7 @@ interface ILargeMemCallback: extends IInterface
 };
 
 
+class HeapCompactState;
 struct roxiemem_decl HeapletBase
 {
     friend class DataBufferBottom;
@@ -115,13 +121,15 @@ protected:
     virtual bool _hasDestructor(const void *ptr) const = 0;
     virtual unsigned _rawAllocatorId(const void *ptr) const = 0;
     virtual void noteLinked(const void *ptr) = 0;
+    virtual const void * _compactRow(const void * ptr, HeapCompactState & state) = 0;
+    virtual void _internalReleaseNoDestructor(const void *ptr) = 0;
 
+public:
     inline static HeapletBase *findBase(const void *ptr)
     {
         return (HeapletBase *) ((memsize_t) ptr & HEAP_ALIGNMENT_MASK);
     }
 
-public:
     inline bool isAlive() const
     {
         return atomic_read(&count) < DEAD_PSEUDO_COUNT;        //only safe if Link() is called first
@@ -132,9 +140,13 @@ public:
     static bool isShared(const void *ptr);
     static void link(const void *ptr);
     static memsize_t capacity(const void *ptr);
+    static bool isWorthCompacting(const void *ptr);
+    static const void * compactRow(const void * ptr, HeapCompactState & state);
 
     static void setDestructorFlag(const void *ptr);
     static bool hasDestructor(const void *ptr);
+
+    static void internalReleaseNoDestructor(const void *ptr);
 
     static inline void releaseClear(const void *&ptr)
     {
@@ -153,6 +165,10 @@ public:
         return atomic_read(&count);
     }
 
+    inline bool isEmpty() const
+    {
+        return atomic_read(&count) == 1;
+    }
 };
 
 extern roxiemem_decl unsigned DATA_ALIGNMENT_SIZE;  // Permissible values are 0x400 and 0x2000
@@ -211,6 +227,8 @@ private:
     virtual void _setDestructorFlag(const void *ptr);
     virtual bool _hasDestructor(const void *ptr) const { return false; }
     virtual unsigned _rawAllocatorId(const void *ptr) const { return 0; }
+    virtual const void * _compactRow(const void * ptr, HeapCompactState & state) { return ptr; }
+    virtual void _internalReleaseNoDestructor(const void *ptr) { throwUnexpected(); }
 protected:
     DataBuffer()
     {
@@ -244,6 +262,8 @@ private:
     virtual bool _hasDestructor(const void *ptr) const { return false; }
     virtual unsigned _rawAllocatorId(const void *ptr) const { return 0; }
     virtual void noteLinked(const void *ptr);
+    virtual const void * _compactRow(const void * ptr, HeapCompactState & state) { return ptr; }
+    virtual void _internalReleaseNoDestructor(const void *ptr) { throwUnexpected(); }
 
 public:
     DataBufferBottom(CDataBufferManager *_owner, DataBufferBottom *ownerFreeChain);
@@ -382,6 +402,7 @@ enum RoxieHeapFlags
     RHFhasdestructor    = 0x0002,
     RHFunique           = 0x0004,  // create a separate fixed size allocator
     RHFoldfixed         = 0x0008,  // Don't create a special fixed size heap for this
+    RHFvariable         = 0x0010,  // only used for tracing
 };
 
 //This interface is here to allow atomic updates to allocations when they are being resized.  There are a few complications:
@@ -406,40 +427,63 @@ interface IRowResizeCallback
 interface IRowManager : extends IInterface
 {
     virtual void *allocate(memsize_t size, unsigned activityId) = 0;
+    virtual void *allocate(memsize_t _size, unsigned activityId, unsigned maxSpillCost) = 0;
     virtual const char *cloneVString(const char *str) = 0;
     virtual const char *cloneVString(size32_t len, const char *str) = 0;
-    virtual void resizeRow(void * original, memsize_t copysize, memsize_t newsize, unsigned activityId, IRowResizeCallback & callback) = 0;
+    virtual bool resizeRow(void * original, memsize_t copysize, memsize_t newsize, unsigned activityId, unsigned maxSpillCost, IRowResizeCallback & callback) = 0;
     virtual void resizeRow(memsize_t & capacity, void * & original, memsize_t copysize, memsize_t newsize, unsigned activityId) = 0;
     virtual void *finalizeRow(void *final, memsize_t originalSize, memsize_t finalSize, unsigned activityId) = 0;
-    virtual void setMemoryLimit(memsize_t size, memsize_t spillSize = 0) = 0;
     virtual unsigned allocated() = 0;
     virtual unsigned numPagesAfterCleanup(bool forceFreeAll) = 0; // calls releaseEmptyPages() then returns
     virtual bool releaseEmptyPages(bool forceFreeAll) = 0; // ensures any empty pages are freed back to the heap
     virtual unsigned getMemoryUsage() = 0;
     virtual bool attachDataBuff(DataBuffer *dataBuff) = 0 ;
     virtual void noteDataBuffReleased(DataBuffer *dataBuff) = 0 ;
-    virtual void setActivityTracking(bool val) = 0;
     virtual void reportLeaks() = 0;
     virtual void checkHeap() = 0;
-    virtual IFixedRowHeap * createFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags) = 0;
+    virtual IFixedRowHeap * createFixedRowHeap(size32_t fixedSize, unsigned activityId, unsigned roxieHeapFlags, unsigned maxSpillCost = SpillAllCost) = 0;
     virtual IVariableRowHeap * createVariableRowHeap(unsigned activityId, unsigned roxieHeapFlags) = 0;            // should this be passed the initial size?
     virtual void addRowBuffer(IBufferedRowCallback * callback) = 0;
     virtual void removeRowBuffer(IBufferedRowCallback * callback) = 0;
+    virtual void reportMemoryUsage(bool peak) const = 0;
+    virtual bool compactRows(memsize_t count, const void * * rows) = 0;
     virtual memsize_t getExpectedCapacity(memsize_t size, unsigned heapFlags) = 0; // what is the expected capacity for a given size allocation
     virtual memsize_t getExpectedFootprint(memsize_t size, unsigned heapFlags) = 0; // how much memory will a given size allocation actually use.
+    virtual void reportPeakStatistics(IStatisticTarget & target, unsigned detail) = 0;
+
+//Allow various options to be configured
+    virtual void setActivityTracking(bool val) = 0;
+    virtual void setMemoryLimit(memsize_t size, memsize_t spillSize = 0, unsigned backgroundReleaseCost = SpillAllCost) = 0;  // First size is max memory, second is the limit which will trigger a background thread to reduce memory
+
+    //set the number of callbacks that successfully free some memory before deciding it is good enough.
+    //Default is 1, use -1 to free all possible memory whenever an out of memory occurs
+    virtual void setMemoryCallbackThreshold(unsigned value) = 0;
+
+    //If set release callbacks are called on separate threads - it maximises the likelihood of hitting a deadlock.
+    virtual void setCallbackOnThread(bool value) = 0;
+    //If enabled, callbacks will be called whenever a new block of memory needs to be allocated
+    virtual void setMinimizeFootprint(bool value, bool critical) = 0;
+    //If set, and changes to the callback list always triggers the callbacks to be called.
+    virtual void setReleaseWhenModifyCallback(bool value, bool critical) = 0;
 };
 
 extern roxiemem_decl void setDataAlignmentSize(unsigned size);
 
+#define MIN_ABORT_CHECK_INTERVAL 10
+#define MAX_ABORT_CHECK_INTERVAL 5000
+
 interface ITimeLimiter 
 {
-    virtual void checkAbort() = 0 ;
+    virtual void checkAbort() = 0;
+    virtual unsigned checkInterval() const = 0;
 };
 
 interface IActivityMemoryUsageMap : public IInterface
 {
-    virtual void noteMemUsage(unsigned activityId, unsigned memUsed) = 0;
+    virtual void noteMemUsage(unsigned activityId, memsize_t memUsed, unsigned numAllocs) = 0;
+    virtual void noteHeapUsage(memsize_t allocatorSize, RoxieHeapFlags heapFlags, memsize_t memReserved, memsize_t memUsed) = 0;
     virtual void report(const IContextLogger &logctx, const IRowAllocatorCache *allocatorCache) = 0;
+    virtual void reportStatistics(IStatisticTarget & target, unsigned detailtarget, const IRowAllocatorCache *allocatorCache) = 0;
 };
 
 extern roxiemem_decl IRowManager *createRowManager(memsize_t memLimit, ITimeLimiter *tl, const IContextLogger &logctx, const IRowAllocatorCache *allocatorCache, bool ignoreLeaks = false);
@@ -462,6 +506,8 @@ extern roxiemem_decl unsigned getHeapAllocated();
 extern roxiemem_decl unsigned getHeapPercentAllocated();
 extern roxiemem_decl unsigned getDataBufferPages();
 extern roxiemem_decl unsigned getDataBuffersActive();
+
+//Various options to stress the memory
 
 extern roxiemem_decl unsigned memTraceLevel;
 extern roxiemem_decl memsize_t memTraceSizeLimit;

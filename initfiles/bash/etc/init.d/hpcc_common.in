@@ -301,7 +301,7 @@ configGenCmd() {
     else 
         echo $configcmd >> $logFile
     fi
-    eval $configcmd >> $logFile 2>&1
+    su ${user} -c "$configcmd" >> $logFile 2>&1
 }
 
 createRuntime() {
@@ -361,43 +361,26 @@ createRuntime() {
     fi
 
     #change the permission for all component directory under var
-    echo `date` "start chown $pid/$compName" >> /var/log/HPCCSystems/temp_log
-    chown -cR $user:$group "$pid/$compName"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown $pid/$compName" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown $lock/$compName" >> /var/log/HPCCSystems/temp_log
-    chown -cR $user:$group "$lock/$compName"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown $lock/$compName" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown $log/$compName" >> /var/log/HPCCSystems/temp_log
-    chown -cR $user:$group "$log/$compName"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown $log/$compName" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown $compPath" >> /var/log/HPCCSystems/temp_log
-    chown -cR $user:$group "$compPath"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown $compPath" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "$pid/$compName"  1> /dev/null 2>/dev/null
+    chown -c $user:$group "$lock/$compName"  1> /dev/null 2>/dev/null
+    chown -c $user:$group "$log/$compName"  1> /dev/null 2>/dev/null
+    chown -c $user:$group "$compPath"  1> /dev/null 2>/dev/null
     dir.getByName data
-    echo `date` "start chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
-    chown -cR $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
     dir.getByName data2
-    chown -cR $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
     dir.getByName data3
-    chown -cR $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
     dir.getByName query
-    chown -cR $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
-    echo `date` "start chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
     dir.getByName mirror
-    chown -cR $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
-    echo `date` "stop chown ${dir_return}" >> /var/log/HPCCSystems/temp_log
+    chown -c $user:$group "${dir_return}"  1> /dev/null 2>/dev/null
 
     # setting up ulimit for thor and other component which needs it.
     ulimit -n 32768
     ulimit -c unlimited
-
+    # for rtprio in Roxie
+    ulimit -Hr 4
 }
 
 start_dafilesrv() {
@@ -473,7 +456,7 @@ startCmd() {
     if [ ! -d $lockPath ]; then
         mkdir -p $lockPath >> $logFile 2>&1
     fi
-    chown -cR $user:$user $lockPath >> /dev/null 2>&1
+    chown -c $user:$group $lockPath >> /dev/null 2>&1
     lock ${lock}/${compName}/${compName}.lock
 
     if [ $__lockCreated -eq 0 ]; then
@@ -582,9 +565,10 @@ stop_component() {
                             removePid ${PIDPATH}
                             unlock ${LOCKPATH}
                             log_success_msg  
-                            return 3 
+                            return 0
                         fi
                     fi
+                    sleep 1
                 done
             fi
             sleep 1
@@ -618,12 +602,12 @@ start_component() {
 
     if [ ! -d $logDir ]; then
         mkdir -p $logDir >> tmp.txt 2>&1
-        chown -cR $user:$user $logDir >> /dev/null 2>&1
+        chown -c $user:$group $logDir >> /dev/null 2>&1
     fi
 
     if [ ! -f $logFile ]; then
         touch $logFile >> tmp.txt 2>&1
-        chown -cR $user:$user $logFile >> /dev/null 2>&1
+        chown -c $user:$group $logFile >> /dev/null 2>&1
     fi 
 
     # Creating Runtime 
@@ -733,7 +717,7 @@ create_dropzone() {
     # Creating DropZone directory
     if [ ! -d ${D} ]; then
          mkdir -p $D > /dev/null 2>&1
-         chown -cR $user:$user $D > /dev/null 2>&1
+         chown -c $user:$group $D > /dev/null 2>&1
          chmod 777 $D > /dev/null 2>&1
     fi
     done

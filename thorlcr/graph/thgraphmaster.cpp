@@ -273,6 +273,7 @@ void CSlaveMessageHandler::main()
                     else
                         queryThorFileManager().getPhysicalName(job, logicalName, partNo, phys);
                     msg.append(phys);
+                    job.queryJobComm().reply(msg);
                     break;
                 }
                 case smt_getFileOffset:
@@ -356,6 +357,36 @@ CMasterActivity::~CMasterActivity()
     delete [] data;
 }
 
+void CMasterActivity::addReadFile(IDistributedFile *file, bool temp)
+{
+    readFiles.append(*LINK(file));
+    if (!temp) // NB: Temps not listed in workunit
+        queryThorFileManager().noteFileRead(container.queryJob(), file);
+}
+
+IDistributedFile *CMasterActivity::queryReadFile(unsigned f)
+{
+    if (f>=readFiles.ordinality())
+        return NULL;
+    return &readFiles.item(f);
+}
+
+void CMasterActivity::preStart(size32_t parentExtractSz, const byte *parentExtract)
+{
+    CActivityBase::preStart(parentExtractSz, parentExtract);
+    IArrayOf<IDistributedFile> tmpFiles;
+    tmpFiles.swapWith(readFiles);
+    ForEachItemIn(f, tmpFiles)
+    {
+        IDistributedFile &file = tmpFiles.item(f);
+        IDistributedSuperFile *super = file.querySuperFile();
+        if (super)
+            getSuperFileSubs(super, readFiles, true);
+        else
+            readFiles.append(*LINK(&file));
+    }
+}
+
 MemoryBuffer &CMasterActivity::queryInitializationData(unsigned slave) const
 { // NB: not intended to be called by multiple threads.
     return data[slave].reset();
@@ -391,6 +422,11 @@ void CMasterActivity::main()
     }
 }
 
+void CMasterActivity::init()
+{
+    readFiles.kill();
+}
+
 void CMasterActivity::startProcess(bool async)
 {
     if (async)
@@ -407,6 +443,12 @@ bool CMasterActivity::wait(unsigned timeout)
     if (!asyncStart)
         return true;
     return threaded.join(timeout);
+}
+
+void CMasterActivity::kill()
+{
+    CActivityBase::kill();
+    readFiles.kill();
 }
 
 bool CMasterActivity::fireException(IException *_e)
@@ -463,6 +505,16 @@ void CMasterActivity::getXGMML(unsigned idx, IPropertyTree *edge)
     CriticalBlock b(progressCrit);
     if (progressInfo.isItem(idx))
         progressInfo.item(idx).getXGMML(edge);
+}
+
+void CMasterActivity::done()
+{
+    CActivityBase::done();
+    ForEachItemIn(s, readFiles)
+    {
+        IDistributedFile &file = readFiles.item(s);
+        file.setAccessed();
+    }
 }
 
 //////////////////////
@@ -594,6 +646,7 @@ public:
     virtual const mptag_t queryTag() const { return tag; }
     virtual bool wait(bool exception, unsigned timeout)
     {
+        Owned<IException> e;
         CTimeMon tm(timeout);
         unsigned s=comm->queryGroup().ordinality()-1;
         bool aborted = false;
@@ -617,6 +670,10 @@ public:
                     break;
             }
             msg.read(aborted);
+            bool hasExcept;
+            msg.read(hasExcept);
+            if (hasExcept && !e.get())
+                e.setown(deserializeException(msg));
             sender = sender - 1; // 0 = master
             if (raisedSet->testSet(sender, true) && !aborted)
                 WARNLOG("CBarrierMaster, raise barrier message on tag %d, already received from slave %d", tag, sender);
@@ -624,6 +681,13 @@ public:
         }
         msg.clear();
         msg.append(aborted);
+        if (e)
+        {
+            msg.append(true);
+            serializeException(e, msg);
+        }
+        else
+            msg.append(false);
         if (INFINITE != timeout && tm.timedout(&remaining))
         {
             if (exception)
@@ -635,19 +699,28 @@ public:
             throw MakeStringException(0, "CBarrierMaster::wait - Timeout sending to slaves");
         if (aborted)
         {
-            if (exception)
-                throw createBarrierAbortException();
-            else
+            if (!exception)
                 return false;
+            if (e)
+                throw e.getClear();
+            else
+                throw createBarrierAbortException();
         }
         return true;
     }
-    virtual void cancel()
+    virtual void cancel(IException *e)
     {
         if (receiving)
             comm->cancel(RANK_ALL, tag);
         CMessageBuffer msg;
         msg.append(true);
+        if (e)
+        {
+            msg.append(true);
+            serializeException(e, msg);
+        }
+        else
+            msg.append(false);
         if (!comm->send(msg, RANK_ALL_OTHER, tag, LONGTIMEOUT))
             throw MakeStringException(0, "CBarrierMaster::cancel - Timeout sending to slaves");
     }
@@ -728,7 +801,7 @@ class CThorCodeContextMaster : public CThorCodeContextBase
     Linked<IConstWorkUnit> workunit;
     Owned<IDistributedFileTransaction> superfiletransaction;
 
-    IWorkUnit *updateWorkUnit() 
+    virtual IWorkUnit *updateWorkUnit() const
     {
         StringAttr wuid;
         workunit->getWuid(StringAttrAdaptor(wuid));
@@ -1039,7 +1112,7 @@ public:
             throw MakeStringException(TE_FailedToRetrieveWorkunitValue, "Failed to retrieve external data value %s from workunit %s", stepname, wuid);
         }
     }
-    virtual void addWuException(const char * text, unsigned code, unsigned severity)
+    virtual void addWuException(const char * text, unsigned code, unsigned severity, const char * source)
     {
         DBGLOG("%s", text);
         try
@@ -1048,7 +1121,7 @@ public:
             Owned<IWUException> we = w->createException();
             we->setSeverity((WUExceptionSeverity)severity);
             we->setExceptionMessage(text);
-            we->setExceptionSource("user");
+            we->setExceptionSource(source);
             if (code)
                 we->setExceptionCode(code);
         }
@@ -1093,7 +1166,7 @@ public:
     virtual unsigned __int64 getDatasetHash(const char * name, unsigned __int64 hash)
     {
         unsigned checkSum = 0;
-        Owned<IDistributedFile> iDfsFile = queryThorFileManager().lookup(job, name, false, true);
+        Owned<IDistributedFile> iDfsFile = queryThorFileManager().lookup(job, name, false, true, false); // NB: do not update accessed
         if (iDfsFile.get())
         {
             if (iDfsFile->getFileCheckSum(checkSum))
@@ -1165,14 +1238,7 @@ void loadPlugin(SafePluginMap *pluginMap, const char *_path, const char *name, c
     StringBuffer path(_path);
     path.append(name);
 
-    OwnedIFile iFile = createIFile(path.str());
-    if (!iFile->exists())
-        throw MakeThorException(0, "Plugin %s not found at %s", name, path.str());
-
-    pluginMap->addPlugin(path.str(), name); // throws if unavailable/fails to load
-    Owned<ILoadedDllEntry> so = pluginMap->getPluginDll(name, version, true);
-    if (NULL == so.get()) // JCSMORE - could perhaps do with a more direct way of asking.
-        throw MakeThorException(0, "Incompatible plugin (%s). Version %s unavailable", name, version);
+    pluginMap->addPlugin(path.str(), name);
 }
 
 CJobMaster::CJobMaster(IConstWorkUnit &_workunit, const char *graphName, const char *_querySo, bool _sendSo, const SocketEndpoint &_agentEp)
@@ -1477,6 +1543,7 @@ void CJobMaster::saveSpills()
             fillClusterArray(*this, tmpName, clusters, groups);
             Owned<IFileDescriptor> fileDesc = queryThorFileManager().create(*this, tmpName, clusters, groups, true, TDXtemporary|TDWnoreplicate);
             fileDesc->queryProperties().setPropBool("@pausefile", true); // JCSMORE - mark to keep, may be able to distinguish via other means
+            fileDesc->queryProperties().setProp("@kind", "flat");
 
             IPropertyTree &props = fileDesc->queryProperties();
             props.setPropBool("@owned", true);
@@ -1490,7 +1557,7 @@ void CJobMaster::saveSpills()
 
             StringBuffer newName;
             queryThorFileManager().addScope(*this, tmpName, newName, true, true);
-            verifyex(file->renamePhysicalPartFiles(newName.str(), NULL, NULL, queryBaseDirectory()));
+            verifyex(file->renamePhysicalPartFiles(newName.str(), NULL, NULL, queryBaseDirectory(grp_unknown)));
 
             file->attach(newName,userDesc);
 
@@ -1609,7 +1676,7 @@ bool CJobMaster::go()
         }
         virtual bool action()
         {
-            job.fireException(LINK(exception)); 
+            job.fireException(exception);
             return true;
         }
     private:
@@ -1972,7 +2039,12 @@ public:
     virtual void getLinkedResult(unsigned & count, byte * * & ret)
     {
         ensure();
-        return result->getLinkedResult(count, ret);
+        result->getLinkedResult(count, ret);
+    }
+    virtual const void * getLinkedRowResult()
+    {
+        ensure();
+        return result->getLinkedRowResult();
     }
 };
 
@@ -2031,8 +2103,11 @@ bool CMasterGraph::fireException(IException *e)
             reportExceptionToWorkunit(job.queryWorkUnit(), e);
             break;
         case tea_abort:
+        {
+            EXCLOG(e, NULL);
             abort(e);
             // fall through
+        }
         default:
         {
             LOG(MCerror, thorJob, e);
@@ -2098,7 +2173,7 @@ void CMasterGraph::abort(IException *e)
 void CMasterGraph::serializeCreateContexts(MemoryBuffer &mb)
 {
     CGraphBase::serializeCreateContexts(mb);
-    Owned<IThorActivityIterator> iter = (queryOwner() && !isGlobal()) ? getIterator() : getTraverseIterator();
+    Owned<IThorActivityIterator> iter = getIterator();
     ForEach (*iter)
     {
         CMasterGraphElement &element = (CMasterGraphElement &)iter->query();
@@ -2215,7 +2290,7 @@ void CMasterGraph::create(size32_t parentExtractSz, const byte *parentExtract)
 
 void CMasterGraph::start()
 {
-    Owned<IThorActivityIterator> iter = getTraverseIterator();
+    Owned<IThorActivityIterator> iter = getConnectedIterator();
     ForEach (*iter)
         iter->query().queryActivity()->startProcess();
 }
@@ -2231,7 +2306,7 @@ void CMasterGraph::sendActivityInitData()
     for (; w<queryJob().querySlaves(); w++)
     {
         unsigned needActInit = 0;
-        Owned<IThorActivityIterator> iter = getTraverseIterator();
+        Owned<IThorActivityIterator> iter = getConnectedIterator();
         ForEach(*iter)
         {
             CGraphElementBase &element = iter->query();
@@ -2246,7 +2321,7 @@ void CMasterGraph::sendActivityInitData()
             try
             {
                 msg.rewrite(pos);
-                Owned<IThorActivityIterator> iter = getTraverseIterator();
+                Owned<IThorActivityIterator> iter = getConnectedIterator();
                 serializeActivityInitData(w, msg, *iter);
             }
             catch (IException *e)
@@ -2423,7 +2498,7 @@ bool CMasterGraph::preStart(size32_t parentExtractSz, const byte *parentExtract)
     CGraphBase::preStart(parentExtractSz, parentExtract);
     if (isGlobal())
     {
-        if (!startBarrier->wait(false)) // ensure all graphs are at start point at same time, as some may request data from each other.
+        if (!startBarrier->wait(true)) // ensure all graphs are at start point at same time, as some may request data from each other.
             return false;
     }
     if (!queryOwner())
@@ -2566,12 +2641,17 @@ void CMasterGraph::done()
                     {
                         wu.setown(&graph.queryJob().queryWorkUnit().lock());
                     }
-                    virtual void report(const char *name, const __int64 totaltime, const __int64 maxtime, const unsigned count)
+                    virtual void report(const char * stat, const char *description, const __int64 totaltime, const __int64 maxtime, const unsigned count)
                     {
                         StringBuffer timerStr(graph.queryJob().queryGraphName());
                         timerStr.append("(").append(graph.queryGraphId()).append("): ");
-                        timerStr.append(name);
-                        wu->setTimerInfo(timerStr.str(), NULL, (unsigned)totaltime, count, (unsigned)maxtime);
+                        timerStr.append(description);
+
+                        StringBuffer wuScope;
+                        wuScope.append(graph.queryJob().queryGraphName()).append("(").append(graph.queryGraphId()).append(")");
+
+                        updateWorkunitTimeStat(wu, "thor", wuScope, stat, timerStr.str(), totaltime, count, maxtime);
+
                     }
                 } wureport(*this);
                 queryJob().queryTimeReporter().report(wureport);

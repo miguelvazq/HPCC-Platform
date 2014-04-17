@@ -49,7 +49,7 @@ private:
     struct CppTemplateSection : public CInterface
     {
         TplSectionType  type;
-        _ATOM                       id;
+        IAtom *                       id;
         const char *        position;
         unsigned                len;
         unsigned                indent;
@@ -85,7 +85,7 @@ protected:
     StringBuffer & generateChildExpr(StringBuffer & out, IHqlExpression * expr, unsigned childIndex);
     bool generateFunctionPrototype(IHqlExpression * funcdef, const char * name);
     void generateInitializer(IHqlExpression * expr);
-    void generateParamCpp(IHqlExpression * expr);
+    void generateParamCpp(IHqlExpression * expr, IHqlExpression * attrs);
     void generateSimpleAssign(IHqlExpression * target, IHqlExpression * source);
     void generateStmt(IHqlStmt * stmt);
     void generateStmtAssign(IHqlStmt * assign);
@@ -134,7 +134,7 @@ public:
     }
     IMPLEMENT_IINTERFACE
 
-    virtual void generateSection(unsigned indent, _ATOM section, unsigned pass);
+    virtual void generateSection(unsigned indent, IAtom * section, unsigned pass);
     virtual void noteLines(size32_t count) { writer.noteLines(count); }
     virtual void setOutput(IFile * out, IIOStream * outStream) { writer.setOutput(out, outStream); }
 

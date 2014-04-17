@@ -26,6 +26,8 @@
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
+#define REMOVE_FILE_SDS_CONNECT_TIMEOUT (1000*15)  // 15 seconds
+
 LogicFileWrapper::LogicFileWrapper()
 {
 
@@ -55,49 +57,42 @@ void LogicFileWrapper::FindClusterName(const char* logicalName, StringBuffer& re
     }
 }
 
-bool LogicFileWrapper::doDeleteFile(const char* LogicalFileName,const char *cluster, bool nodelete,StringBuffer& returnStr, IUserDescriptor* udesc)
+bool LogicFileWrapper::doDeleteFile(const char* logicalName,const char *cluster, StringBuffer& returnStr, IUserDescriptor* udesc)
 {
     CDfsLogicalFileName lfn;
-    StringBuffer cname(cluster);
-    lfn.set(LogicalFileName);
-    if (!cname.length())
-        lfn.getCluster(cname);  // see if cluster part of LogicalFileName
+    lfn.set(logicalName);
+    StringBuffer cname;
+    lfn.getCluster(cname);
+    if (0 == cname.length()) // if has no cluster, use supplied cluster
+        lfn.setCluster(cluster);
+    lfn.get(cname.clear(), false, true); // get file@cluster form;
 
-    Owned<IDistributedFile> df = queryDistributedFileDirectory().lookup(LogicalFileName, udesc, true) ;
-    if(!df)
+    try
     {
-        returnStr.appendf("<Message><Value>File %s not found</Value></Message>", LogicalFileName);
-        return false;
-    }
-
-    bool deleted;
-    if(!nodelete && !df->querySuperFile())
-    {
-        Owned<IMultiException> pExceptionHandler = MakeMultiException();
-        deleted = queryDistributedFileSystem().remove(df,cname.length()?cname.str():NULL,pExceptionHandler);
-        StringBuffer errorStr;
-        pExceptionHandler->errorMessage(errorStr);
-        if (errorStr.length() > 0)
+        IDistributedFileDirectory &fdir = queryDistributedFileDirectory();
         {
-            returnStr.appendf("<Message><Value>%s</Value></Message>",errorStr.str());
-            DBGLOG("%s", errorStr.str());
-        }
-        else {
-            PrintLog("Deleted Logical File: %s\n",LogicalFileName);
-            returnStr.appendf("<Message><Value>Deleted File %s</Value></Message>",LogicalFileName);
+            Owned<IDistributedFile> df = fdir.lookup(cname.str(), udesc, true) ;
+            if(!df)
+            {
+                returnStr.appendf("<Message><Value>File %s not found</Value></Message>", cname.str());
+                return false;
+            }
         }
 
+        fdir.removeEntry(cname.str(), udesc, NULL, REMOVE_FILE_SDS_CONNECT_TIMEOUT, true);
+        returnStr.appendf("<Message><Value>Deleted File %s</Value></Message>", cname.str());
+        DBGLOG("%s", returnStr.str());
+        return true;
     }
-    else
+    catch (IException *e)
     {
-        df.clear(); 
-        deleted = queryDistributedFileDirectory().removeEntry(LogicalFileName,udesc); // this can remove clusters also
-        if (deleted)
-            returnStr.appendf("<Message><Value>Detached File %s</Value></Message>", LogicalFileName);
+        StringBuffer errorMsg;
+        e->errorMessage(returnStr);
+        e->Release();
+        PROGLOG("%s", errorMsg.str());
+        returnStr.appendf("<Message><Value>Failed to delete File %s, error: %s</Value></Message>", cname.str(), errorMsg.str());
     }
-
-
-    return deleted; 
+    return false;
 }
 
 bool LogicFileWrapper::doCompressFile(const char* name,StringBuffer& returnStr, IUserDescriptor* udesc)

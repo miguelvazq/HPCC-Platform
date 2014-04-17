@@ -124,7 +124,7 @@ IRecordLayoutTranslator * getRecordLayoutTranslator(IDefRecordMeta const * activ
         StringBuffer activityMetaDesc;
         getRecordMetaAsString(activityMetaDesc, activityMeta);
         ERRLOG("RecordLayoutTranslator error: %s\nDisk meta: %s\nActivity meta: %s", m.str(), diskMetaDesc.str(), activityMetaDesc.str());
-        throw MakeStringException(0, "%s", m.str());
+        throw MakeStringExceptionDirect(0, m.str());
     }
 }
 
@@ -305,7 +305,7 @@ public:
 
     virtual void fail(char const * msg)
     {
-        throw MakeStringException(0, "%s", msg);
+        throw MakeStringExceptionDirect(0, msg);
     }
 
 protected:
@@ -3022,7 +3022,6 @@ class DistributedKeyLookupHandler : public CInterface, implements IThreadedExcep
     bool opened;
     IArrayOf<IKeyManager> managers;
     Owned<IRecordLayoutTranslator> trans;
-    unsigned subStart;
     UnsignedArray keyNumParts;
 
     IArrayOf<KeyedLookupPartHandler> parts;
@@ -3089,7 +3088,7 @@ public:
             ForEachItemIn(subno, managers)
             {
                 agent.reportProgress(NULL);
-                subStart = subSizes.item(subno);
+                unsigned subStart = subSizes.item(subno);
                 IKeyManager & manager = managers.item(subno);
                 owner.readyManager(&manager, row);
                 while(manager.lookup(false))
@@ -3706,7 +3705,7 @@ public:
                 case TAKkeyedjoin:
                 case TAKkeyeddenormalizegroup:
                     {
-                        size32_t transformedSize;
+                        size32_t transformedSize = 0;
                         try
                         {
                             RtlDynamicRowBuilder rowBuilder(rowAllocator);
@@ -4072,7 +4071,7 @@ protected:
 
     virtual void fail(char const * msg)
     {
-        throw MakeStringException(0, "%s", msg);
+        throw MakeStringExceptionDirect(0, msg);
     }
 };
 

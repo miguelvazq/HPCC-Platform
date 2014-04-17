@@ -42,9 +42,11 @@
 interface IWuWebView : extends IInterface
 {
     virtual void getResultViewNames(StringArray &names)=0;
+    virtual void getResourceURLs(StringArray &urls, const char *prefix)=0;
     virtual void renderResults(const char *viewName, const char *xml, StringBuffer &html)=0;
     virtual void renderResults(const char *viewName, StringBuffer &html)=0;
     virtual void renderSingleResult(const char *viewName, const char *resultname, StringBuffer &html)=0;
+    virtual void renderResultsJSON(StringBuffer &out, const char *jsonp)=0;
     virtual void applyResultsXSLT(const char *file, const char *xml, StringBuffer &html)=0;
     virtual void applyResultsXSLT(const char *file, StringBuffer &html)=0;
     virtual StringBuffer &aggregateResources(const char *type, StringBuffer &content)=0;
@@ -52,9 +54,51 @@ interface IWuWebView : extends IInterface
     virtual void expandResults(StringBuffer &out, unsigned flags)=0;
     virtual void addInputsFromPTree(IPropertyTree *pt)=0;
     virtual void addInputsFromXml(const char *xml)=0;
+    virtual void createWuidResponse(StringBuffer &out, unsigned flags)=0;
+    virtual bool getResourceByPath(const char *path, MemoryBuffer &mb)=0;
+    virtual StringBuffer &getManifest(StringBuffer &mf)=0;
+
 };
 
 extern WUWEBVIEW_API IWuWebView *createWuWebView(IConstWorkUnit &wu, const char *queryname, const char*dir, bool mapEspDir);
 extern WUWEBVIEW_API IWuWebView *createWuWebView(const char *wuid, const char *queryname, const char*dir, bool mapEspDir);
+
+extern WUWEBVIEW_API void getWuResourceByPath(const char *path, MemoryBuffer &mb, StringBuffer &mimetype);
+
+static inline bool isPathSeparator(char sep)
+{
+    return (sep=='\\')||(sep=='/');
+}
+
+static inline const char *skipPathNodes(const char *&s, int skip)
+{
+    if (s) {
+        while (*s) {
+            if (isPathSeparator(*s++))
+                if (!skip--)
+                    return s;
+        }
+    }
+    return NULL;
+}
+
+static inline const char *nextPathNode(const char *&s, StringBuffer &node, int skip=0)
+{
+    if (skip)
+        skipPathNodes(s, skip);
+    if (s) while (*s) {
+        if (isPathSeparator(*s))
+            return s++;
+        node.append(*s++);
+    }
+    return NULL;
+}
+
+static inline const char *firstPathNode(const char *&s, StringBuffer &node)
+{
+    if (s && isPathSeparator(*s))
+        s++;
+    return nextPathNode(s, node);
+}
 
 #endif

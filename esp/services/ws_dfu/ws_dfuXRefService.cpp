@@ -23,6 +23,9 @@
 #include "wshelpers.hpp"
 #include "LogicFileWrapper.hpp"
 #include "exception_util.hpp"
+#include "package.h"
+#include "roxiecontrol.hpp"
+
 
 static const char* FEATURE_URL = "DfuXrefAccess";
 
@@ -452,6 +455,24 @@ bool CWsDfuXRefEx::onDFUXRefBuildCancel(IEspContext &context, IEspDFUXRefBuildCa
     return true;
 }
 
+void CWsDfuXRefEx::addXRefNode(const char* name, IPropertyTree* pXRefNodeTree)
+{
+    IPropertyTree* XRefTreeNode = pXRefNodeTree->addPropTree("XRefNode", createPTree(ipt_caseInsensitive));
+    XRefTreeNode->setProp("Name",name);
+    Owned<IXRefNode> xRefNode = XRefNodeManager->getXRefNode(name);
+    if (!xRefNode)
+    {
+        XRefTreeNode->setProp("Modified","");
+        XRefTreeNode->setProp("Status","Not Run");
+    }
+    else
+    {
+        StringBuffer modified, status;
+        XRefTreeNode->setProp("Modified",xRefNode->getLastModified(modified).str());
+        XRefTreeNode->setProp("Status",xRefNode->getStatus(status).str());
+    }
+}
+
 bool CWsDfuXRefEx::onDFUXRefList(IEspContext &context, IEspDFUXRefListRequest &req, IEspDFUXRefListResponse &resp)
 {
     try
@@ -464,39 +485,25 @@ bool CWsDfuXRefEx::onDFUXRefList(IEspContext &context, IEspDFUXRefListRequest &r
         DBGLOG("CWsDfuXRefEx::onDFUXRefList User=%s",username.str());
 
 
-        //Firstly we need to get a list of the available Thor Cluster....
-        IArrayOf<IEspTpCluster> clusters;
-        CTpWrapper _topology;
-        _topology.getClusterProcessList(eqThorCluster,clusters,false,true);
-        ///_topology.getClusterList(eqRoxieCluster,clusters,false,true);
+        CConstWUClusterInfoArray clusters;
+        getEnvironmentClusterInfo(clusters);
 
+        BoolHash uniqueProcesses;
         Owned<IPropertyTree> pXRefNodeTree = createPTree("XRefNodes");
-        //DBGLOG("CWsDfuXRefEx::onDFUXRefList1\n");
-
-        for (unsigned x=0;x<=clusters.ordinality();x++)
+        ForEachItemIn(c, clusters)
         {
-            IPropertyTree* XRefTreeNode = pXRefNodeTree->addPropTree("XRefNode", createPTree(ipt_caseInsensitive));
-            
-            IEspTpCluster* cluster = x<clusters.ordinality()?&clusters.item(x):NULL;        
-            const char *clustername = cluster?cluster->getName():"SuperFiles";
-
-            XRefTreeNode->setProp("Name",clustername);
-            //create the node if it doesn;t exist
-            Owned<IXRefNode> xRefNode = XRefNodeManager->getXRefNode(clustername);
-            if (xRefNode == 0)
+            IConstWUClusterInfo &cluster = clusters.item(c);
+            const StringArray &primaryThorProcesses = cluster.getPrimaryThorProcesses();
+            ForEachItemIn(i,primaryThorProcesses)
             {
-                XRefTreeNode->setProp("Modified","");
-                XRefTreeNode->setProp("Status","Not Run");
-            }
-            else
-            {
-                  StringBuffer buf;
-                XRefTreeNode->setProp("Modified",xRefNode->getLastModified(buf).str());
-                    buf.clear();
-                XRefTreeNode->setProp("Status",xRefNode->getStatus(buf).str());
+                const char *thorProcess = primaryThorProcesses.item(i);
+                if (uniqueProcesses.getValue(thorProcess))
+                    continue;
+                uniqueProcesses.setValue(thorProcess, true);
+                addXRefNode(thorProcess, pXRefNodeTree);
             }
         }
-        
+        addXRefNode("SuperFiles", pXRefNodeTree);
 
         StringBuffer buf;
         resp.setDFUXRefListResult(toXML(pXRefNodeTree, buf).str());
@@ -508,3 +515,78 @@ bool CWsDfuXRefEx::onDFUXRefList(IEspContext &context, IEspDFUXRefListRequest &r
     return true;
 }
 
+inline const char *skipTilda(const char *lfn) //just in case
+{
+    if (lfn)
+        while (*lfn == '~' || *lfn == ' ')
+            lfn++;
+    return lfn;
+}
+
+inline void addLfnToUsedFileMap(MapStringTo<bool> &usedFileMap, const char *lfn)
+{
+    lfn = skipTilda(lfn);
+    if (lfn)
+        usedFileMap.setValue(lfn, true);
+}
+
+void addUsedFilesFromActivePackageMaps(MapStringTo<bool> &usedFileMap, const char *process)
+{
+    Owned<IPropertyTree> packageSet = resolvePackageSetRegistry(process, true);
+    if (!packageSet)
+        throw MakeStringException(ECLWATCH_PACKAGEMAP_NOTRESOLVED, "Unable to retrieve package information from dali /PackageMaps");
+    Owned<IPropertyTreeIterator> activeMaps = packageSet->getElements("PackageMap[@active='1']");
+    //Add files referenced in all active maps, for all targets configured for this process cluster
+    ForEach(*activeMaps)
+    {
+        Owned<IPropertyTree> packageMap = getPackageMapById(activeMaps->query().queryProp("@id"), true);
+        if (packageMap)
+        {
+            Owned<IPropertyTreeIterator> subFiles = packageMap->getElements("//SubFile");
+            ForEach(*subFiles)
+                addLfnToUsedFileMap(usedFileMap, subFiles->query().queryProp("@value"));
+        }
+    }
+}
+
+void findUnusedFilesInDFS(StringArray &unusedFiles, const char *process, const MapStringTo<bool> &usedFileMap)
+{
+    Owned<IRemoteConnection> globalLock = querySDS().connect("/Files/", myProcessSession(), RTM_LOCK_READ, SDS_LOCK_TIMEOUT);
+    Owned<IPropertyTree> root = globalLock->getRoot();
+
+    VStringBuffer xpath("//File[Cluster/@name='%s']/OrigName", process);
+    Owned<IPropertyTreeIterator> files = root->getElements(xpath);
+    ForEach(*files)
+    {
+        const char *lfn = skipTilda(files->query().queryProp(NULL));
+        if (lfn && !usedFileMap.getValue(lfn))
+            unusedFiles.append(lfn);
+    }
+}
+bool CWsDfuXRefEx::onDFUXRefUnusedFiles(IEspContext &context, IEspDFUXRefUnusedFilesRequest &req, IEspDFUXRefUnusedFilesResponse &resp)
+{
+    const char *process = req.getProcessCluster();
+    if (!process || !*process)
+        throw MakeStringExceptionDirect(ECLWATCH_INVALID_INPUT, "process cluster, not specified.");
+
+    SocketEndpointArray servers;
+    getRoxieProcessServers(process, servers);
+    if (!servers.length())
+        throw MakeStringExceptionDirect(ECLWATCH_INVALID_CLUSTER_INFO, "process cluster, not found.");
+
+    Owned<ISocket> sock = ISocket::connect_timeout(servers.item(0), 5000);
+    Owned<IPropertyTree> controlXrefInfo = sendRoxieControlQuery(sock, "<control:getQueryXrefInfo/>", 5000);
+    if (!controlXrefInfo)
+        throw MakeStringExceptionDirect(ECLWATCH_INTERNAL_ERROR, "roxie cluster, not responding.");
+    MapStringTo<bool> usedFileMap;
+    Owned<IPropertyTreeIterator> roxieFiles = controlXrefInfo->getElements("//File");
+    ForEach(*roxieFiles)
+        addLfnToUsedFileMap(usedFileMap, roxieFiles->query().queryProp("@name"));
+    if (req.getCheckPackageMaps())
+        addUsedFilesFromActivePackageMaps(usedFileMap, process);
+    StringArray unusedFiles;
+    findUnusedFilesInDFS(unusedFiles, process, usedFileMap);
+    resp.setUnusedFileCount(unusedFiles.length());
+    resp.setUnusedFiles(unusedFiles);
+    return true;
+}

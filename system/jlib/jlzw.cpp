@@ -685,6 +685,12 @@ Escape:
     return (size32_t)(in-(const byte *)src);
 }
 
+void appendToBuffer(MemoryBuffer & out, size32_t len, const void * src)
+{
+    out.append(false);
+    out.append(len);
+    out.append(len, src);
+}
 
 void compressToBuffer(MemoryBuffer & out, size32_t len, const void * src)
 {
@@ -696,7 +702,7 @@ void compressToBuffer(MemoryBuffer & out, size32_t len, const void * src)
     Owned<ICompressor> compressor = createLZWCompressor();
     void *newData = out.reserve(newSize);
     compressor->open(newData, newSize);
-    if (compressor->write(src, len)==len)
+    if (len>=32 && compressor->write(src, len)==len)
     {
         compressor->close();
         size32_t compressedLen = compressor->buflen();
@@ -707,9 +713,7 @@ void compressToBuffer(MemoryBuffer & out, size32_t len, const void * src)
     else // all or don't compress
     {
         out.setWritePos(originalLength);
-        out.append(false);
-        out.append(len);
-        out.append(len, src);
+        appendToBuffer(out, len, src);
     }
 }
 
@@ -1011,6 +1015,7 @@ public:
         b=(const byte *)prev;
         state = S_pre_repeat;
         rs = _rs;
+        cnt = 0;
     }
 
     inline void skip(size32_t sz)
@@ -2181,7 +2186,7 @@ ICompressedFileIO *createCompressedFileReader(IFileIO *fileio,IExpander *expande
 }
 
 
-ICompressedFileIO *createCompressedFileReader(IFile *file,IExpander *expander, bool memorymapped)
+ICompressedFileIO *createCompressedFileReader(IFile *file,IExpander *expander, bool memorymapped, IFEflags extraFlags)
 {
     if (file) {
         if (memorymapped) {
@@ -2203,7 +2208,7 @@ ICompressedFileIO *createCompressedFileReader(IFile *file,IExpander *expander, b
                 }
             }
         }
-        Owned<IFileIO> fileio = file->open(IFOread);
+        Owned<IFileIO> fileio = file->open(IFOread, extraFlags);
         if (fileio) 
             return createCompressedFileReader(fileio,expander);
     }
@@ -2247,12 +2252,12 @@ ICompressedFileIO *createCompressedFileWriter(IFileIO *fileio,size32_t recordsiz
     return cfile;
 }
 
-ICompressedFileIO *createCompressedFileWriter(IFile *file,size32_t recordsize,bool append,bool _setcrc,ICompressor *compressor,bool fast)
+ICompressedFileIO *createCompressedFileWriter(IFile *file,size32_t recordsize,bool append,bool _setcrc,ICompressor *compressor,bool fast, IFEflags extraFlags)
 {
     if (file) {
         if (append&&!file->exists())
             append = false;
-        Owned<IFileIO> fileio = file->open(append?IFOreadwrite:IFOcreate);
+        Owned<IFileIO> fileio = file->open(append?IFOreadwrite:IFOcreate, extraFlags);
         if (fileio) 
             return createCompressedFileWriter(fileio,recordsize,_setcrc,compressor,fast);
     }

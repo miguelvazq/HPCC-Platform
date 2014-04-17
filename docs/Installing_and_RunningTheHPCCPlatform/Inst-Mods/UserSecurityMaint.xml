@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
 "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
-<sect1>
+<sect1 id="User_Security_Maint">
   <title>User Security Maintenance</title>
 
   <para>Configuring an HPCC System to use LDAP security will give you greater
   control over users and the security of your HPCC system.</para>
 
-  <sect2>
+  <sect2 id="User_Security_Intro">
     <title>Introduction</title>
 
     <para>HPCC systems maintain security in a number of ways. HPCC Systems can
@@ -82,7 +82,7 @@
     available using the <emphasis role="bold">Users/Permissions</emphasis>
     area in ECL Watch.</para>
 
-    <sect3 role="brk">
+    <sect3 id="My_Account_Info" role="brk">
       <title>Information about your account</title>
 
       <para>To find out more information about your account, in ECL Watch
@@ -117,7 +117,7 @@
     </sect3>
   </sect2>
 
-  <sect2>
+  <sect2 id="Sec_Adm_w_ECLWatch">
     <title>Security Administration using ECL Watch</title>
 
     <para>Administrator rights are needed to manage permissions. Once you have
@@ -1460,6 +1460,27 @@
             </tbody>
           </tgroup>
         </informaltable></para>
+
+      <informaltable colsep="1" frame="all" rowsep="1">
+        <?dbfo keep-together="always"?>
+
+        <tgroup cols="2">
+          <colspec colwidth="49.50pt" />
+
+          <colspec />
+
+          <tbody>
+            <row>
+              <entry><inlinegraphic fileref="../../images/tip.jpg" /></entry>
+
+              <entry><para>On a large system, we suggest limiting the number
+              of users who can Generate XREF reports by setting DfuXrefAccess
+              access to FULL for only those users.</para><para>
+              </para></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </informaltable>
     </sect3>
 
     <sect3>
@@ -1528,17 +1549,17 @@
         </mediaobject>
       </figure></para>
 
-    <para><emphasis role="bold">Files </emphasis>is the top level for file
-    scope security in the Dali Server. Below it there is an OU representing
-    the cluster, for example thor (or the name that was set up for your
-    cluster). Below that is an OU named <emphasis
-    role="bold">specialdata</emphasis> which contains two OUs, <emphasis
-    role="bold">public</emphasis> and <emphasis role="bold">secure.
-    </emphasis>Typically, the <emphasis role="bold">public </emphasis>folder
-    has rights granted to a large group of users and the <emphasis
-    role="bold">secure </emphasis>folder has limited access granted. This
-    allows you to prevent unauthorized users from any access to files in the
-    <emphasis role="bold">secure</emphasis> folder.</para>
+    <para>For example, below <emphasis role="bold">Files</emphasis> there is
+    an OU representing the cluster, such as <emphasis
+    role="bold">thor</emphasis> (or the name that you set up for your
+    cluster). Furthering the example, below that could be an OU named
+    <emphasis role="bold">specialdata</emphasis> which contains two OUs,
+    <emphasis role="bold">public</emphasis> and <emphasis role="bold">secure.
+    </emphasis>The <emphasis role="bold">public </emphasis>folder has rights
+    granted to a large group of users and the <emphasis role="bold">secure
+    </emphasis>folder has limited access granted. This allows you to prevent
+    unauthorized users from any access to files in the <emphasis
+    role="bold">secure</emphasis> folder.</para>
 
     <para>The structure in LDAP corresponds to this logical structure in
     DFU:</para>
@@ -1553,19 +1574,15 @@
 
     <para>All HPCC components and tools respect LDAP file access security. The
     following exceptions are assumed to be system level or for administrative
-    users :</para>
+    users:</para>
 
     <itemizedlist>
       <listitem>
-        <para>Remote Execution in ECL Watch</para>
+        <para>Network file access using UNCs, Terminal Services or SSH.</para>
       </listitem>
 
       <listitem>
-        <para>Network file access using UNCs or Terminal Services</para>
-      </listitem>
-
-      <listitem>
-        <para>Administrative utilities such as TreeView</para>
+        <para>Administrative utilities </para>
       </listitem>
     </itemizedlist>
 
@@ -1577,8 +1594,6 @@
     <para>or</para>
 
     <programlisting>DFS Exception: 3 Lookup access denied for scope &lt;filepath&gt;</programlisting>
-
-    <para></para>
 
     <para>(where &lt;filepath&gt; is the full logical file scope path)</para>
 
@@ -1640,6 +1655,24 @@
           </tbody>
         </tgroup>
       </informaltable>
+    </sect3>
+
+    <sect3 id="permissions_cache">
+      <title>Permission Caching</title>
+
+      <para>When you change a permission in ECL Watch, the settings are cached
+      in the ESP server and stored in the Dali server. The information in the
+      cache is updated at a configurable interval. This value can be set in
+      the Configuration Manager under the LDAP Server settings Attributes tab.
+      The default cacheTimeout is 5 minutes.</para>
+
+      <para>When you want a permission change to take effect immediately, you
+      can clear the cache and force Dali to update the permission settings by
+      pressing the <emphasis role="bold">Clear Permissions Cache</emphasis>
+      button. This action transfers the settings when you press the button.
+      Use this feature judiciously as overall system performance is affected
+      temporarily while the LDAP settings in the Dali System Data Store
+      repopulate.</para>
     </sect3>
   </sect2>
 

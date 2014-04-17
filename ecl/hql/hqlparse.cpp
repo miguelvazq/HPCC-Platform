@@ -31,7 +31,7 @@
 
 //#define TIMING_DEBUG
 
-#define  MAX_LOOP_TIMES 10000
+#define  MAX_LOOP_TIMES 250000
 
 // =========================== local helper functions ===================================
 
@@ -89,14 +89,14 @@ public:
     CTemplateContext(HqlLex * _lexer, HqlLookupContext & lookupContext, IXmlScope* xmlScope, int startLine,int startCol)
      : lexer(_lexer), m_xmlScope(xmlScope), m_lookupContext(lookupContext),
        m_startLine(startLine), m_startCol(startCol) {}
-    
+
     virtual IXmlScope* queryXmlScope()  { return m_xmlScope; }
     virtual IEclRepository* queryDataServer()  { return m_lookupContext.queryRepository(); }
-    
+
     // convenient functions
     virtual bool isInModule(const char* moduleName, const char* attrName) { return ::isInModule(m_lookupContext, moduleName,attrName); }
     virtual StringBuffer& getDataType(const char* field, StringBuffer& tgt) { return lexer->doGetDataType(tgt, field, m_startLine, m_startCol); }
-    
+
     virtual StringBuffer& mangle(const char* src, StringBuffer& mangled) { return ::mangle(m_lookupContext.errs,src,mangled,false); }
     virtual StringBuffer& demangle(const char* mangled, StringBuffer& demangled) { return ::mangle(m_lookupContext.errs,mangled,demangled,true); }
 
@@ -105,27 +105,27 @@ public:
 };
 
 void CTemplateContext::reportError(int errNo,const char* format,...)
-{ 
+{
     if (m_lookupContext.errs)
     {
         va_list args;
         va_start(args, format);
-        StringBuffer msg; 
+        StringBuffer msg;
         msg.valist_appendf(format,args);
-        m_lookupContext.errs->reportError(errNo,msg.str(),NULL,m_startLine,m_startCol,0); 
+        m_lookupContext.errs->reportError(errNo,msg.str(),NULL,m_startLine,m_startCol,0);
         va_end(args);
     }
 }
 
 void CTemplateContext::reportWarning(int warnNo,const char* format,...)
-{ 
+{
     if (m_lookupContext.errs)
     {
         va_list args;
         va_start(args, format);
-        StringBuffer msg; 
+        StringBuffer msg;
         msg.valist_appendf(format,args);
-        m_lookupContext.errs->reportWarning(warnNo,msg.str(),NULL,m_startLine,m_startCol,0); 
+        m_lookupContext.errs->reportWarning(warnNo,msg.str(),NULL,m_startLine,m_startCol,0);
         va_end(args);
     }
 }
@@ -141,7 +141,7 @@ protected:
 public:
     CHqlParserPseduoScope(HqlGram * _parser) : CHqlScope(no_privatescope) { parser = _parser; }
 
-    virtual IHqlExpression *lookupSymbol(_ATOM name, unsigned lookupFlags, HqlLookupContext & ctx)
+    virtual IHqlExpression *lookupSymbol(IIdAtom * name, unsigned lookupFlags, HqlLookupContext & ctx)
     {
         attribute errpos;
         errpos.clearPosition();
@@ -172,13 +172,13 @@ void HqlLex::init(IFileContents * _text)
     hasHashbreak = false;
     encrypted = false;
     loopTimes = 0;
-    skipping = 0;
+    skipNesting = 0;
     macroGathering = 0;
     forLoop = NULL;
 
     size32_t len = _text->length();
     yyBuffer = new char[len+2]; // Include room for \0 and another \0 that we write beyond the end null while parsing
-    memcpy(yyBuffer, text->getText(), len); 
+    memcpy(yyBuffer, text->getText(), len);
     yyBuffer[len] = '\0';
     yyBuffer[len+1] = '\0';
 
@@ -203,7 +203,7 @@ HqlLex::~HqlLex()
     delete[] yyBuffer;
     ::Release(xmlScope);
     ::Release(macroExpr);
-    if (inmacro) delete inmacro;        
+    if (inmacro) delete inmacro;
     ::Release(forLoop);
 }
 
@@ -242,13 +242,13 @@ bool HqlLex::assertNext(YYSTYPE & returnToken, int expected, unsigned code, cons
     return true;
 }
 
-bool HqlLex::assertNextOpenBra() 
+bool HqlLex::assertNextOpenBra()
 {
     YYSTYPE tempToken;
-    return assertNext(tempToken, '(', ERR_EXPECTED_LEFTCURLY, "( expected"); 
+    return assertNext(tempToken, '(', ERR_EXPECTED_LEFTCURLY, "( expected");
 }
 
-bool HqlLex::assertNextComma() 
+bool HqlLex::assertNextComma()
 {
     YYSTYPE tempToken;
     return assertNext(tempToken, ',', ERR_EXPECTED_COMMA, ", expected");
@@ -262,7 +262,7 @@ StringBuffer &HqlLex::getTokenText(StringBuffer &ret)
     return ret.append(yyPosition - yyStartPos, yyBuffer+yyStartPos);
 }
 
-IHqlExpression *HqlLex::lookupSymbol(_ATOM name, const attribute& errpos) 
+IHqlExpression *HqlLex::lookupSymbol(IIdAtom * name, const attribute& errpos)
 {
     return yyParser->lookupSymbol(name, errpos);
 }
@@ -295,22 +295,28 @@ void HqlLex::hex2str(char * target, const char * digits, unsigned len)
     len -= 2;
     digits += 2;
   }
-} 
+}
 
 IHqlExpression * HqlLex::createIntegerConstant(__int64 value, bool isSigned)
 {
     return createConstant(createIntValue(value, makeIntType(8, isSigned)));
 }
 
-void HqlLex::pushText(const char *s, int startLineNo, int startColumn)
+void HqlLex::pushText(IFileContents * text, int startLineNo, int startColumn)
 {
 #ifdef TIMING_DEBUG
     MTIME_SECTION(timer, "HqlLex::pushText");
 #endif
-    Owned<IFileContents> macroContents = createFileContentsFromText(s, sourcePath);
-    inmacro = new HqlLex(yyParser, macroContents, NULL, NULL);
+    inmacro = new HqlLex(yyParser, text, NULL, NULL);
     inmacro->set_yyLineNo(startLineNo);
     inmacro->set_yyColumn(startColumn);
+}
+
+
+void HqlLex::pushText(const char *s, int startLineNo, int startColumn)
+{
+    Owned<IFileContents> macroContents = createFileContentsFromText(s, sourcePath);
+    pushText(macroContents, startLineNo, startColumn);
 }
 
 
@@ -329,14 +335,15 @@ void HqlLex::pushText(const char *s)
 #endif
 }
 
-void HqlLex::setMacroParam(const YYSTYPE & errpos, IHqlExpression* funcdef, StringBuffer& curParam, _ATOM argumentName, unsigned& parmno,IProperties *macroParms)
+void HqlLex::setMacroParam(const YYSTYPE & errpos, IHqlExpression* funcdef, StringBuffer& curParam, IIdAtom * argumentId, unsigned& parmno,IProperties *macroParms)
 {
     IHqlExpression * formals = queryFunctionParameters(funcdef);
     IHqlExpression * defaults = queryFunctionDefaults(funcdef);
     unsigned numFormals = formals->numChildren();
     unsigned thisParam = (unsigned)-1;
-    if (argumentName)
+    if (argumentId)
     {
+        IAtom * argumentName = argumentId->lower();
         unsigned argNum = 0;
         for (unsigned i=0; i < numFormals; i++)
         {
@@ -348,7 +355,7 @@ void HqlLex::setMacroParam(const YYSTYPE & errpos, IHqlExpression* funcdef, Stri
         }
 
         if (argNum == 0)
-            reportError(errpos, ERR_NAMED_PARAM_NOT_FOUND, "Named parameter '%s' not found in macro", argumentName->str());
+            reportError(errpos, ERR_NAMED_PARAM_NOT_FOUND, "Named parameter '%s' not found in macro", argumentId->str());
         else
             thisParam = argNum;
     }
@@ -360,7 +367,7 @@ void HqlLex::setMacroParam(const YYSTYPE & errpos, IHqlExpression* funcdef, Stri
         IHqlExpression* formal = formals->queryChild(thisParam-1);
         if (curParam.length()==0)
         {
-            IHqlExpression* def = queryDefaultValue(defaults, thisParam-1); 
+            IHqlExpression* def = queryDefaultValue(defaults, thisParam-1);
             if (!def)
             {
                 StringBuffer msg("Omitted parameter ");
@@ -413,8 +420,8 @@ void HqlLex::pushMacro(IHqlExpression *expr)
     IHqlExpression * defaults = expr->queryChild(2);
     unsigned formalParmCt = formals->numChildren();
     unsigned parmno = 0;
-    _ATOM possibleName = NULL;
-    _ATOM argumentName = NULL;
+    IIdAtom * possibleName = NULL;
+    IIdAtom * argumentName = NULL;
     while (parenDepth)
     {
         tok = yyLex(nextToken, false, 0);
@@ -434,8 +441,8 @@ void HqlLex::pushMacro(IHqlExpression *expr)
             parenDepth--;
             if (parenDepth)
                 curParam.append(')');
-            else if (formalParmCt>0 || curParam.length()>0) // handle last parameter 
-                setMacroParam(nextToken, expr, curParam, argumentName, parmno, macroParms);             
+            else if (formalParmCt>0 || curParam.length()>0) // handle last parameter
+                setMacroParam(nextToken, expr, curParam, argumentName, parmno, macroParms);
             break;
         case ',':
             if (parenDepth==1)
@@ -468,12 +475,12 @@ void HqlLex::pushMacro(IHqlExpression *expr)
                     getTokenText(curParam.append(' '));
                 break;
             }
-        case EOF: 
+        case EOF:
             reportError(nextToken, ERR_MACRO_EOFINPARAM,"EOF encountered while gathering macro parameters");
             // no attempt to recover at the end of the file, but cleanup is needed.
             return;
         case UNKNOWN_ID:
-            possibleName = nextToken.getName();
+            possibleName = nextToken.getId();
             //fall through
         default:
             curParam.append(' ');
@@ -498,7 +505,7 @@ void HqlLex::pushMacro(IHqlExpression *expr)
             IHqlExpression* formal = formals->queryChild(idx);
             if (!macroParms->queryProp(formal->queryName()->str()))
             {
-                IHqlExpression* def = queryDefaultValue(defaults, idx); 
+                IHqlExpression* def = queryDefaultValue(defaults, idx);
                 if (def)
                 {
                     if (!getFoldedConstantText(curParam, def))
@@ -534,13 +541,13 @@ void HqlLex::pushMacro(IHqlExpression *expr)
         StringBuffer msg;
         msg.append("recursive macro call: ").append(getMacroName());
         reportError(nextToken, ERR_MACRO_RECURSIVE, "%s", msg.str());
-        
+
         // error recovery
-        if (expr->isAction()) 
+        if (expr->isAction())
             pushText("0;");
         else if (expr->isDataset())
             pushText("{}");
-        else 
+        else
             pushText("0 ENDMACRO");
     }
     else
@@ -565,7 +572,7 @@ void HqlLex::processEncrypted()
     YYSTYPE nextToken;
     if (yyLex(nextToken, false,0) != '(')
     {
-        reportError(nextToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(nextToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         nextToken.release();
         return;
     }
@@ -574,7 +581,7 @@ void HqlLex::processEncrypted()
     {
         if (yyLex(nextToken, false,0) != STRING_CONST)
         {
-            reportError(nextToken, ERR_EXPECTED, "String expected"); 
+            reportError(nextToken, ERR_EXPECTED, "String expected");
             nextToken.release();
             return;
         }
@@ -587,14 +594,14 @@ void HqlLex::processEncrypted()
             break;
         if (next != ',')
         {
-            reportError(nextToken, ERR_EXPECTED_COMMA, ", expected"); 
+            reportError(nextToken, ERR_EXPECTED_COMMA, ", expected");
             nextToken.release();
             return;
         }
     }
     if (yyLex(nextToken, false,0) != ';')
     {
-        reportError(nextToken, ERR_EXPECTED, "; expected"); 
+        reportError(nextToken, ERR_EXPECTED, "; expected");
         nextToken.release();
         return;
     }
@@ -659,9 +666,26 @@ bool HqlLex::getParameter(StringBuffer &curParam, const char* for_what, int* sta
     }
 }
 
-void HqlLex::doIf(YYSTYPE & returnToken)
+void HqlLex::doSkipUntilEnd(YYSTYPE & returnToken, const char * forwhat)
 {
-    StringBuffer forwhat; 
+    while (skipNesting)
+    {
+        int tok = yyLex(returnToken, false,0);
+        returnToken.release();
+        if (tok == EOF)
+        {
+            StringBuffer msg;
+            msg.appendf("Unexpected EOF in %s: #END expected",forwhat);
+            reportError(returnToken, ERR_TMPLT_HASHENDEXPECTED, "%s", msg.str());
+            clearNestedHash();      // prevent unnecessary more error messages
+            break;
+        }
+    }
+}
+
+void HqlLex::doIf(YYSTYPE & returnToken, bool isElseIf)
+{
+    StringBuffer forwhat;
     int line = returnToken.pos.lineno, col = returnToken.pos.column;
     forwhat.appendf("#IF(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
@@ -677,25 +701,16 @@ void HqlLex::doIf(YYSTYPE & returnToken)
             ;
     }
     curParam.append(')');
-    IValue *value = parseConstExpression(returnToken, curParam, queryTopXmlScope(),line,col);
+    Owned<IValue> value = parseConstExpression(returnToken, curParam, queryTopXmlScope(),line,col);
     if (value && !value->getBoolValue())
     {
-        skipping = 1;
-        while (skipping)
-        {
-            int tok = yyLex(returnToken, false,0);
-            returnToken.release();
-            if (tok == EOF)
-            {
-                StringBuffer msg;
-                msg.appendf("Unexpected EOF in %s: #END expected",forwhat.str());
-                reportError(returnToken, ERR_TMPLT_HASHENDEXPECTED, "%s", msg.str());
-                clearNestedHash();      // prevent unnecessary more error messages
-                break;
-            }
-        }
+        setHashEndFlags(0);
+        skipNesting = 1;
+        if (!isElseIf)
+            doSkipUntilEnd(returnToken, forwhat);
     }
-    ::Release(value);
+    else
+        setHashEndFlags(HEFhadtrue);
 }
 
 int HqlLex::doElse(YYSTYPE & returnToken, bool lookup, const short * activeState, bool isElseIf)
@@ -709,36 +724,54 @@ int HqlLex::doElse(YYSTYPE & returnToken, bool lookup, const short * activeState
         return SKIPPED;
     }
 
-    if (isElseIf)
-        hashendDepths.append(hashendDepths.pop()+1);
+    unsigned flags = hashendFlags.tos();
+    if (!isElseIf)
+    {
+        if (flags & HEFhadelse)
+            reportError(returnToken, ERR_TMPLT_EXTRAELSE,"Multiple #ELSE for the same #IF");
+        setHashEndFlags(flags|HEFhadelse);
+    }
 
-    switch (skipping)
+    switch (skipNesting)
     {
     case 0:
-        skipping = hashendDepths.tos();
-        while (skipping)
-        {
-            int tok = yyLex(returnToken, lookup, activeState);
-            returnToken.release();
-            if (tok == EOF)
-            {
-                forwhat.insert(0,"Unexpected EOF in ").append(": #END expected");
-                reportError(returnToken, ERR_TMPLT_HASHENDEXPECTED, "%s", forwhat.str());
-                clearNestedHash();      // prevent unnecessary more error messages
-                return tok;
-            }
-        }
+        skipNesting = 1;
+        doSkipUntilEnd(returnToken, forwhat);
         return yyLex(returnToken, lookup, activeState);
     case 1:
-        skipping = 0;
-        if (isElseIf)
-            doIf(returnToken);
+        if (flags & HEFhadtrue)
+        {
+            //Don't need to do anything
+        }
+        else
+        {
+            skipNesting = 0;
+            if (isElseIf)
+                doIf(returnToken, true);
+            else
+                setHashEndFlags(HEFhadtrue|HEFhadelse);
+        }
         return SKIPPED;     // looks wrong, but called within a doIf() loop, and first return is ignored
     default:
-        if (isElseIf)
-            skipping++;
         return SKIPPED;
     }
+}
+
+int HqlLex::doEnd(YYSTYPE & returnToken, bool lookup, const short * activeState)
+{
+    if (hashendKinds.ordinality() != 0)
+    {
+        endNestedHash();
+        if (skipNesting)
+        {
+            skipNesting -= 1;
+            return(HASHEND);
+        }
+    }
+    else
+        reportError(returnToken, ERR_TMPLT_EXTRAEND,"#END doesn't match a # command");
+
+    return yyLex(returnToken, lookup, activeState);
 }
 
 void HqlLex::doDeclare(YYSTYPE & returnToken)
@@ -746,10 +779,10 @@ void HqlLex::doDeclare(YYSTYPE & returnToken)
     StringBuffer forwhat;
     forwhat.appendf("#DECLARE(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
@@ -768,14 +801,14 @@ void HqlLex::doDeclare(YYSTYPE & returnToken)
 
         if (tok != UNKNOWN_ID)
         {
-            reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected"); 
+            reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected");
             returnToken.release();
             continue;
         }
-    
-        name = returnToken.getName();
+
+        name = returnToken.getId();
         declareXmlSymbol(returnToken, name->getAtomNamePtr());
-        
+
         tok = yyLex(returnToken, false,0);
         if (tok == ')')
             break;
@@ -791,7 +824,7 @@ void HqlLex::doDeclare(YYSTYPE & returnToken)
         else
         {
             reportError(returnToken, ERR_EXPECTED, "',' or ')' expected");
-            returnToken.release();      
+            returnToken.release();
         }
     }
 }
@@ -803,7 +836,7 @@ void HqlLex::doExpand(YYSTYPE & returnToken)
 
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
@@ -833,23 +866,23 @@ void HqlLex::doSet(YYSTYPE & returnToken, bool append)
     StringBuffer forwhat;
     forwhat.appendf("%s(%d,%d)",append?"#APPEND":"#SET",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
     if (yyLex(returnToken, false,0) != UNKNOWN_ID)
     {
-        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected"); 
+        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected");
         returnToken.release();
         return;
     }
-    name = returnToken.getName();
+    name = returnToken.getId();
     if (yyLex(returnToken, false,0) != ',')
     {
-        reportError(returnToken, ERR_EXPECTED_COMMA, ", expected"); 
+        reportError(returnToken, ERR_EXPECTED_COMMA, ", expected");
         return;
     }
     StringBuffer curParam("(");
@@ -868,7 +901,7 @@ void HqlLex::doSet(YYSTYPE & returnToken, bool append)
     {
         StringBuffer buf;
         value->getStringValue(buf);
-        setXmlSymbol(returnToken, name->getAtomNamePtr(), buf.str(), append); 
+        setXmlSymbol(returnToken, name->getAtomNamePtr(), buf.str(), append);
         value->Release();
     }
 }
@@ -879,10 +912,10 @@ void HqlLex::doLine(YYSTYPE & returnToken)
     int line = returnToken.pos.lineno, col = returnToken.pos.column;
     forwhat.appendf("LINE(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
@@ -928,10 +961,10 @@ void HqlLex::doError(YYSTYPE & returnToken, bool isError)
     StringBuffer forwhat;
     forwhat.appendf("%s(%d,%d)",isError?"#ERROR":"#WARNING",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
@@ -964,23 +997,23 @@ void HqlLex::doExport(YYSTYPE & returnToken, bool toXml)
     StringBuffer forwhat;
     forwhat.appendf("#EXPORT(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM exportname = NULL;
+    IIdAtom * exportname = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
     if (yyLex(returnToken, false,0) != UNKNOWN_ID)
     {
-        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected"); 
+        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected");
         returnToken.release();
         return;
     }
-    exportname = returnToken.getName();
+    exportname = returnToken.getId();
     if (yyLex(returnToken, false,0) != ',')
     {
-        reportError(returnToken, ERR_EXPECTED_COMMA, ", expected"); 
+        reportError(returnToken, ERR_EXPECTED_COMMA, ", expected");
         return;
     }
     IPropertyTree *data = createPTree("Data", ipt_caseInsensitive);
@@ -1007,14 +1040,14 @@ void HqlLex::doExport(YYSTYPE & returnToken, bool toXml)
                 else if (child->queryRecord())
                     exportData(data, child->queryRecord(), true);
                 else
-                    reportError(returnToken, ERR_EXPECTED_COMMA, "DATASET or TABLE expression expected"); 
+                    reportError(returnToken, ERR_EXPECTED_COMMA, "DATASET or TABLE expression expected");
             }
             else
-                reportError(returnToken, ERR_EXPECTED_COMMA, "Could not parse the argument passed to #EXPORT"); 
+                reportError(returnToken, ERR_EXPECTED_COMMA, "Could not parse the argument passed to #EXPORT");
         }
         catch (...)
         {
-            setXmlSymbol(returnToken, exportname->getAtomNamePtr(), "", false); 
+            setXmlSymbol(returnToken, exportname->getAtomNamePtr(), "", false);
             PrintLog("Unexpected exception in doExport()");
         }
         if (!more)
@@ -1025,7 +1058,7 @@ void HqlLex::doExport(YYSTYPE & returnToken, bool toXml)
     if (toXml)
         ensureTopXmlScope(returnToken)->loadXML(buf.str(), exportname->getAtomNamePtr());
     else
-        setXmlSymbol(returnToken, exportname->getAtomNamePtr(), buf.str(), false); 
+        setXmlSymbol(returnToken, exportname->getAtomNamePtr(), buf.str(), false);
     data->Release();
 }
 
@@ -1034,10 +1067,10 @@ void HqlLex::doTrace(YYSTYPE & returnToken)
     StringBuffer forwhat;
     forwhat.appendf("#TRACE(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
@@ -1074,42 +1107,44 @@ void HqlLex::doFor(YYSTYPE & returnToken, bool doAll)
     StringBuffer forwhat;
     forwhat.appendf("#FOR(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    _ATOM name = NULL;
+    IIdAtom * name = NULL;
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         return;
     }
     if (yyLex(returnToken, false,0) != UNKNOWN_ID)
     {
-        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected"); 
+        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected");
         returnToken.release();
         return;
     }
-    name = returnToken.getName();
-    forFilter.clear();
+    name = returnToken.getId();
+
+    StringBuffer forFilterText;
     // Note - we gather the for filter and body in skip mode (deferring evaluation of #if etc) since the context will be different each time...
-    skipping = 1;
+    skipNesting = 1;
     int tok = yyLex(returnToken, false,0);
     if (tok == '(')
     {
-        forFilter.append('(');
-        while (getParameter(forFilter, forwhat.str()))
-            forFilter.append(") AND (");
-        forFilter.append(')');
+        forFilterText.append('(');
+        while (getParameter(forFilterText, forwhat.str()))
+            forFilterText.append(") AND (");
+        forFilterText.append(')');
         tok = yyLex(returnToken, false,0);
     }
     if (tok != ')')
     {
-        reportError(returnToken, ERR_EXPECTED_RIGHTCURLY, ") expected"); 
+        reportError(returnToken, ERR_EXPECTED_RIGHTCURLY, ") expected");
 
         // recovery: assume a ')' is here. And push back the token.
         pushText(get_yyText());
         returnToken.release();
     }
+
     // Now gather the tokens we are going to repeat...
-    forBody.clear();
+    StringBuffer forBodyText;
     for (;;)
     {
         int tok = yyLex(returnToken, false,0);
@@ -1125,14 +1160,19 @@ void HqlLex::doFor(YYSTYPE & returnToken, bool doAll)
             clearNestedHash();      // prevent unnecessary more error messages
             return;
         }
-        if (tok == HASHEND && !skipping)
+        if (tok == HASHEND && !skipNesting)
             break;
-        forBody.append(' ');
-        getTokenText(forBody);
+        forBodyText.append(' ');
+        getTokenText(forBodyText);
         returnToken.release();
-    } 
+    }
     ::Release(forLoop);
+
     forLoop = getSubScopes(returnToken, name->getAtomNamePtr(), doAll);
+    if (forFilterText.length())
+        forFilter.setown(createFileContentsFromText(forFilterText, sourcePath));
+    forBody.setown(createFileContentsFromText(forBodyText, sourcePath));
+
     loopTimes = 0;
     if (forLoop && forLoop->first()) // more - check filter
         checkNextLoop(returnToken, true, startLine, startCol);
@@ -1143,12 +1183,12 @@ void HqlLex::doLoop(YYSTYPE & returnToken)
     int startLine = -1, startCol = 0;
     StringBuffer forwhat;
     forwhat.appendf("#LOOP(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
-    
+
 
     // Now gather the tokens we are going to repeat...
-    forBody.clear();
+    StringBuffer forBodyText;
     // Note - we gather the for filter and body in skip mode (deferring evaluation of #if etc) since the context will be different each time...
-    skipping = 1;
+    skipNesting = 1;
     hasHashbreak = false;
     for (;;)
     {
@@ -1165,20 +1205,22 @@ void HqlLex::doLoop(YYSTYPE & returnToken)
             clearNestedHash();      // prevent unnecessary more error messages
             return;
         }
-        if (tok == HASHEND && !skipping)
+        if (tok == HASHEND && !skipNesting)
             break;
-        forBody.append(' ');
-        getTokenText(forBody);
+        forBodyText.append(' ');
+        getTokenText(forBodyText);
         returnToken.release();
-    } 
+    }
     if (!hasHashbreak)
     {
         reportError(returnToken, ERR_TMPLT_NOBREAKINLOOP,"No #BREAK inside %s: infinite loop will occur", forwhat.str());
         return;
     }
+
     ::Release(forLoop);
     forLoop = new CDummyScopeIterator(ensureTopXmlScope(returnToken));
     forFilter.clear();
+    forBody.setown(createFileContentsFromText(forBodyText, sourcePath));
     loopTimes = 0;
     if (forLoop->first()) // more - check filter
         checkNextLoop(returnToken, true,startLine,startCol);
@@ -1226,7 +1268,7 @@ int HqlLex::doHashText(YYSTYPE & returnToken)
 
     if (yyLex(returnToken, false,0) != '(')
     {
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
         returnToken.release();
         returnToken.setExpr(createConstant(""));
         return STRING_CONST;
@@ -1259,7 +1301,7 @@ void HqlLex::doInModule(YYSTYPE & returnToken)
 #endif
     int tok = yyLex(returnToken, false,0);
     if (tok != '(')
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
 
     StringBuffer moduleName, attrName;
 
@@ -1268,14 +1310,14 @@ void HqlLex::doInModule(YYSTYPE & returnToken)
         if (getParameter(attrName,"#INMODULE"))
         {
             reportError(returnToken, ERR_OPERANDS_TOOMANY, "too many operands");
-            
+
             /* skip the rest */
             StringBuffer dummy;
             while (getParameter(dummy,"#INMODULE"))
                 ;
         }
-    } 
-    else 
+    }
+    else
     {
         reportError(returnToken, ERR_PARAM_TOOFEW,"Too few parameters: #INMODULE needs 2");
         /* recovery */
@@ -1296,18 +1338,18 @@ static bool isInModule(HqlLookupContext & ctx, const char* moduleName, const cha
 
     try
     {
-        
+
         //hack: get rid of the extra leading spaces
         const char* pModule = moduleName;
         while(*pModule==' ') pModule++;
         const char* pAttr = attrName;
         while(*pAttr==' ') pAttr++;
 
-        OwnedHqlExpr match = ctx.queryRepository()->queryRootScope()->lookupSymbol(createIdentifierAtom(pModule), LSFpublic, ctx);
+        OwnedHqlExpr match = ctx.queryRepository()->queryRootScope()->lookupSymbol(createIdAtom(pModule), LSFpublic, ctx);
         IHqlScope * scope = match ? match->queryScope() : NULL;
         if (scope)
         {
-            OwnedHqlExpr expr = scope->lookupSymbol(createIdentifierAtom(pAttr), LSFpublic, ctx); 
+            OwnedHqlExpr expr = scope->lookupSymbol(createIdAtom(pAttr), LSFpublic, ctx);
             if (expr)
                 return true;
         }
@@ -1324,18 +1366,18 @@ void HqlLex::doUniqueName(YYSTYPE & returnToken)
 {
     int tok = yyLex(returnToken, false,0);
     if (tok != '(')
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
-    else 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
+    else
         tok = yyLex(returnToken, false,0);
 
     if (tok != UNKNOWN_ID)
     {
-        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected"); 
+        reportError(returnToken, ERR_EXPECTED_IDENTIFIER, "Identifier expected");
         returnToken.release();
-    } 
-    else 
+    }
+    else
     {
-        _ATOM name = returnToken.getName();
+        IIdAtom * name = returnToken.getId();
         StringAttr pattern("__#__$__");
 
         tok = yyLex(returnToken, false,0);
@@ -1357,7 +1399,7 @@ void HqlLex::doUniqueName(YYSTYPE & returnToken)
     }
 
     if (tok != ')')
-        reportError(returnToken, ERR_EXPECTED_RIGHTCURLY, ") expected");    
+        reportError(returnToken, ERR_EXPECTED_RIGHTCURLY, ") expected");
 }
 
 static int gUniqueId = 0;
@@ -1372,7 +1414,7 @@ void HqlLex::declareUniqueName(const char *name, const char * pattern)
     StringBuffer value;
     if (!top->getValue(name,value))
         top->declareValue(name);
-    
+
     StringBuffer uniqueName;
     bool added = false;
     for (const char * cur = pattern; *cur; cur++)
@@ -1380,7 +1422,7 @@ void HqlLex::declareUniqueName(const char *name, const char * pattern)
         char next = *cur;
         switch (next)
         {
-        case '#': 
+        case '#':
             uniqueName.append(name);
             break;
         case '$':
@@ -1403,7 +1445,7 @@ void HqlLex::doIsValid(YYSTYPE & returnToken)
 {
     int tok = yyLex(returnToken, false,0);
     if (tok != '(')
-        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected"); 
+        reportError(returnToken, ERR_EXPECTED_LEFTCURLY, "( expected");
     StringBuffer curParam("(");
     if (getParameter(curParam,"#ISVALID"))
     {
@@ -1416,17 +1458,17 @@ void HqlLex::doIsValid(YYSTYPE & returnToken)
 
     IHqlExpression * expr = NULL;
     IHqlScope *scope = createScope();
-    
+
     try
     {
         HqlLookupContext ctx(yyParser->lookupCtx);
         ctx.errs.clear();   //Deliberately ignore any errors
         Owned<IFileContents> contents = createFileContentsFromText(curParam.str(), sourcePath);
         expr = parseQuery(scope, contents, ctx, xmlScope, NULL, true);
-        
+
         if(expr)
-        {   
-            pushText("true");   
+        {
+            pushText("true");
         }
         else
         {
@@ -1446,6 +1488,8 @@ void HqlLex::doIsValid(YYSTYPE & returnToken)
 
 void HqlLex::checkNextLoop(const YYSTYPE & errpos, bool first, int startLine, int startCol)
 {
+    if (yyParser->aborting)
+        return;
     if (loopTimes++ > MAX_LOOP_TIMES)
     {
         reportError(errpos, ERR_TMPLT_LOOPEXCESSMAX,"The loop exceeded the limit: infinite loop is suspected");
@@ -1457,7 +1501,7 @@ void HqlLex::checkNextLoop(const YYSTYPE & errpos, bool first, int startLine, in
     {
         bool filtered;
         IXmlScope *subscope = (IXmlScope *) &forLoop->query();
-        if (forFilter.length())
+        if (forFilter)
         {
 #ifdef TIMING_DEBUG
             MTIME_SECTION(timer, "HqlLex::checkNextLoopcond");
@@ -1470,7 +1514,7 @@ void HqlLex::checkNextLoop(const YYSTYPE & errpos, bool first, int startLine, in
             filtered = false;
         if (!filtered)
         {
-            pushText(forBody.str(),startLine,startCol);
+            pushText(forBody,startLine,startCol);
             inmacro->xmlScope = LINK(subscope);
             return;
         }
@@ -1483,7 +1527,7 @@ void HqlLex::checkNextLoop(const YYSTYPE & errpos, bool first, int startLine, in
 
 void HqlLex::doPreprocessorLookup(const YYSTYPE & errpos, bool stringify, int extra)
 {
-    StringBuffer out; 
+    StringBuffer out;
 
     char *text = get_yyText() + 1;
     unsigned len = (size32_t)strlen(text) - 1;
@@ -1492,7 +1536,7 @@ void HqlLex::doPreprocessorLookup(const YYSTYPE & errpos, bool stringify, int ex
 
     StringBuffer in;
     in.append(len, text);
-    lookupXmlSymbol(errpos, in.str(), out); 
+    lookupXmlSymbol(errpos, in.str(), out);
     if (stringify)
     {
         char *expanded = (char *) malloc(out.length()*2 + 3); // maximum it could be (might be a bit big for alloca)
@@ -1514,7 +1558,7 @@ void HqlLex::doPreprocessorLookup(const YYSTYPE & errpos, bool stringify, int ex
                 break;
             case '\\':
             case '\'':
-                *s++='\\'; 
+                *s++='\\';
                 // fall into
             default:
                 *s++=c;
@@ -1588,7 +1632,7 @@ bool HqlLex::getDefinedParameter(StringBuffer &curParam, YYSTYPE & returnToken, 
                 {
                 case StateStart:
                     {
-                        expr.setown(lookupSymbol(returnToken.getName(), returnToken));
+                        expr.setown(lookupSymbol(returnToken.getId(), returnToken));
                         state = expr ? StateDot : StateFailed;
                         break;
                     }
@@ -1605,7 +1649,7 @@ bool HqlLex::getDefinedParameter(StringBuffer &curParam, YYSTYPE & returnToken, 
                         IHqlScope * scope = expr->queryScope();
                         if (scope)
                         {
-                            expr.setown(yyParser->lookupSymbol(scope, returnToken.getName()));
+                            expr.setown(yyParser->lookupSymbol(scope, returnToken.getId()));
                             if (expr)
                                 state = StateDot;
                         }
@@ -1638,7 +1682,7 @@ bool HqlLex::doIsDefined(YYSTYPE & returnToken)
     StringBuffer forwhat;
     forwhat.appendf("#ISDEFINED(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    if (!assertNextOpenBra()) 
+    if (!assertNextOpenBra())
         return false;
 
     OwnedHqlExpr resolved;
@@ -1655,7 +1699,7 @@ void HqlLex::doDefined(YYSTYPE & returnToken)
     StringBuffer forwhat;
     forwhat.appendf("#DEFINED(%d,%d)",returnToken.pos.lineno,returnToken.pos.column);
 
-    if (!assertNextOpenBra()) 
+    if (!assertNextOpenBra())
         return;
 
     OwnedHqlExpr resolved;
@@ -1673,36 +1717,39 @@ void HqlLex::doDefined(YYSTYPE & returnToken)
         pushText(param2Text);
 }
 
-IHqlExpression *HqlLex::parseECL(const char * text, IXmlScope *xmlScope, int startLine, int startCol)
+IHqlExpression *HqlLex::parseECL(IFileContents * contents, IXmlScope *xmlScope, int startLine, int startCol)
 {
 #ifdef TIMING_DEBUG
     MTIME_SECTION(timer, "HqlLex::parseConstExpression");
 #endif
     //  Use an ECL reserved word as the scope name to avoid name conflicts with these defined localscope.
-    Owned<IHqlScope> scope = new CHqlMultiParentScope(sharedAtom,yyParser->queryPrimaryScope(false),yyParser->queryPrimaryScope(true),yyParser->parseScope.get(),NULL); 
+    Owned<IHqlScope> scope = new CHqlMultiParentScope(sharedId,yyParser->queryPrimaryScope(false),yyParser->queryPrimaryScope(true),yyParser->parseScope.get(),NULL);
 
     HqlGramCtx parentContext(yyParser->lookupCtx);
     yyParser->saveContext(parentContext, false);
-    Owned<IFileContents> contents = createFileContentsFromText(text, querySourcePath());
     HqlGram parser(parentContext, scope, contents, xmlScope, true);
     parser.getLexer()->set_yyLineNo(startLine);
     parser.getLexer()->set_yyColumn(startCol);
     return parser.yyParse(false, false);
 }
 
-IValue *HqlLex::parseConstExpression(const YYSTYPE & errpos, StringBuffer &curParam, IXmlScope *xmlScope, int startLine, int startCol)
+
+IHqlExpression *HqlLex::parseECL(const char * text, IXmlScope *xmlScope, int startLine, int startCol)
 {
-#ifdef TIMING_DEBUG
-    MTIME_SECTION(timer, "HqlLex::parseConstExpression");
-#endif
-    OwnedHqlExpr expr = parseECL(curParam, xmlScope, startLine, startCol);
+    Owned<IFileContents> contents = createFileContentsFromText(text, querySourcePath());
+    return parseECL(contents, xmlScope, startLine, startCol);
+}
+
+
+IValue *HqlLex::foldConstExpression(const YYSTYPE & errpos, IHqlExpression * expr, IXmlScope *xmlScope, int startLine, int startCol)
+{
     OwnedIValue value;
     if (expr)
     {
-        try 
+        try
         {
             CTemplateContext context(this, yyParser->lookupCtx, xmlScope, startLine, startCol);
-            OwnedHqlExpr folded = foldHqlExpression(expr, &context, HFOthrowerror|HFOfoldimpure|HFOforcefold);
+            OwnedHqlExpr folded = foldHqlExpression(*yyParser, expr, &context, HFOthrowerror|HFOfoldimpure|HFOforcefold);
             if (folded)
             {
                 if (folded->queryValue())
@@ -1714,13 +1761,31 @@ IValue *HqlLex::parseConstExpression(const YYSTYPE & errpos, StringBuffer &curPa
             StringBuffer s;
             reportError(errpos, except->errorCode(), "%s", except->errorMessage(s).str());
             except->Release();
-        }           
+        }
     }
 
     if (!value.get())
         reportError(errpos, ERR_EXPECTED_CONST, "Constant expression expected"); // errpos could be better
 
     return value.getClear();
+}
+
+IValue *HqlLex::parseConstExpression(const YYSTYPE & errpos, StringBuffer &curParam, IXmlScope *xmlScope, int startLine, int startCol)
+{
+#ifdef TIMING_DEBUG
+    MTIME_SECTION(timer, "HqlLex::parseConstExpression");
+#endif
+    OwnedHqlExpr expr = parseECL(curParam, xmlScope, startLine, startCol);
+    return foldConstExpression(errpos, expr, xmlScope, startLine, startCol);
+}
+
+IValue *HqlLex::parseConstExpression(const YYSTYPE & errpos, IFileContents * text, IXmlScope *xmlScope, int startLine, int startCol)
+{
+#ifdef TIMING_DEBUG
+    MTIME_SECTION(timer, "HqlLex::parseConstExpression");
+#endif
+    OwnedHqlExpr expr = parseECL(text, xmlScope, startLine, startCol);
+    return foldConstExpression(errpos, expr, xmlScope, startLine, startCol);
 }
 
 int hexchar(char c)
@@ -1730,7 +1795,7 @@ int hexchar(char c)
     else if (c >= 'a' && c <= 'f')
         return c - 'a' + 10;
     else
-        return c - '0'; 
+        return c - '0';
 }
 
 void HqlLex::doApply(YYSTYPE & returnToken)
@@ -1752,7 +1817,7 @@ void HqlLex::doApply(YYSTYPE & returnToken)
     if (actions)
     {
         CTemplateContext context(this, yyParser->lookupCtx, xmlScope,line,col);
-        OwnedHqlExpr folded = foldHqlExpression(actions, &context, HFOthrowerror|HFOfoldimpure|HFOforcefold);
+        OwnedHqlExpr folded = foldHqlExpression(*yyParser, actions, &context, HFOthrowerror|HFOfoldimpure|HFOforcefold);
     }
     else
         reportError(returnToken, ERR_EXPECTED_CONST, "Constant expression expected");
@@ -1796,7 +1861,7 @@ static StringBuffer& mangle(IErrorReceiver* errReceiver,const char* src, StringB
         unsigned char c = *finger;
         if (isalnum(c))
         {
-            if (finger == src && isdigit(c)) // a leading digit 
+            if (finger == src && isdigit(c)) // a leading digit
             {
                 if (de)
                 {
@@ -1840,10 +1905,10 @@ bool HqlLex::checkUnicodeLiteral(char const * str, unsigned length, unsigned & e
         if (str[i] == '\\')
         {
             unsigned char next = str[++i];
-            if (next == '\'' || next == '\\' || next == 'n' || next == 'r' || next == 't' || next == 'a' || next == 'b' || next == 'f' || next == 'v' || next == '?' || next == '"') 
+            if (next == '\'' || next == '\\' || next == 'n' || next == 'r' || next == 't' || next == 'a' || next == 'b' || next == 'f' || next == 'v' || next == '?' || next == '"')
             {
                 continue;
-            } 
+            }
             else if (isdigit(next) && next < '8')
             {
                 unsigned count;
@@ -1891,7 +1956,7 @@ bool HqlLex::isAborting()
     return yyParser->isAborting();
 }
 
-void HqlLex::reportError(const YYSTYPE & returnToken, int errNo, const char *format, ...) 
+void HqlLex::reportError(const YYSTYPE & returnToken, int errNo, const char *format, ...)
 {
     if (yyParser)
     {
@@ -1930,21 +1995,14 @@ IXmlScope *HqlLex::queryTopXmlScope()
     return top;
 }
 
-
 IXmlScope *HqlLex::ensureTopXmlScope(const YYSTYPE & errpos)
 {
     IXmlScope *top = queryTopXmlScope();
     if (!top)
-    {
-        reportError(errpos, ERR_XML_NOSCOPE, "No XML scope active");
-
-        // recovery: create a default XML scope
         top = xmlScope = ::loadXML("<xml></xml>");
-    }
 
     return top;
 }
-
 
 StringBuffer &HqlLex::lookupXmlSymbol(const YYSTYPE & errpos, const char *name, StringBuffer &ret)
 {
@@ -1959,7 +2017,7 @@ StringBuffer &HqlLex::lookupXmlSymbol(const YYSTYPE & errpos, const char *name, 
 void HqlLex::setXmlSymbol(const YYSTYPE & errpos, const char *name, const char *value, bool append)
 {
     IXmlScope *top = ensureTopXmlScope(errpos);
-    bool ok; 
+    bool ok;
     if (append)
         ok = top->appendValue(name, value);
     else
@@ -2072,13 +2130,13 @@ int HqlLex::yyLex(YYSTYPE & returnToken, bool lookup, const short * activeState)
                 return ret;
             }
 
-#if defined(TRACE_MACRO)        
+#if defined(TRACE_MACRO)
             PrintLog("MACRO>> inmacro %p deleted\n", inmacro);
 #endif
-            
+
             delete inmacro;
             inmacro = NULL;
-            
+
             if (ret == HASHBREAK)
             {
                 if (forLoop)
@@ -2097,7 +2155,7 @@ int HqlLex::yyLex(YYSTYPE & returnToken, bool lookup, const short * activeState)
                 checkNextLoop(returnToken, false,0,0);
         }
 
-        returnToken.clear();        
+        returnToken.clear();
 
         yyStartPos = yyPosition;
         int ret = doyyFlex(returnToken, scanner, this, lookup, activeState);
@@ -2111,12 +2169,12 @@ int HqlLex::yyLex(YYSTYPE & returnToken, bool lookup, const short * activeState)
                 reportError(returnToken, ERR_COMMENT_UNENDED,"Comment is not terminated");
             else if (inCpp)
                 reportError(returnToken, ERR_COMMENT_UNENDED,"BEGINC++ or EMBED is not terminated");
-            if (hashendDepths.ordinality())
+            if (hashendKinds.ordinality())
             {
                 StringBuffer msg("Unexpected EOF: ");
-                msg.append(hashendDepths.ordinality()).append(" more #END needed");
+                msg.append(hashendKinds.ordinality()).append(" more #END needed");
                 reportError(returnToken, ERR_TMPLT_HASHENDEXPECTED, "%s", msg.str());
-                hashendDepths.kill(); // prevent unnecessary more error messages
+                clearNestedHash();
             }
         }
 

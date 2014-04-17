@@ -51,8 +51,9 @@ static IHqlExpression * optimizedReplaceSelector(IHqlExpression * expr, IHqlExpr
         {
             IHqlExpression * lhs = expr->queryChild(0);
             IHqlExpression * field = expr->queryChild(1);
+            bool isNew = expr->hasAttribute(newAtom);
             OwnedHqlExpr newLhs;
-            if (expr->hasProperty(newAtom))
+            if (isNew)
             {
                 newLhs.setown(optimizedReplaceSelector(lhs, oldDataset, newDataset));
             }
@@ -60,20 +61,22 @@ static IHqlExpression * optimizedReplaceSelector(IHqlExpression * expr, IHqlExpr
             {
                 if (lhs == oldDataset)
                 {
+                    IHqlExpression * newField = lookupNewSelectedField(newDataset, field);
+
                     if (newDataset->getOperator() == no_newrow)
-                        return createNewSelectExpr(LINK(newDataset->queryChild(0)), LINK(field));
+                        return createNewSelectExpr(LINK(newDataset->queryChild(0)), newField);
 
                     if (newDataset->getOperator() == no_activerow)
                         newDataset = newDataset->queryChild(0);
 
-                    return createSelectExpr(LINK(newDataset->queryNormalizedSelector()), LINK(field));
+                    return createSelectExpr(LINK(newDataset->queryNormalizedSelector()), newField);
                 }
                 else
                     newLhs.setown(optimizedReplaceSelector(lhs, oldDataset, newDataset));
             }
 
             if (newLhs)
-                return replaceChild(expr, 0, newLhs);
+                return createSelectExpr(LINK(newLhs), lookupNewSelectedField(newLhs, field), isNew);
             return NULL;
         }
     case no_implicitcast:
@@ -312,28 +315,28 @@ void NewProjectMapper2::setUnknownMapping()
     mapping = queryUnknownAttribute();
 }
 
-void NewProjectMapper2::initMapping()
+bool NewProjectMapper2::ensureMapping()
 {
     if (targets.ordinality())
-        return;
+        return true;
 
     switch (mapping->getOperator())
     {
     case no_record:
         setRecord(mapping);
-        break;
+        return true;
     case no_newtransform:
         setTransform(mapping);
-        break;
+        return true;
     case no_transform:
         setTransform(mapping);
-        break;
+        return true;
     case no_alias_scope:
     case no_none:
     case no_externalcall:
     case no_outofline:
     case no_attr:
-        break;              // avoid internal error when values not provided for a record structure
+        return false;              // avoid internal error when values not provided for a record structure
     default:
         UNIMPLEMENTED_XY("mapping", getOpString(mapping->getOperator()));
         break;
@@ -348,8 +351,7 @@ void NewProjectMapper2::initSelf(IHqlExpression * dataset)
 
 bool NewProjectMapper2::isMappingKnown()
 {
-    initMapping();
-    return targets.ordinality() != 0;
+    return ensureMapping();
 }
 
 void NewProjectMapper2::setRecord(IHqlExpression * record, IHqlExpression * selector)
@@ -732,6 +734,10 @@ IHqlExpression * NewProjectMapper2::doCollapseFields(IHqlExpression * expr, IHql
     unsigned match = sources.find(*expr);
     if (match != NotFound)
     {
+        //Don't collapse expressions that don't depend on the input dataset, since they may be used in contexts where
+        //they aren't dependent on the input dataset (e.g., priorities on stepped criteria).
+        if (!expr->usesSelector(oldParent))
+            return LINK(expr);
         IHqlExpression & collapsed = targets.item(match);
         return replaceSelector(&collapsed, self, newDataset);
     }
@@ -1021,9 +1027,9 @@ bool transformReturnsSide(IHqlExpression * expr, node_operator side, unsigned in
     return isTrivialTransform(queryNewColumnProvider(expr), selector);
 }
 
-IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * field)
+IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * field, bool okToSkipRow)
 {
-    if (transform->getInfoFlags() & (HEFcontainsSkip))
+    if (!okToSkipRow && (transform->getInfoFlags() & (HEFcontainsSkip)))
         return NULL;
 
     ForEachChild(i, transform)
@@ -1033,7 +1039,7 @@ IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * f
         {
         case no_assignall:
             {
-                IHqlExpression * ret = getExtractSelect(cur, field);
+                IHqlExpression * ret = getExtractSelect(cur, field, okToSkipRow);
                 if (ret)
                     return ret;
                 break;
@@ -1047,6 +1053,8 @@ IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * f
                     break;
                 if (lhs->queryChild(0)->getOperator() != no_self)
                     break;
+                if (lhs->getInfoFlags() & HEFcontainsSkip)
+                    return NULL;
                 return ensureExprType(cur->queryChild(1), lhs->queryType());
             }
         }
@@ -1055,19 +1063,19 @@ IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * f
 }
 
 
-IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * selector, IHqlExpression * select)
+IHqlExpression * getExtractSelect(IHqlExpression * transform, IHqlExpression * selector, IHqlExpression * select, bool okToSkipRow)
 {
     if (select->getOperator() != no_select)
         return NULL;
     IHqlExpression * ds = select->queryChild(0);
     IHqlExpression * field = select->queryChild(1);
     if (ds == selector)
-        return getExtractSelect(transform, field);
-    OwnedHqlExpr extracted = getExtractSelect(transform, selector, ds);
+        return getExtractSelect(transform, field, okToSkipRow);
+    OwnedHqlExpr extracted = getExtractSelect(transform, selector, ds, okToSkipRow);
     if (!extracted)
         return NULL;
     if (extracted->getOperator() == no_createrow)
-        return getExtractSelect(extracted->queryChild(0), field);
+        return getExtractSelect(extracted->queryChild(0), field, okToSkipRow);
     return createSelectExpr(extracted.getClear(), LINK(field));
 }
 
@@ -1132,71 +1140,6 @@ extern HQL_API void gatherSelects(HqlExprCopyArray & selects, IHqlExpression * e
     analyser.analyse(expr, 0);
 }
 
-//---------------------------------------------------------------------------------------------------------------------
-
-static IHqlExpression * getTrivialSelect(IHqlExpression * expr, IHqlExpression * selector, IHqlExpression * field)
-{
-    OwnedHqlExpr match = getExtractSelect(expr, field);
-    if (!match)
-        return NULL;
-
-    //More: could accept a cast field.
-    if (match->getOperator() != no_select)
-        return NULL;
-    if (match->queryChild(0) != selector)
-        return NULL;
-    IHqlExpression * matchField = match->queryChild(1);
-    //MORE: Could create a type cast if they differed,
-    if (matchField->queryType() != field->queryType())
-        return NULL;
-    return LINK(matchField);
-}
-
-
-IHqlExpression * transformTrivialSelectProject(IHqlExpression * select)
-{
-    IHqlExpression * newAttr = select->queryProperty(newAtom);
-    if (!newAttr)
-        return NULL;
-
-    IHqlExpression * row = select->queryChild(0);
-    if (row->getOperator() != no_selectnth)
-        return NULL;
-
-    IHqlExpression * expr = row->queryChild(0);
-    IHqlExpression * transform = queryNewColumnProvider(expr);
-    if (!transform)
-        return NULL;
-    if (!transform->isPure() && transformHasSkipAttr(transform))
-        return NULL;
-
-    IHqlExpression * ds = expr->queryChild(0);
-    LinkedHqlExpr selector;
-    switch (expr->getOperator())
-    {
-    case no_hqlproject:
-    case no_projectrow:
-        selector.setown(createSelector(no_left, ds, querySelSeq(expr)));
-        break;
-    case no_newusertable:
-         if (isAggregateDataset(expr))
-             return NULL;
-         selector.set(ds->queryNormalizedSelector());
-         break;
-    default:
-        return NULL;
-    }
-
-    OwnedHqlExpr match = getTrivialSelect(transform, selector, select->queryChild(1));
-    if (match)
-    {
-        IHqlExpression * newRow = createRow(no_selectnth, LINK(ds), LINK(row->queryChild(1)));
-        return createNewSelectExpr(newRow, LINK(match));
-    }
-    return NULL;
-}
-
-
 //-----------------------------------------------------------------------------------------------
 
 
@@ -1208,7 +1151,7 @@ void RecordTransformCreator::createAssignments(HqlExprArray & assigns, IHqlExpre
         {
             OwnedHqlExpr target = createSelectExpr(LINK(targetSelector), LINK(expr));
             OwnedHqlExpr source;
-            OwnedHqlExpr sourceField = sourceSelector->queryRecord()->querySimpleScope()->lookupSymbol(expr->queryName());
+            OwnedHqlExpr sourceField = sourceSelector->queryRecord()->querySimpleScope()->lookupSymbol(expr->queryId());
             if (sourceField)
                 source.setown(createSelectExpr(LINK(sourceSelector), LINK(sourceField)));
             else
@@ -1279,7 +1222,7 @@ IHqlExpression * createRecordMappingTransform(node_operator op, IHqlExpression *
 }
 
 
-IHqlExpression * replaceMemorySelectorWithSerializedSelector(IHqlExpression * expr, IHqlExpression * memoryRecord, node_operator side, IHqlExpression * selSeq, _ATOM serializeVariety)
+IHqlExpression * replaceMemorySelectorWithSerializedSelector(IHqlExpression * expr, IHqlExpression * memoryRecord, node_operator side, IHqlExpression * selSeq, IAtom * serializeVariety)
 {
     if (!expr) 
         return NULL;

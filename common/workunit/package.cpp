@@ -183,20 +183,23 @@ void CHpccPackageSet::load(IPropertyTree *xml)
     }
 }
 
-const IHpccPackageMap *CHpccPackageSet::queryActiveMap(const char *queryset) const
+bool checkPackageMapMatchesTarget(const char *target, const char *match)
 {
+    if (!match || !*match)
+        return false;
+    if (isWildString(match))
+        return WildMatch(target, match);
+    return streq(target, match);
+}
+
+const IHpccPackageMap *CHpccPackageSet::queryActiveMap(const char *target) const
+{
+    if (!target || !*target)
+        return NULL;
     ForEachItemIn(i, packageMaps)
     {
         CHpccPackageMap &pm = packageMaps.item(i);
-        StringAttr &match = pm.querySet;
-        if (!match.length())
-            continue;
-        if (isWildString(match))
-        {
-            if (WildMatch(queryset, match))
-                return &pm;
-        }
-        else if (streq(queryset, match))
+        if (checkPackageMapMatchesTarget(target, pm.querySet.get()))
             return &pm;
     }
     return NULL;
@@ -209,6 +212,8 @@ extern WORKUNIT_API IHpccPackageSet *createPackageSet(const char *process)
 
 extern WORKUNIT_API IPropertyTree * getPackageMapById(const char * id, bool readonly)
 {
+    if (!id || !*id)
+        return NULL;
     StringBuffer xpath;
     xpath.append("/PackageMaps/PackageMap[@id=\"").append(id).append("\"]");
     Owned<IRemoteConnection> conn = querySDS().connect(xpath.str(), myProcessSession(), readonly ? RTM_LOCK_READ : RTM_LOCK_WRITE, SDS_LOCK_TIMEOUT);
@@ -217,8 +222,24 @@ extern WORKUNIT_API IPropertyTree * getPackageMapById(const char * id, bool read
     return conn->getRoot();
 }
 
+extern WORKUNIT_API IPropertyTree * getPackageMapById(const char *target, const char * id, bool readonly)
+{
+    if (!id || !*id)
+        return NULL;
+    if (target && *target)
+    {
+        VStringBuffer xpath("/PackageMaps/PackageMap[@id='%s::%s']", target, id);
+        Owned<IRemoteConnection> conn = querySDS().connect(xpath.str(), myProcessSession(), readonly ? RTM_LOCK_READ : RTM_LOCK_WRITE, SDS_LOCK_TIMEOUT);
+        if (conn)
+            return conn->getRoot();
+    }
+    return getPackageMapById(id, readonly);
+}
+
 extern WORKUNIT_API IPropertyTree * getPackageSetById(const char * id, bool readonly)
 {
+    if (!id || !*id)
+        return NULL;
     StringBuffer xpath;
     xpath.append("/PackageSets/PackageSet[@id=\"").append(id).append("\"]");
     Owned<IRemoteConnection> conn = querySDS().connect(xpath.str(), myProcessSession(), readonly ? RTM_LOCK_READ : RTM_LOCK_WRITE, SDS_LOCK_TIMEOUT);
@@ -227,8 +248,27 @@ extern WORKUNIT_API IPropertyTree * getPackageSetById(const char * id, bool read
     return conn->getRoot();
 }
 
+extern WORKUNIT_API IPropertyTree * resolveActivePackageMap(const char *process, const char *target, bool readonly)
+{
+    if (!target || !*target)
+        return NULL;
+    Owned<IPropertyTree> ps = resolvePackageSetRegistry(process, true);
+    if (!ps)
+        return NULL;
+    Owned<IPropertyTreeIterator> it = ps->getElements("PackageMap[@active='1']");
+    ForEach(*it)
+    {
+        IPropertyTree &pm = it->query();
+        if (checkPackageMapMatchesTarget(target, pm.queryProp("@querySet")))
+            return getPackageMapById(pm.queryProp("@id"), readonly);
+    }
+    return NULL;
+}
+
 extern WORKUNIT_API IPropertyTree * resolvePackageSetRegistry(const char *process, bool readonly)
 {
+    if (!process || !*process)
+        return NULL;
     Owned<IRemoteConnection> globalLock = querySDS().connect("/PackageSets/", myProcessSession(), RTM_LOCK_WRITE|RTM_CREATE_QUERY, SDS_LOCK_TIMEOUT);
     Owned<IPropertyTree> psroot = globalLock->getRoot();
 

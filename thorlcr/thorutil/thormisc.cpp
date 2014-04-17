@@ -320,8 +320,6 @@ CThorException *_ThorWrapException(IException *e, const char *format, va_list ar
 IThorException *MakeThorFatal(IException *e, int code, const char *format, ...)
 {
     CThorException *te = QUERYINTERFACE(e, CThorException);
-    va_list args;
-    va_start(args, format);
     if (te)
         te->Link();
     else
@@ -586,24 +584,12 @@ public:
     }
     void setTempDir(const char *name, const char *_tempPrefix, bool clear)
     {
+        assertex(name && *name);
         CriticalBlock block(crit);
         assertex(tempdir.isEmpty()); // should only be called once
         tempPrefix.set(_tempPrefix);
-        StringBuffer base;
-        if (name&&*name) {
-            base.append(name);
-            addPathSepChar(base);
-        }
-        else
-        {
-#ifdef _WIN32
-            base.append("c:\\thortemp");
-#else
-            base.append("/c$/thortemp");
-#endif
-            base.append("_").append(globals->queryProp("@name"));
-            addPathSepChar(base);
-        }
+        StringBuffer base(name);
+        addPathSepChar(base);
         tempdir.set(base.toCharArray());
         recursiveCreateDirectory(tempdir);
 #ifdef _WIN32
@@ -616,7 +602,8 @@ public:
             unsigned d = getPathDrive(tempdir);
             if (d>1)
                 altallowed = false;
-            else {
+            else
+            {
                 StringBuffer p(tempdir);
                 alttempdir.set(setPathDrive(p,d?0:1).str());
                 recursiveCreateDirectory(alttempdir);
@@ -921,9 +908,9 @@ bool getBestFilePart(CActivityBase *activity, IPartDescriptor &partDesc, OwnedIF
                     location = l;
                     if (0 != l)
                     {
-                        IThorException *e = MakeActivityWarning(activity, 0, "Primary file missing: %s, using remote copy: %s", primaryName.str(), locationName.str());
+                        Owned<IThorException> e = MakeActivityWarning(activity, 0, "Primary file missing: %s, using remote copy: %s", primaryName.str(), locationName.str());
                         if (!eHandler)
-                            throw e;
+                            throw e.getClear();
                         eHandler->fireException(e);
                     }
                     path.append(locationName);
@@ -1236,8 +1223,8 @@ void sendInChunks(ICommunicator &comm, rank_t dst, mptag_t mpTag, IRowStream *in
 void logDiskSpace()
 {
     StringBuffer diskSpaceMsg("Disk space: ");
-    diskSpaceMsg.append(queryBaseDirectory()).append(" = ").append(getFreeSpace(queryBaseDirectory())/0x100000).append(" MB, ");
-    diskSpaceMsg.append(queryBaseDirectory(true)).append(" = ").append(getFreeSpace(queryBaseDirectory(true))/0x100000).append(" MB, ");
+    diskSpaceMsg.append(queryBaseDirectory(grp_unknown, 0)).append(" = ").append(getFreeSpace(queryBaseDirectory(grp_unknown, 0))/0x100000).append(" MB, ");
+    diskSpaceMsg.append(queryBaseDirectory(grp_unknown, 1)).append(" = ").append(getFreeSpace(queryBaseDirectory(grp_unknown, 1))/0x100000).append(" MB, ");
     const char *tempDir = globals->queryProp("@thorTempDirectory");
     diskSpaceMsg.append(tempDir).append(" = ").append(getFreeSpace(tempDir)/0x100000).append(" MB");
     PROGLOG("%s", diskSpaceMsg.str());

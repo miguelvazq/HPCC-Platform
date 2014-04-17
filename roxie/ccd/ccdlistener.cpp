@@ -131,8 +131,8 @@ static void sendHttpException(SafeSocket &client, TextMarkupFormat fmt, IExcepti
 class CHttpRequestAsyncFor : public CInterface, public CAsyncFor
 {
 private:
-    const char *queryName, *queryText;
-    const IRoxieContextLogger &logctx;
+    const char *queryName, *queryText, *querySetName;
+    const ContextLogger &logctx;
     IArrayOf<IPropertyTree> &requestArray;
     Linked<IQueryFactory> f;
     SafeSocket &client;
@@ -143,8 +143,10 @@ private:
     CriticalSection crit;
 
 public:
-    CHttpRequestAsyncFor(const char *_queryName, IQueryFactory *_f, IArrayOf<IPropertyTree> &_requestArray, SafeSocket &_client, HttpHelper &_httpHelper, unsigned &_memused, unsigned &_slaveReplyLen, const char *_queryText, const IRoxieContextLogger &_logctx, PTreeReaderOptions _xmlReadFlags) :
-      f(_f), requestArray(_requestArray), client(_client), httpHelper(_httpHelper), memused(_memused), slaveReplyLen(_slaveReplyLen), logctx(_logctx), xmlReadFlags(_xmlReadFlags)
+    CHttpRequestAsyncFor(const char *_queryName, IQueryFactory *_f, IArrayOf<IPropertyTree> &_requestArray, SafeSocket &_client, HttpHelper &_httpHelper, unsigned &_memused,
+                            unsigned &_slaveReplyLen, const char *_queryText, const ContextLogger &_logctx, PTreeReaderOptions _xmlReadFlags, const char *_querySetName)
+    : f(_f), requestArray(_requestArray), client(_client), httpHelper(_httpHelper), memused(_memused),
+      slaveReplyLen(_slaveReplyLen), logctx(_logctx), xmlReadFlags(_xmlReadFlags), querySetName(_querySetName)
     {
         queryName = _queryName;
         queryText = _queryText;
@@ -168,7 +170,7 @@ public:
         try
         {
             IPropertyTree &request = requestArray.item(idx);
-            Owned<IRoxieServerContext> ctx = f->createContext(&request, client, httpHelper.queryContentFormat(), false, false, httpHelper, true, logctx, xmlReadFlags);
+            Owned<IRoxieServerContext> ctx = f->createContext(&request, client, httpHelper.queryContentFormat(), false, false, httpHelper, true, logctx, xmlReadFlags, querySetName);
             ctx->process();
             ctx->flush(idx);
             CriticalBlock b(crit);
@@ -244,16 +246,11 @@ class CascadeManager : public CInterface
         }
     }
 
-    SocketEndpoint &queryEndpoint(unsigned idx)
-    {
-        return allRoxieServers.item(idx);
-    }
-
     void connectChild(unsigned idx)
     {
-        if (allRoxieServers.isItem(idx))
+        if (idx < getNumNodes())
         {
-            SocketEndpoint &ep = queryEndpoint(idx);
+            SocketEndpoint ep(roxiePort, getNodeAddress(idx));
             try
             {
                 if (traceLevel)
@@ -518,11 +515,11 @@ public:
         if (traceLevel > 5)
             DBGLOG("doLockGlobal got %d locks", locksGot);
         reply.append("<Lock>").append(locksGot).append("</Lock>");
-        reply.append("<NumServers>").append(allRoxieServers.ordinality()).append("</NumServers>");
+        reply.append("<NumServers>").append(getNumNodes()).append("</NumServers>");
         if (lockAll)
-            return locksGot == allRoxieServers.ordinality();
+            return locksGot == getNumNodes();
         else
-            return locksGot > allRoxieServers.ordinality()/2;
+            return locksGot > getNumNodes()/2;
     }
 
     void doControlQuery(SocketEndpoint &ep, const char *queryText, StringBuffer &reply)
@@ -751,7 +748,7 @@ public:
     {
         bool allowed = true;
         StringBuffer errorMsg;
-        int errorCode;
+        int errorCode = -1;
         ForEachItemIn(idx, accessTable)
         {
             AccessTableEntry &item = accessTable.item(idx);
@@ -1131,8 +1128,25 @@ public:
             throw MakeStringException(ROXIE_DALI_ERROR, "Failed to open workunit %s", wuid.get());
         SCMStringBuffer target;
         wu->getClusterName(target);
-        Owned<IQueryFactory> queryFactory = createServerQueryFactoryFromWu(wu);
         Owned<StringContextLogger> logctx = new StringContextLogger(wuid.get());
+        Owned<IQueryFactory> queryFactory;
+        try
+        {
+            queryFactory.setown(createServerQueryFactoryFromWu(wu));
+        }
+        catch (IException *E)
+        {
+            reportException(wu, E, *logctx);
+            throw E;
+        }
+#ifndef _DEBUG
+        catch(...)
+        {
+            reportUnknownException(wu, *logctx);
+            throw;
+        }
+#endif
+
         doMain(wu, queryFactory, *logctx);
         sendUnloadMessage(queryFactory->queryHash(), wuid.get(), *logctx);
         queryFactory.clear();
@@ -1176,7 +1190,10 @@ public:
             Owned<IRoxieServerContext> ctx = queryFactory->createContext(wu, logctx);
             try
             {
-                ctx->process();
+                {
+                    MTIME_SECTION(logctx.queryTimer(), "Process");
+                    ctx->process();
+                }
                 memused = ctx->getMemoryUsage();
                 slavesReplyLen = ctx->getSlavesReplyLen();
                 ctx->done(false);
@@ -1203,9 +1220,7 @@ public:
 #ifndef _DEBUG
         catch(...)
         {
-            IException *E = MakeStringException(ROXIE_INTERNAL_ERROR, "Unknown exception");
-            reportException(wu, E, logctx);
-            E->Release();
+            reportUnknownException(wu, logctx);
         }
 #endif
         unsigned elapsed = msTick() - qstart;
@@ -1219,6 +1234,13 @@ public:
     }
 
 private:
+#ifndef _DEBUG
+    void reportUnknownException(IConstWorkUnit *wu, const IRoxieContextLogger &logctx)
+    {
+        Owned<IException> E = MakeStringException(ROXIE_INTERNAL_ERROR, "Unknown exception");
+        reportException(wu, E, logctx);
+    }
+#endif
     void reportException(IConstWorkUnit *wu, IException *E, const IRoxieContextLogger &logctx)
     {
         logctx.CTXLOG("FAILED: %s", wuid.get());
@@ -1616,7 +1638,8 @@ readAnother:
                     }
                     else
                     {
-                        queryFactory.setown(globalPackageSetManager->getQuery(queryName, logctx));
+                        StringBuffer querySetName;
+                        queryFactory.setown(globalPackageSetManager->getQuery(queryName, &querySetName, logctx));
                         if (isHTTP)
                             client->setHttpMode(queryName, isRequestArray, httpHelper.queryContentFormat());
                         if (queryFactory)
@@ -1702,12 +1725,12 @@ readAnother:
                             combinedQueryStats.noteActive();
                             if (isHTTP)
                             {
-                                CHttpRequestAsyncFor af(queryName, queryFactory, requestArray, *client, httpHelper, memused, slavesReplyLen, sanitizedText, logctx, xmlReadFlags);
+                                CHttpRequestAsyncFor af(queryName, queryFactory, requestArray, *client, httpHelper, memused, slavesReplyLen, sanitizedText, logctx, xmlReadFlags, querySetName);
                                 af.For(requestArray.length(), numRequestArrayThreads);
                             }
                             else
                             {
-                                Owned<IRoxieServerContext> ctx = queryFactory->createContext(queryXml, *client, mlFmt, isRaw, isBlocked, httpHelper, trim, logctx, xmlReadFlags);
+                                Owned<IRoxieServerContext> ctx = queryFactory->createContext(queryXml, *client, mlFmt, isRaw, isBlocked, httpHelper, trim, logctx, xmlReadFlags, querySetName);
                                 if (client && !ctx->outputResultsToSocket())
                                 {
                                     unsigned replyLen = 0;

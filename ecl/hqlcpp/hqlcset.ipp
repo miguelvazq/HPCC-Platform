@@ -32,8 +32,8 @@ public:
     virtual void buildCountDict(BuildCtx & ctx, CHqlBoundExpr & tgt);
     virtual void buildExistsDict(BuildCtx & ctx, CHqlBoundExpr & tgt);
 
+    using IHqlCppDatasetCursor::buildIterateClass;
 protected:
-    virtual void buildIterateClass(BuildCtx & ctx, StringBuffer & cursorName, BuildCtx * initctx) = 0;
     IHqlExpression * createRow(BuildCtx & ctx, const char * prefix, StringBuffer & rowName, bool conditional);
 
 protected:
@@ -71,6 +71,21 @@ class InlineLinkedDatasetCursor : public BaseDatasetCursor
 {
 public:
     InlineLinkedDatasetCursor(HqlCppTranslator & _translator, IHqlExpression * _ds, CHqlBoundExpr & _boundDs);
+
+    virtual void buildCount(BuildCtx & ctx, CHqlBoundExpr & tgt);
+    virtual void buildExists(BuildCtx & ctx, CHqlBoundExpr & tgt);
+    virtual BoundRow * buildIterateLoop(BuildCtx & ctx, bool needToBreak) { return doBuildIterateLoop(ctx, needToBreak, false); }
+    virtual BoundRow * buildSelectNth(BuildCtx & ctx, IHqlExpression * indexExpr);
+    virtual void buildIterateClass(BuildCtx & ctx, StringBuffer & cursorName, BuildCtx * initctx);
+
+protected:
+    BoundRow * doBuildIterateLoop(BuildCtx & ctx, bool needToBreak, bool checkForNull);
+};
+
+class StreamedDatasetCursor : public BaseDatasetCursor
+{
+public:
+    StreamedDatasetCursor(HqlCppTranslator & _translator, IHqlExpression * _ds, CHqlBoundExpr & _boundDs);
 
     virtual void buildCount(BuildCtx & ctx, CHqlBoundExpr & tgt);
     virtual void buildExists(BuildCtx & ctx, CHqlBoundExpr & tgt);
@@ -231,7 +246,7 @@ public:
     IMPLEMENT_IINTERFACE
 
     virtual BoundRow * buildCreateRow(BuildCtx & ctx);
-    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, _ATOM serializeForm);
+    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, IAtom * serializeForm);
     virtual void finishRow(BuildCtx & ctx, BoundRow * selfCursor);
 
 protected:
@@ -268,7 +283,7 @@ public:
 
     virtual void buildDeclare(BuildCtx & ctx);
     virtual BoundRow * buildCreateRow(BuildCtx & ctx);
-    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, _ATOM serializeForm) { throwUnexpected(); }
+    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, IAtom * serializeForm) { throwUnexpected(); }
     virtual void buildFinish(BuildCtx & ctx, const CHqlBoundTarget & target);
     virtual void buildFinish(BuildCtx & ctx, CHqlBoundExpr & bound);
     virtual void finishRow(BuildCtx & ctx, BoundRow * selfCursor);
@@ -357,7 +372,7 @@ public:
 
     virtual void buildDeclare(BuildCtx & ctx);
     virtual BoundRow * buildCreateRow(BuildCtx & ctx);
-    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, _ATOM serializeForm) { throwUnexpected(); }
+    virtual BoundRow * buildDeserializeRow(BuildCtx & ctx, IHqlExpression * serializedInput, IAtom * serializeForm) { throwUnexpected(); }
     virtual void buildFinish(BuildCtx & ctx, const CHqlBoundTarget & target);
     virtual void buildFinish(BuildCtx & ctx, CHqlBoundExpr & bound);
     virtual void finishRow(BuildCtx & ctx, BoundRow * selfCursor);

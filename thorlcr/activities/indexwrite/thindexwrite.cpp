@@ -58,6 +58,7 @@ public:
     }
     virtual void init()
     {
+        CMasterActivity::init();
         OwnedRoxieString fname(helper->getFileName());
         dlfn.set(fname);
         isLocal = 0 != (TIWlocal & helper->getFlags());
@@ -250,7 +251,8 @@ public:
             IPropertyTree &props = fileDesc->queryProperties();
             props.setPropInt64("@recordCount", recordsProcessed);
             props.setProp("@kind", "key");
-            setExpiryTime(props, helper->getExpiryDays());
+            if (0 != (helper->getFlags() & TIWexpires))
+                setExpiryTime(props, helper->getExpiryDays());
             if (TIWupdate & helper->getFlags())
             {
                 unsigned eclCRC;
@@ -266,6 +268,7 @@ public:
             if (!dlfn.isExternal())
                 queryThorFileManager().publish(container.queryJob(), fname, false, *fileDesc);
         }
+        CMasterActivity::done();
     }
     virtual void slaveDone(size32_t slaveIdx, MemoryBuffer &mb)
     {

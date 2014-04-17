@@ -147,9 +147,9 @@ void TransformSequenceBuilder::buildSequence(BuildCtx & ctx, BuildCtx * declarec
             }
             OwnedHqlExpr test = getInverse(cond);
             if (translator.queryOptions().foldFilter)
-                test.setown(foldScopedHqlExpression(expr->queryChild(0)->queryNormalizedSelector(), test));
+                test.setown(foldScopedHqlExpression(translator.queryErrorProcessor(), expr->queryChild(0)->queryNormalizedSelector(), test));
             if (translator.queryOptions().spotCSE)
-                test.setown(spotScalarCSE(test));
+                test.setown(spotScalarCSE(test, NULL, translator.queryOptions().spotCseInIfDatasetConditions));
             translator.buildFilteredReturn(ctx, test, failedFilterValue);
         }
         break;
@@ -199,7 +199,7 @@ IHqlExpression * gatherSelectorLevels(HqlExprArray & iterators, IHqlExpression *
         if (!root || root->getOperator() != no_select)
             return expr;
         iterators.add(*LINK(expr), 0);
-        if (!root->hasProperty(newAtom))
+        if (!root->hasAttribute(newAtom))
             return NULL;
         expr = root->queryChild(0);
     }

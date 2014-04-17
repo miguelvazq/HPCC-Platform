@@ -359,6 +359,14 @@ public:
     {
         return ctx->queryDebugContext();
     }
+    virtual bool queryTraceActivityTimes() const
+    {
+        return ctx->queryTraceActivityTimes();
+    }
+    virtual bool queryCheckingHeap() const
+    {
+        return ctx->queryCheckingHeap();
+    }
     virtual bool queryTimeActivities() const
     {
         return ctx->queryTimeActivities();
@@ -897,6 +905,7 @@ protected:
     activityState state;
     bool createPending;
     bool debugging;
+    bool timeActivities;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -918,6 +927,7 @@ public:
         debugging = _probeManager != NULL; // Don't want to collect timing stats from debug sessions
         colocalParent = NULL;
         createPending = true;
+        timeActivities = defaultTimeActivities;
     }
     
     CRoxieServerActivity(IHThorArg & _helper) : factory(NULL), basehelper(_helper)
@@ -933,6 +943,7 @@ public:
         debugging = false;
         colocalParent = NULL;
         createPending = true;
+        timeActivities = defaultTimeActivities;
     }
 
     inline ~CRoxieServerActivity()
@@ -1119,6 +1130,8 @@ public:
         totalCycles = 0;
         if (factory)
             factory->onCreateChildQueries(_ctx, &basehelper, childGraphs);
+        if (ctx)
+            timeActivities = ctx->queryTimeActivities();
     }
 
     virtual void serializeCreateStartContext(MemoryBuffer &out)
@@ -1169,6 +1182,15 @@ public:
         {
             if (dependencyControlIds.item(idx) == controlId)
                 dependencies.item(idx).execute(parentExtractSize, parentExtract);
+        }
+    }
+
+    void stopDependencies(unsigned parentExtractSize, const byte *parentExtract, unsigned controlId)
+    {
+        ForEachItemIn(idx, dependencies)
+        {
+            if (dependencyControlIds.item(idx) == controlId)
+                dependencies.item(idx).stop(false);
         }
     }
 
@@ -1251,7 +1273,7 @@ public:
                     CTXLOG("STATE: activity %d reset without stop", activityId);
                     stop(false);
                 }
-                if (ctx->queryTimeActivities())
+                if (ctx->queryTraceActivityTimes())
                 {
                     stats.dumpStats(*this);
                     StringBuffer prefix, text;
@@ -1742,6 +1764,7 @@ class CRoxieServerReadAheadInput : public CInterface, implements IRoxieInput, im
     unsigned preload;
     unsigned __int64 totalCycles;
     IRoxieSlaveContext *ctx;
+    bool timeActivities;
 
 public:
     IMPLEMENT_IINTERFACE;
@@ -1751,12 +1774,15 @@ public:
         disabled = false;
         totalCycles = 0;
         ctx = NULL;
+        timeActivities = defaultTimeActivities;
     }
 
     void onCreate(IRoxieSlaveContext *_ctx)
     {
         ctx = _ctx;
         disabled = (ctx->queryDebugContext() != NULL);
+        if (ctx)
+            timeActivities = ctx->queryTimeActivities();
     }
 
     virtual IRoxieServerActivity *queryActivity()
@@ -3356,6 +3382,7 @@ public:
     mutable CriticalSection buffersCrit;
     unsigned processed;
     unsigned __int64 totalCycles;
+    bool timeActivities;
 
 //private:   //vc6 doesn't like this being private yet accessed by nested class...
     const void *getRow(IMessageUnpackCursor *mu) 
@@ -3401,10 +3428,14 @@ private:
                 unsigned char ctxTraceLevel = activity.queryLogCtx().queryTraceLevel() + 1; // Avoid passing a 0
                 if (activity.queryLogCtx().isIntercepted())
                     loggingFlags |= LOGGING_INTERCEPTED;
-                if (ctx->queryTimeActivities())
+                if (ctx->queryTraceActivityTimes())
                     loggingFlags |= LOGGING_TIMEACTIVITIES; 
                 if (activity.queryLogCtx().isBlind())
                     loggingFlags |= LOGGING_BLIND;
+                if (ctx->queryCheckingHeap())
+                    loggingFlags |= LOGGING_CHECKINGHEAP;
+                if (ctx->queryWorkUnit())
+                    loggingFlags |= LOGGING_WUID;
                 if (debugContext)
                 {
                     loggingFlags |= LOGGING_DEBUGGERACTIVE;
@@ -3472,9 +3503,11 @@ public:
         processed = 0;
         totalCycles = 0;
         sentSequence = 0;
+        resendSequence = 0;
         serverSideCache = activity.queryServerSideCache();
         bufferStream.setown(createMemoryBufferSerialStream(tempRowBuffer));
         rowSource.setStream(bufferStream);
+        timeActivities = defaultTimeActivities;
     }
 
     ~CRemoteResultAdaptor()
@@ -3557,7 +3590,7 @@ public:
                 // Need to add first, then send
                 unsigned i;
                 bool allCached = true;
-                for (i = 1; i <= numActiveChannels; i++)
+                for (i = 1; i <= numChannels; i++)
                 {
                     IRoxieQueryPacket *q = p->clonePacket(i);
                     bool thisChannelCached;
@@ -3667,6 +3700,8 @@ public:
         }
         if (ctx->queryDebugContext() && ctx->queryDebugContext()->getExecuteSequentially())
             deferredStart = true;
+        if (ctx)
+            timeActivities = ctx->queryTimeActivities();
     }
 
     virtual unsigned queryId() const
@@ -3799,8 +3834,8 @@ public:
             ctx->addSlavesReplyLen(mc->queryBytesReceived());
         mc.clear(); // Or we won't free memory for graphs that get recreated
         mu.clear(); //ditto
-        mergeOrder = NULL; // MORE - is that needed?
         deferredStart = false;
+        // NOTE: do NOT clear mergeOrder - this is set at create time not per child query
     }
 
     virtual IOutputMetaData * queryOutputMeta() const
@@ -4991,6 +5026,72 @@ IRoxieServerActivityFactory *createRoxieServerNewChildThroughNormalizeActivityFa
 
 //=================================================================================
 
+class CRoxieServerDistributionActivity : public CRoxieServerInternalSinkActivity
+{
+    IHThorDistributionArg &helper;
+
+public:
+    CRoxieServerDistributionActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
+        : CRoxieServerInternalSinkActivity(_factory, _probeManager), helper((IHThorDistributionArg &)basehelper)
+    {
+    }
+
+    virtual void onExecute()
+    {
+        MemoryAttr ma;
+        IDistributionTable * * accumulator = (IDistributionTable * *)ma.allocate(helper.queryInternalRecordSize()->getMinRecordSize());
+        helper.clearAggregate(accumulator);
+
+        OwnedConstRoxieRow nextrec(input->nextInGroup());
+        loop
+        {
+            if (!nextrec)
+            {
+                nextrec.setown(input->nextInGroup());
+                if (!nextrec)
+                    break;
+            }
+            helper.process(accumulator, nextrec);
+            nextrec.setown(input->nextInGroup());
+        }
+        StringBuffer result;
+        result.append("<XML>");
+        helper.gatherResult(accumulator, result);
+        result.append("</XML>");
+        helper.sendResult(result.length(), result.str());
+        helper.destruct(accumulator);
+    }
+};
+
+class CRoxieServerDistributionActivityFactory : public CRoxieServerActivityFactory
+{
+    bool isRoot;
+public:
+    CRoxieServerDistributionActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, bool _isRoot)
+        : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind), isRoot(_isRoot)
+    {
+    }
+
+    virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
+    {
+        return new CRoxieServerDistributionActivity(this, _probeManager);
+    }
+
+    virtual bool isSink() const
+    {
+        return isRoot;
+    }
+};
+
+IRoxieServerActivityFactory *createRoxieServerDistributionActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, bool _isRoot)
+{
+    return new CRoxieServerDistributionActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _isRoot);
+}
+
+
+
+//=================================================================================
+
 class CRoxieServerLinkedRawIteratorActivity : public CRoxieServerActivity
 {
     IHThorLinkedRawIteratorArg &helper;
@@ -5139,6 +5240,8 @@ public:
     CRoxieServerInlineTableActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
         : CRoxieServerActivity(_factory, _probeManager), helper((IHThorInlineTableArg &) basehelper)
     {
+        curRow = 0;
+        numRows = 0;
     }
 
     virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
@@ -5580,6 +5683,18 @@ public:
         result = rtlLinkRowset(rowset);
         countResult = count;
      }
+
+    virtual const void * getLinkedRowResult()
+    {
+        if (!complete)
+            throw MakeStringException(ROXIE_GRAPH_PROCESSING_ERROR, "Internal Error: Reading uninitialised graph result");
+
+        if (count != 1)
+            throw MakeStringException(ROXIE_GRAPH_PROCESSING_ERROR, "Internal Error: Expected a single row result");
+        const void * ret = rowset[0];
+        LinkRoxieRow(ret);
+        return ret;
+    }
 
 //other 
     const void * getRow(unsigned i)
@@ -7315,7 +7430,7 @@ class CSpillingQuickSortAlgorithm : implements CInterfaceOf<ISortAlgorithm>, imp
 
 public:
     CSpillingQuickSortAlgorithm(ICompare *_compare, IRoxieSlaveContext * _ctx, IOutputMetaData * _rowMeta, unsigned _activityId)
-        : rowsToSort(&_ctx->queryRowManager(), InitialSortElements, CommitStep), ctx(_ctx), compare(_compare), rowMeta(_rowMeta), activityId(_activityId)
+        : rowsToSort(&_ctx->queryRowManager(), InitialSortElements, CommitStep, _activityId), ctx(_ctx), compare(_compare), rowMeta(_rowMeta), activityId(_activityId)
     {
         ctx->queryRowManager().addRowBuffer(this);
     }
@@ -7397,7 +7512,7 @@ public:
     }
 
 //interface roxiemem::IBufferedRowCallback
-    virtual unsigned getPriority() const
+    virtual unsigned getSpillCost() const
     {
         //Spill global sorts before grouped sorts
         if (rowMeta->isGrouped())
@@ -8257,7 +8372,7 @@ public:
 
         virtual const void * nextInGroup()
         {
-            ActivityTimer t(totalCycles, timeActivities, parent->ctx->queryDebugContext());
+            ActivityTimer t(totalCycles, parent->timeActivities, parent->ctx->queryDebugContext());
             if (eof)
                 return NULL;
             const void *ret = parent->readBuffered(idx, oid);
@@ -8285,7 +8400,7 @@ public:
         virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
         {
             // NOTE: it is tempting to move the init() of all output adaptors here. However that is not a good idea, 
-            // since adaptors that have not yet started or stoppped (but are going to) still need to have been init()'ed 
+            // since adaptors that have not yet started or stopped (but are going to) still need to have been init()'ed
             // for minIndex to give the correct answers
             // therefore, we call init() on all adaptors on receipt of the first start() or stop()
 
@@ -8310,7 +8425,8 @@ public:
         {
             if (traceStartStop)
                 parent->CTXLOG("%p reset Input adaptor %d stopped = %d", this, oid, stopped);
-            parent->reset(oid, processed);
+            parent->reset(oid);
+            parent->noteProcessed(oid, processed, 0, 0);
             processed = 0;
             idx = 0; // value should not be relevant really but this is the safest...
             stopped = false;
@@ -8406,7 +8522,6 @@ public:
                     const void *row = input->nextInGroup();
                     CriticalBlock b3(crit);
                     headIdx++;
-                    if (row) processed++;
                     if (activeOutputs==1)
                     {
 #ifdef TRACE_SPLIT
@@ -8538,7 +8653,7 @@ public:
         CRoxieServerActivity::stop(aborting);
     };
 
-    void reset(unsigned oid, unsigned _processed)
+    void reset(unsigned oid)
     {
         if (traceStartStop)
             CTXLOG("SPLIT %p: reset %d child %d activeOutputs %d numOutputs %d numOriginalOutputs %d state %s", this, activityId, oid, activeOutputs, numOutputs, numOriginalOutputs, queryStateText(state));
@@ -10805,7 +10920,8 @@ public:
         {
             // caller has already set @size from file size...
             fileProps.setPropBool("@blockCompressed", true);
-            partProps.setPropInt64("@compressedSize", partProps.getPropInt64("@size", 0));  // MORE should this be on logical too?
+            fileProps.setPropInt64("@compressedSize", partProps.getPropInt64("@size", 0));
+            partProps.setPropInt64("@compressedSize", partProps.getPropInt64("@size", 0));
             fileProps.setPropInt64("@size", uncompressedBytesWritten);
             partProps.setPropInt64("@size", uncompressedBytesWritten);
         }
@@ -10834,7 +10950,8 @@ public:
             fileProps.setProp("@workunit", workUnit->getWuid(wuid).str());
             fileProps.setProp("@job", workUnit->getJobName(job).str());
         }
-        setExpiryTime(fileProps, helper.getExpiryDays());
+        if (flags & TDWexpires)
+            setExpiryTime(fileProps, helper.getExpiryDays());
         if (flags & TDWupdate)
         {
             unsigned eclCRC;
@@ -10852,6 +10969,7 @@ public:
         const char *recordECL = helper.queryRecordECL();
         if (recordECL && *recordECL)
             fileProps.setProp("ECL", recordECL);
+        fileProps.setProp("@kind", "flat"); // default, derivitives may override
     }
 
     virtual IUserDescriptor *queryUserDescriptor() const
@@ -10937,6 +11055,7 @@ public:
         props.setProp("@csvQuote", rs.setown(csvParameters->getQuote(0)));
         props.setProp("@csvTerminate", rs.setown(csvParameters->getTerminator(0)));
         props.setProp("@csvEscape", rs.setown(csvParameters->getEscape(0)));
+        props.setProp("@kind", "csv");
     }
 
     virtual bool isOutputTransformed() const { return true; }
@@ -11008,6 +11127,7 @@ public:
         CRoxieServerDiskWriteActivity::setFileProperties(desc);
         desc->queryProperties().setProp("@format","utf8n");
         desc->queryProperties().setProp("@rowTag",rowTag.get());
+        desc->queryProperties().setProp("@kind", "xml");
     }
 
     virtual bool isOutputTransformed() const { return true; }
@@ -11173,6 +11293,7 @@ public:
     {
         overwrite = ((helper.getFlags() & TIWoverwrite) != 0);
         reccount = 0;
+        fileCrc = 0;
     }
 
     ~CRoxieServerIndexWriteActivity()
@@ -11362,7 +11483,8 @@ public:
         if(rececl && *rececl)
             properties.setProp("ECL", rececl);
 
-        setExpiryTime(properties, helper.getExpiryDays());
+        if (helper.getFlags() & TIWexpires)
+            setExpiryTime(properties, helper.getExpiryDays());
         if (helper.getFlags() & TIWupdate)
         {
             unsigned eclCRC;
@@ -12156,26 +12278,140 @@ IRoxieServerActivityFactory *createRoxieServerJoinActivityFactory(unsigned _id, 
 
 #define CONCAT_READAHEAD 1000
 
-MAKEPointerArray(RecordPullerThread, RecordPullerArray);
-
-class CRoxieServerThreadedConcatActivity : public CRoxieServerActivity, implements IRecordPullerCallback
+class CRoxieThreadedConcatReader : public CInterface, implements IRecordPullerCallback
 {
-    QueueOf<const void, true> buffer;
-    InterruptableSemaphore ready;
+public:
+    IMPLEMENT_IINTERFACE;
+    CRoxieThreadedConcatReader(InterruptableSemaphore &_ready, bool _grouped)
+    : puller(false), grouped(_grouped), atEog(true), ready(_ready), eof(false)
+    {
+    }
+
+    void start(unsigned parentExtractSize, const byte *parentExtract, bool paused, IRoxieSlaveContext *ctx)
+    {
+        space.reinit(CONCAT_READAHEAD);
+        puller.start(parentExtractSize, parentExtract, paused, ctx->concatPreload(), false, ctx);
+    }
+
+    void stop(bool aborting)
+    {
+        space.interrupt();
+        puller.stop(aborting);
+    }
+
+    IRoxieInput *queryInput() const
+    {
+        return puller.queryInput();
+    }
+
+    void reset()
+    {
+        puller.reset();
+        ForEachItemIn(idx, buffer)
+            ReleaseRoxieRow(buffer.item(idx));
+        buffer.clear();
+        eof = false;
+        atEog = true;
+    }
+
+    void setInput(IRoxieInput *_in)
+    {
+        puller.setInput(this, _in);
+    }
+
+    virtual void processRow(const void *row)
+    {
+        buffer.enqueue(row);
+        ready.signal();
+        space.wait();
+    }
+
+    virtual void processGroup(const ConstPointerArray &rows)
+    {
+        // We use record-by-record input mode of the puller thread even in grouped mode.
+        throwUnexpected();
+    }
+
+    virtual void processEOG()
+    {
+        if (grouped)
+            processRow(NULL);
+    }
+
+    virtual void processDone()
+    {
+        processRow(NULL);
+    }
+
+    virtual bool fireException(IException *e)
+    {
+        // called from puller thread on failure
+        ready.interrupt(LINK(e));
+        space.interrupt(e);
+        return true;
+    }
+
+    bool peek(const void * &row, bool &anyActive)
+    {
+        if (!eof)
+        {
+            if (buffer.ordinality())
+            {
+                space.signal();
+                row = buffer.dequeue();
+                if (row==NULL)
+                {
+                    if (atEog)
+                    {
+                        eof = true;
+                        return false;
+                    }
+                    else
+                        atEog = true;
+                }
+                else if (grouped)
+                    atEog = false;
+                return true;
+            }
+            anyActive = true;
+        }
+        return false;
+    }
+
+protected:
+    RecordPullerThread puller;
     InterruptableSemaphore space;
-    CriticalSection crit;
-    unsigned eofs;
-    RecordPullerArray pullers;
+    InterruptableSemaphore &ready;
+    SafeQueueOf<const void, true> buffer;
+    bool atEog;
+    bool eof;
+    bool grouped;
+};
+
+MAKEPointerArray(CRoxieThreadedConcatReader, ReaderArray);
+
+class CRoxieServerThreadedConcatActivity : public CRoxieServerActivity
+{
+    InterruptableSemaphore ready;
+    ReaderArray pullers;
     unsigned numInputs;
+    unsigned nextPuller; // for round robin
+    unsigned readyPending;
+    bool eof;
+    bool inGroup;
+    bool grouped;
 
 public:
     CRoxieServerThreadedConcatActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _grouped, unsigned _numInputs)
-        : CRoxieServerActivity(_factory, _probeManager)
+        : CRoxieServerActivity(_factory, _probeManager), grouped(_grouped)
     {
-        eofs = 0;
         numInputs = _numInputs;
+        eof = (numInputs==0);
+        inGroup = false;
+        nextPuller = 0;
+        readyPending = 0;
         for (unsigned i = 0; i < numInputs; i++)
-            pullers.append(*new RecordPullerThread(_grouped));
+            pullers.append(*new CRoxieThreadedConcatReader(ready, _grouped));
 
     }
 
@@ -12187,23 +12423,23 @@ public:
 
     virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
     {
-        space.reinit(CONCAT_READAHEAD);
+        eof = (numInputs==0);
+        inGroup = false;
+        nextPuller = 0;
+        readyPending = 0;
         ready.reinit();
-        eofs = 0;
         CRoxieServerActivity::start(parentExtractSize, parentExtract, paused);
         ForEachItemIn(idx, pullers)
         {
-            pullers.item(idx).start(parentExtractSize, parentExtract, paused, ctx->concatPreload(), false, ctx);  
+            pullers.item(idx).start(parentExtractSize, parentExtract, paused, ctx);
             // NOTE - it is ok to start the thread running while parts of the subgraph are still being started, since everything 
             // in the part of the subgraph that the thread uses has been started.
             // Note that splitters are supposed to cope with being used when only some outputs have been started.
         }
     }
 
-
     virtual void stop(bool aborting)    
     {
-        space.interrupt();
         ready.interrupt();
         ForEachItemIn(idx, pullers)
             pullers.item(idx).stop(aborting);
@@ -12228,15 +12464,16 @@ public:
         CRoxieServerActivity::reset();
         ForEachItemIn(idx, pullers)
             pullers.item(idx).reset();
-        ForEachItemIn(idx1, buffer)
-            ReleaseRoxieRow(buffer.item(idx1));
-        buffer.clear();
+        eof = false;
+        inGroup = false;
+        nextPuller = 0;
+        readyPending = 0;
     }
 
     virtual void setInput(unsigned idx, IRoxieInput *_in)
     {
         if (pullers.isItem(idx))
-            pullers.item(idx).setInput(this, _in);
+            pullers.item(idx).setInput(_in);
         else
             throw MakeStringException(ROXIE_SET_INPUT, "Internal error: setInput() parameter out of bounds at %s(%d)", __FILE__, __LINE__); 
     }
@@ -12244,74 +12481,48 @@ public:
     virtual const void * nextInGroup()
     {
         ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
+        if (eof)
+            return NULL;
         loop
         {
+            if (readyPending && !inGroup)
             {
-                CriticalBlock b(crit);
-                if (eofs==numInputs && !buffer.ordinality())
-                    return NULL;  // eof
+                if (readyPending > 1)
+                    ready.signal(readyPending-1);
+                readyPending = 0;
             }
-            ready.wait();
-            const void *ret;
+            else
+                ready.wait();
+            bool anyActive = false;
+            ForEachItemIn(unused_index, pullers)
             {
-                CriticalBlock b(crit);
-                ret = buffer.dequeue();
+                // NOTE - we round robin not just because it's more efficient, but because it ensures the preservation of grouping information
+                const void *ret;
+                bool fetched = pullers.item(nextPuller).peek(ret, anyActive);
+                if (fetched)
+                {
+                    inGroup = (ret != NULL);
+                    return ret;
+                }
+                if (inGroup && grouped)
+                {
+                    // Some other puller has data, but we can't consume it until the group we are reading is complete.
+                    readyPending++;
+                    anyActive = true;
+                    break;
+                }
+                nextPuller++;
+                if (nextPuller==pullers.ordinality())
+                    nextPuller = 0;
             }
-            if (ret)
-                processed++;
-            space.signal();
-            return ret;
+            if (!anyActive)
+                break;
+            // A ready signal without anything being ready means someone reached end-of-file.
         }
+        eof = true;
+        return NULL;
     }
 
-    virtual bool fireException(IException *e)
-    {
-        // called from puller thread on failure
-        ready.interrupt(LINK(e));
-        space.interrupt(e);
-        return true;
-    }
-
-    virtual void processRow(const void *row)
-    {
-        {
-            CriticalBlock b(crit);
-            buffer.enqueue(row);
-        }
-        ready.signal();
-        space.wait();
-    }
-
-    virtual void processGroup(const ConstPointerArray &rows)
-    {
-        // NOTE - a bit bizzare in that it waits for the space AFTER using it.
-        // But the space semaphore is only there to stop infinite readahead. And otherwise it would deadlock
-        // if group was larger than max(space)
-        {
-            CriticalBlock b(crit);
-            ForEachItemIn(idx, rows)
-                buffer.enqueue(rows.item(idx));
-            buffer.enqueue(NULL);
-        }
-        for (unsigned i2 = 0; i2 <= rows.length(); i2++) // note - does 1 extra for the null
-        {
-            ready.signal();
-            space.wait();
-        }
-    }
-
-    virtual void processEOG()
-    {
-        // Used when output is not grouped - just ignore
-    }
-
-    virtual void processDone()
-    {
-        CriticalBlock b(crit);
-        eofs++;
-        if (eofs == numInputs)
-            ready.signal();
-    }
 };
 
 class CRoxieServerOrderedConcatActivity : public CRoxieServerActivity
@@ -12336,6 +12547,7 @@ public:
         inputArray = new IRoxieInput*[numInputs];
         for (unsigned i = 0; i < numInputs; i++)
             inputArray[i] = NULL;
+        curInput = NULL;
     }
 
     ~CRoxieServerOrderedConcatActivity()
@@ -14103,6 +14315,7 @@ public:
     {
         probeManager = _probeManager;
         defaultNumParallel = 0;
+        sizeNumParallel = 0;
     }
 
     virtual void onCreate(IRoxieSlaveContext *_ctx, IHThorArg *_colocalParent)
@@ -14438,6 +14651,7 @@ public:
     virtual IOutputRowSerializer * createInternalSerializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual IOutputRowDeserializer * createInternalDeserializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual void walkIndirectMembers(const byte * self, IIndirectMemberVisitor & visitor) {}
+    virtual IOutputMetaData * queryChildMeta(unsigned i) { return NULL; }
 };
 
 class CRoxieServerLoopActivityFactory : public CRoxieServerActivityFactory
@@ -15351,6 +15565,7 @@ public:
         grouped = helper.isGrouped();
         graphId = _graphId;
         selectionIsAll = false;
+        selectionLen = 0;
     }
 
     virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
@@ -15616,7 +15831,10 @@ protected:
 class CRoxieStreamMerger : public CStreamMerger
 {
 public:
-    CRoxieStreamMerger() : CStreamMerger(true) {}
+    CRoxieStreamMerger() : CStreamMerger(true)
+    {
+        inputArray = NULL;
+    }
 
     void initInputs(unsigned _numInputs, IRoxieInput ** _inputArray)
     {
@@ -15910,6 +16128,7 @@ public:
         : CRoxieServerMultiInputActivity(_factory, _probeManager, _numInputs),
           helper((IHThorNWaySelectArg &)basehelper)
     {
+        selectedInput = NULL;
     }
 
     virtual void start(unsigned parentExtractSize, const byte *parentExtract, bool paused)
@@ -16978,19 +17197,36 @@ private:
     class LookupTable : public CInterface
     {
     public:
-        LookupTable(unsigned _size, ICompare * _leftRightCompare, ICompare * _rightCompare, IHash * _leftHash, IHash * _rightHash, bool _dedupOnAdd)
-        : leftRightCompare(_leftRightCompare), rightCompare(_rightCompare), leftHash(_leftHash), rightHash(_rightHash), dedupOnAdd(_dedupOnAdd)
+        LookupTable(IHThorHashJoinArg &helper)
+        : leftRightCompare(helper.queryCompareLeftRight()), rightCompare(helper.queryCompareRight()),
+          leftHash(helper.queryHashLeft()), rightHash(helper.queryHashRight())
         {
-            unsigned minsize = (4*_size)/3;
-            size = 2;
-            while((minsize >>= 1) > 0)
-                size <<= 1;
-            mask = size - 1;
-            table = (const void * *)calloc(size, sizeof(void *));
-            findex = BadIndex;
+            size = 0;
+        }
+        virtual const void *find(const void * left) const = 0;
+        virtual const void *findNext(const void * left) const = 0;
+
+    protected:
+        ICompare * leftRightCompare;
+        ICompare * rightCompare;
+        IHash * leftHash;
+        IHash * rightHash;
+        unsigned size;
+    };
+
+    class DedupLookupTable : public LookupTable
+    {
+    public:
+        DedupLookupTable(ConstPointerArray &rightRows, IHThorHashJoinArg &helper)
+        : LookupTable(helper)
+        {
+            size = (4*rightRows.length())/3 + 1;
+            table = (const void * *)calloc(size, sizeof(void *)); // This should probably be allocated from roxiemem (and size rounded up to actual available size)
+            ForEachItemIn(idx, rightRows)
+                add(rightRows.item(idx));
         }
 
-        ~LookupTable()
+        ~DedupLookupTable()
         {
             unsigned i;
             for(i=0; i<size; i++)
@@ -16998,56 +17234,114 @@ private:
             free(table);
         }
 
+        virtual const void *find(const void * left) const
+        {
+            unsigned index = leftHash->hash(left) % size;
+            unsigned start = index;
+            while (table[index])
+            {
+                if(leftRightCompare->docompare(left, table[index]) == 0)
+                    return table[index];
+                index++;
+                if (index==size)
+                    index = 0;
+                if (index==start)
+                    throw MakeStringException(ROXIE_JOIN_ERROR, "Internal error in lookup join activity (hash table full on lookup)");
+            }
+            return NULL;
+        }
+
+        virtual const void *findNext(const void * left) const
+        {
+            return NULL;
+        }
+
+    protected:
         void add(const void * right)
         {
-            findex = BadIndex;
-            unsigned start = rightHash->hash(right) & mask;
-            unsigned index = start;
-            while(table[index])
+            unsigned index = rightHash->hash(right) % size;
+            unsigned start = index;
+            while (table[index])
             {
-                if(dedupOnAdd && (rightCompare->docompare(table[index], right) == 0))
+                if (rightCompare->docompare(table[index], right) == 0)
                 {
                     ReleaseRoxieRow(right);
                     return;
                 }
                 index++;
-                if(index==size)
+                if (index==size)
                     index = 0;
-                if(index==start)
-                    throwUnexpected(); //table is full, should never happen
+                if (index==start)
+                    throw MakeStringException(ROXIE_JOIN_ERROR, "Internal error in lookup join activity (hash table full on add)");
             }
             table[index] = right;
         }
 
-        const void *find(const void * left) const
+        const void * * table;
+    };
+
+    class FewLookupTable : public LookupTable
+    {
+    public:
+        FewLookupTable(ConstPointerArray &rightRows, IHThorHashJoinArg &helper)
+        : LookupTable(helper)
         {
-            fstart = leftHash->hash(left) & mask;
+            size = (4*rightRows.length())/3 + 1;
+            table = (const void * *)calloc(size, sizeof(void *)); // This should probably be allocated from roxiemem
+            findex = fstart = BadIndex;
+            ForEachItemIn(idx, rightRows)
+                add(rightRows.item(idx));
+        }
+
+        ~FewLookupTable()
+        {
+            unsigned i;
+            for(i=0; i<size; i++)
+                ReleaseRoxieRow(table[i]);
+            free(table);
+        }
+
+        virtual const void *find(const void * left) const
+        {
+            fstart = leftHash->hash(left) % size;
             findex = fstart;
             return doFind(left);
         }
-
-        const void *findNext(const void * left) const
+        virtual const void *findNext(const void * left) const
         {
-            if(findex == BadIndex)
+            if (findex == BadIndex)
                 return NULL;
             advance();
             return doFind(left);
         }
-
+    protected:
+        void add(const void * right)
+        {
+            unsigned start = rightHash->hash(right) % size;
+            unsigned index = start;
+            while (table[index])
+            {
+                index++;
+                if (index==size)
+                    index = 0;
+                if (index==start)
+                    throwUnexpected(); //table is full, should never happen
+            }
+            table[index] = right;
+        }
         void advance() const
         {
             findex++;
             if(findex==size)
                 findex = 0;
             if(findex==fstart)
-                throw MakeStringException(ROXIE_JOIN_ERROR, "Internal error hthor lookup join activity (hash table full on lookup)");
+                throw MakeStringException(ROXIE_JOIN_ERROR, "Internal error in lookup join activity (hash table full on lookup)");
         }
-
         const void *doFind(const void * left) const
         {
             while(table[findex])
             {
-                if(leftRightCompare->docompare(left, table[findex]) == 0)
+                if (leftRightCompare->docompare(left, table[findex]) == 0)
                     return table[findex];
                 advance();
             }
@@ -17055,18 +17349,110 @@ private:
             return NULL;
         }
 
-    private:
-        ICompare * leftRightCompare;
-        ICompare * rightCompare;
-        IHash * leftHash;
-        IHash * rightHash;
-        unsigned size;
-        unsigned mask;
         const void * * table;
-        bool dedupOnAdd;
         unsigned mutable fstart;
         unsigned mutable findex;
         static unsigned const BadIndex;
+    };
+
+    class ManyLookupTable : public LookupTable
+    {
+    public:
+        ManyLookupTable(ConstPointerArray &rightRows, IHThorHashJoinArg &helper)
+        : LookupTable(helper)
+        {
+            rightRows.swapWith(rowtable);
+            UInt64Array groups;
+            unsigned numRows = rowtable.length();
+            if (numRows)
+            {
+                unsigned groupStart = 0;
+                const void *groupStartRow = rowtable.item(0);
+                for (unsigned i=1; i < numRows; i++)
+                {
+                    const void *thisRow = rowtable.item(i);
+                    if (rightCompare->docompare(groupStartRow, thisRow))
+                    {
+                        groups.append(makeint64(groupStart, i-groupStart));
+                        groupStart = i;
+                        groupStartRow = thisRow;
+                    }
+                }
+                groups.append(makeint64(groupStart, numRows-groupStart));
+            }
+            size = (4*groups.length())/3 + 1;
+            table = (__uint64 *) calloc(size, sizeof(__uint64)); // This should probably be allocated from roxiemem
+            ForEachItemIn(idx, groups)
+            {
+                unsigned __int64 group = groups.item(idx);
+                unsigned groupstart = high(group);
+                const void *row = rowtable.item(groupstart);
+                add(row, group);
+            }
+        }
+
+        ~ManyLookupTable()
+        {
+            ForEachItemIn(idx, rowtable)
+            {
+                ReleaseRoxieRow(rowtable.item(idx));
+            }
+            free(table);
+        }
+
+        void add(const void *row, unsigned __int64 group)
+        {
+            unsigned start = rightHash->hash(row) % size;
+            unsigned index = start;
+            while (table[index])
+            {
+                index++;
+                if (index==size)
+                    index = 0;
+                if (index==start)
+                    throwUnexpected(); //table is full, should never happen
+            }
+            table[index] = group;
+        }
+
+        virtual const void *find(const void * left) const
+        {
+            unsigned index = leftHash->hash(left) % size;
+            unsigned start = index;
+            while (table[index])
+            {
+                __uint64 group = table[index];
+                currentMatch = high(group);
+                const void *right = rowtable.item(currentMatch);
+                if (leftRightCompare->docompare(left, right) == 0)
+                {
+                    currentMatch++;
+                    matchCount = low(group) - 1;
+                    return right;
+                }
+                index++;
+                if (index==size)
+                    index = 0;
+                if (index==start)
+                    throw MakeStringException(ROXIE_JOIN_ERROR, "Internal error in lookup join activity (hash table full on lookup)");
+            }
+            matchCount = 0;
+            return NULL;
+        }
+
+        virtual const void *findNext(const void * left) const
+        {
+            if (!matchCount)
+                return NULL;
+            matchCount--;
+            return rowtable.item(currentMatch++);
+        }
+
+    protected:
+        __uint64 *table;
+        ConstPointerArray rowtable;
+        mutable unsigned currentMatch;
+        mutable unsigned matchCount;
     };
 
     IHThorHashJoinArg &helper;
@@ -17075,6 +17461,7 @@ private:
     bool eog;
     bool many;
     bool dedupRHS;
+    bool useFewTable;
     bool matchedGroup;
     const void *left;
     OwnedConstRoxieRow defaultRight;
@@ -17086,6 +17473,7 @@ private:
     bool limitFail;
     bool limitOnFail;
     bool hasGroupLimit;
+    bool isSmartJoin;
     unsigned keepCount;
     bool gotMatch;
     bool cloneLeft;
@@ -17110,8 +17498,8 @@ private:
     }
 
 public:
-    CRoxieServerLookupJoinActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerTwoInputActivity(_factory, _probeManager), helper((IHThorHashJoinArg &)basehelper)
+    CRoxieServerLookupJoinActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, bool _useFewTable)
+        : CRoxieServerTwoInputActivity(_factory, _probeManager), helper((IHThorHashJoinArg &)basehelper), useFewTable(_useFewTable)
     {
         unsigned joinFlags = helper.getJoinFlags();
         leftOuterJoin = (joinFlags & JFleftouter) != 0;
@@ -17130,14 +17518,15 @@ public:
         atmostLimit = 0;
         atmostsTriggered = 0;
         limitLimit = 0;
+        rightGroupIndex = 0;
         hasGroupLimit = false;
-        getLimitType(helper.getJoinFlags(), limitFail, limitOnFail);
+        isSmartJoin = (joinFlags & JFsmart) != 0;
+        getLimitType(joinFlags, limitFail, limitOnFail);
     }
 
     void loadRight()
     {
         ConstPointerArray rightset;
-        unsigned i = 0;
         try
         {
             const void * next;
@@ -17150,17 +17539,47 @@ public:
                     break;
                 rightset.append(next);
             }
-            unsigned rightord = rightset.ordinality();
-            table.setown(new LookupTable(rightord, helper.queryCompareLeftRight(), helper.queryCompareRight(), helper.queryHashLeft(), helper.queryHashRight(), dedupRHS));
-
-            for(i=0; i<rightord; i++)
-                table->add(rightset.item(i));
+            if (!dedupRHS)
+            {
+                if (useFewTable)
+                {
+                    table.setown(new FewLookupTable(rightset, helper));  // NOTE - takes ownership of rightset
+                }
+                else
+                {
+                    if (!helper.isRightAlreadySorted())
+                    {
+                        if (helper.getJoinFlags() & JFunstable)
+                        {
+                            qsortvec(const_cast<void * *>(rightset.getArray()), rightset.ordinality(), *helper.queryCompareRight());
+                        }
+                        else
+                        {
+                            unsigned rightord = rightset.ordinality();
+                            MemoryAttr tempAttr(rightord*sizeof(void **)); // Temp storage for stable sort. This should probably be allocated from roxiemem
+                            void **temp = (void **) tempAttr.bufferBase();
+                            void **_rows = const_cast<void * *>(rightset.getArray());
+                            memcpy(temp, _rows, rightord*sizeof(void **));
+                            qsortvecstable(temp, rightord, *helper.queryCompareRight(), (void ***)_rows);
+                            for (int i = 0; i < rightord; i++)
+                            {
+                                *_rows = **((void ***)_rows);
+                                _rows++;
+                            }
+                        }
+                    }
+                    table.setown(new ManyLookupTable(rightset, helper));  // NOTE - takes ownership of rightset
+                }
+            }
+            else
+            {
+                table.setown(new DedupLookupTable(rightset, helper)); // NOTE - takes ownership of rightset
+            }
         }
         catch (...)
         {
-            unsigned rightord = rightset.ordinality();
-            for ( ; i<rightord; i++)
-                ReleaseRoxieRow(rightset.item(i));
+            ForEachItemIn(idx, rightset)
+                ReleaseRoxieRow(rightset.item(idx));
             throw;
         }
     };
@@ -17192,7 +17611,17 @@ public:
         if(atmostLimit==0) atmostLimit = static_cast<unsigned>(-1);
         if(limitLimit==0) limitLimit = static_cast<unsigned>(-1);
         getLimitType(helper.getJoinFlags(), limitFail, limitOnFail);
-        if (((activityKind==TAKlookupjoin || activityKind==TAKlookupdenormalizegroup) && leftOuterJoin) || limitOnFail)
+        switch (activityKind)
+        {
+        case TAKlookupjoin:
+        case TAKlookupdenormalizegroup:
+        case TAKsmartjoin:
+        case TAKsmartdenormalizegroup:
+            if (leftOuterJoin)
+                createDefaultRight();
+            break;
+        }
+        if (limitOnFail)
             createDefaultRight();
     }
 
@@ -17220,9 +17649,12 @@ public:
         switch (activityKind)
         {
             case TAKlookupjoin:
+            case TAKsmartjoin:
                 return nextInGroupJoin();
             case TAKlookupdenormalize:
             case TAKlookupdenormalizegroup:
+            case TAKsmartdenormalize:
+            case TAKsmartdenormalizegroup:
                 return nextInGroupDenormalize();
         }
         throwUnexpected();
@@ -17242,14 +17674,20 @@ private:
                 keepCount = keepLimit;
                 if(!left)
                 {
-                    if(matchedGroup || eog)
+                    if (isSmartJoin)
+                        left = input->nextInGroup();
+
+                    if (!left)
                     {
-                        matchedGroup = false;
+                        if(matchedGroup || eog)
+                        {
+                            matchedGroup = false;
+                            eog = true;
+                            return NULL;
+                        }
                         eog = true;
-                        return NULL;
+                        continue;
                     }
-                    eog = true;
-                    continue;
                 }
                 eog = false;
                 gotMatch = false;
@@ -17306,7 +17744,7 @@ private:
             left = input->nextInGroup();
             if(!left)
             {
-                if (!matchedGroup)
+                if (!matchedGroup || isSmartJoin)
                     left = input->nextInGroup();
 
                 if (!left)
@@ -17321,7 +17759,7 @@ private:
             const void * ret = NULL;
             if (failingLimit)
                 ret = joinException(left, failingLimit);
-            else if (activityKind == TAKlookupdenormalize)
+            else if (activityKind == TAKlookupdenormalize || activityKind == TAKsmartdenormalize)
             {
                 OwnedConstRoxieRow newLeft;
                 newLeft.set(left);
@@ -17515,28 +17953,31 @@ private:
     
 };
 
-unsigned const CRoxieServerLookupJoinActivity::LookupTable::BadIndex(static_cast<unsigned>(-1));
+unsigned const CRoxieServerLookupJoinActivity::FewLookupTable::BadIndex(static_cast<unsigned>(-1));
 
 class CRoxieServerLookupJoinActivityFactory : public CRoxieServerJoinActivityFactory
 {
 public:
-    CRoxieServerLookupJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind)
+    CRoxieServerLookupJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
         : CRoxieServerJoinActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind)
     {
         Owned<IHThorHashJoinArg> helper = (IHThorHashJoinArg *) helperFactory();
+        useFewTable = _graphNode.getPropBool("hint[@name='usefewtable']/@value", false);
         if((helper->getJoinFlags() & (JFfirst | JFfirstleft | JFfirstright | JFslidingmatch)) != 0)
             throw MakeStringException(ROXIE_INVALID_FLAGS, "Invalid flags for lookup join activity"); // code generator should never create such an activity
     }
 
     virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
     {
-        return new CRoxieServerLookupJoinActivity(this, _probeManager);
+        return new CRoxieServerLookupJoinActivity(this, _probeManager, useFewTable);
     }
+protected:
+    bool useFewTable;
 };
 
-IRoxieServerActivityFactory *createRoxieServerLookupJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind)
+IRoxieServerActivityFactory *createRoxieServerLookupJoinActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
 {
-    return new CRoxieServerLookupJoinActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind);
+    return new CRoxieServerLookupJoinActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode);
 }
 
 //=====================================================================================================
@@ -18852,12 +19293,13 @@ public:
 
     virtual void doExecuteAction(unsigned parentExtractSize, const byte * parentExtract) 
     {
-        int controlId;
+        bool cond;
         {
             ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
-            controlId = helper.getCondition() ? 1 : 2;
+            cond = helper.getCondition();
         }
-        executeDependencies(parentExtractSize, parentExtract, controlId);
+        stopDependencies(parentExtractSize, parentExtract, cond ? 2 : 1);
+        executeDependencies(parentExtractSize, parentExtract, cond ? 1 : 2);
     }
 
 };
@@ -19007,7 +19449,10 @@ public:
     virtual void stop(bool aborting)
     {
         if (state != STATEstopped)
-            executeDependencies(savedExtractSize, savedExtract, aborting ? WhenFailureId : WhenSuccessId);
+        {
+            stopDependencies(savedExtractSize, savedExtract, aborting ? WhenSuccessId : WhenFailureId);  // These ones don't get executed
+            executeDependencies(savedExtractSize, savedExtract, aborting ? WhenFailureId : WhenSuccessId); // These ones do
+        }
         CRoxieServerActivity::stop(aborting);
     }
 
@@ -19067,7 +19512,10 @@ public:
     virtual void stop(bool aborting)
     {
         if (state != STATEstopped)
+        {
+            stopDependencies(savedExtractSize, savedExtract, aborting ? WhenSuccessId : WhenFailureId);  // these are NOT going to execute
             executeDependencies(savedExtractSize, savedExtract, aborting ? WhenFailureId : WhenSuccessId);
+        }
         CRoxieServerActionBaseActivity::stop(aborting);
     }
 
@@ -19301,13 +19749,30 @@ public:
                 response->startDataset("Dataset", helper.queryName(), sequence, (helper.getFlags() & POFextend) != 0);
                 if (response->mlFmt==MarkupFmt_XML || response->mlFmt==MarkupFmt_JSON)
                 {
-                    writer.setown(createIXmlWriter(serverContext->getXmlFlags(), 1, response, (response->mlFmt==MarkupFmt_JSON) ? WTJSON : WTStandard));
+                    unsigned int writeFlags = serverContext->getXmlFlags();
+                    if (response->mlFmt==MarkupFmt_JSON)
+                        writeFlags |= XWFnoindent;
+                    writer.setown(createIXmlWriter(writeFlags, 1, response, (response->mlFmt==MarkupFmt_JSON) ? WTJSON : WTStandard));
                     writer->outputBeginArray("Row");
                 }
             }
 
         }
-        if (serverContext->outputResultsToWorkUnit()||(response && response->isRaw))
+        size32_t outputLimitBytes = 0;
+        IConstWorkUnit *workunit = serverContext->queryWorkUnit();
+        if (workunit)
+        {
+            size32_t outputLimit;
+            if (helper.getFlags() & POFmaxsize)
+                outputLimit = helper.getMaxSize();
+            else
+                outputLimit = workunit->getDebugValueInt("outputLimit", DALI_RESULT_LIMIT_DEFAULT);
+            if (outputLimit>DALI_RESULT_OUTPUTMAX)
+                throw MakeStringException(0, "Dali result outputs are restricted to a maximum of %d MB, the current limit is %d MB. A huge dali result usually indicates the ECL needs altering.", DALI_RESULT_OUTPUTMAX, DALI_RESULT_LIMIT_DEFAULT);
+            assertex(outputLimit<=0x1000); // 32bit limit because MemoryBuffer/CMessageBuffers involved etc.
+            outputLimitBytes = outputLimit * 0x100000;
+        }
+        if (workunit != NULL || (response && response->isRaw))
         {
             createRowAllocator();
             rowSerializer.setown(rowAllocator->createDiskSerializer(ctx->queryCodeContext()));
@@ -19324,7 +19789,7 @@ public:
             }
             if (grouped && (processed != initialProcessed))
             {
-                if (serverContext->outputResultsToWorkUnit())
+                if (workunit)
                     result.append(row == NULL);
                 if (response)
                 {
@@ -19345,7 +19810,7 @@ public:
                     builder.append(row);
             }
             processed++;
-            if (serverContext->outputResultsToWorkUnit())
+            if (workunit)
             {
                 CThorDemoRowSerializer serializerTarget(result);
                 rowSerializer->serialize(serializerTarget, (const byte *) row);
@@ -19377,12 +19842,24 @@ public:
                 response->flush(false);
             }
             ReleaseRoxieRow(row);
+            if (outputLimitBytes && result.length() > outputLimitBytes)
+            {
+                StringBuffer errMsg("Dataset too large to output to workunit (limit ");
+                errMsg.append(outputLimitBytes/0x100000).append(" megabytes), in result (");
+                const char *name = helper.queryName();
+                if (name)
+                    errMsg.append("name=").append(name);
+                else
+                    errMsg.append("sequence=").append(helper.getSequence());
+                errMsg.append(")");
+                throw MakeStringExceptionDirect(0, errMsg.str());
+            }
         }
         if (writer)
             writer->outputEndArray("Row");
         if (saveInContext)
             serverContext->appendResultDeserialized(storedName, sequence, builder.getcount(), builder.linkrows(), (helper.getFlags() & POFextend) != 0, LINK(meta.queryOriginal()));
-        if (serverContext->outputResultsToWorkUnit())
+        if (workunit)
             serverContext->appendResultRawContext(storedName, sequence, result.length(), result.toByteArray(), processed, (helper.getFlags() & POFextend) != 0, false); // MORE - shame to do extra copy...
     }
 };
@@ -19719,7 +20196,7 @@ public:
         isKeyed = false;
         stopAfter = I64C(0x7FFFFFFFFFFFFFFF);
         diskSize.set(helper.queryDiskRecordSize());
-        variableFileName = allFilesDynamic || ((helper.getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((helper.getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
         isOpt = (helper.getFlags() & TDRoptional) != 0;
     }
 
@@ -20743,14 +21220,14 @@ public:
         isLocal = _graphNode.getPropBool("att[@name='local']/@value") && queryFactory.queryChannel()!=0;
         Owned<IHThorDiskReadBaseArg> helper = (IHThorDiskReadBaseArg *) helperFactory();
         sorted = (helper->getFlags() & TDRunsorted) == 0;
-        variableFileName = allFilesDynamic || ((helper->getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || _queryFactory.isDynamic() || ((helper->getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
         maySkip = (helper->getFlags() & (TDRkeyedlimitskips|TDRkeyedlimitcreates|TDRlimitskips|TDRlimitcreates)) != 0;
         quotes = separators = terminators = escapes = NULL;
         if (!variableFileName)
         {
             bool isOpt = (helper->getFlags() & TDRoptional) != 0;
             OwnedRoxieString fileName(helper->getFileName());
-            datafile.setown(_queryFactory.queryPackage().lookupFileName(fileName, isOpt, true, _queryFactory.queryWorkUnit()));
+            datafile.setown(_queryFactory.queryPackage().lookupFileName(fileName, isOpt, true, true, _queryFactory.queryWorkUnit()));
             if (datafile)
                 map.setown(datafile->getFileMap());
             bool isSimple = (map && map->getNumParts()==1 && !_queryFactory.getDebugValueBool("disableLocalOptimizations", false));
@@ -20869,7 +21346,7 @@ public:
     {
         indexHelper.setCallback(&callback);
         steppedExtra = static_cast<IHThorSteppedSourceExtra *>(indexHelper.selectInterface(TAIsteppedsourceextra_1));
-        variableFileName = allFilesDynamic || ((indexHelper.getFlags() & (TIRvarfilename|TIRdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((indexHelper.getFlags() & (TIRvarfilename|TIRdynamicfilename)) != 0);
         variableInfoPending = false;
         isOpt = (indexHelper.getFlags() & TIRoptional) != 0;
         seekGEOffset = 0;
@@ -20924,6 +21401,26 @@ public:
                         {
                             unsigned fileNo = 0;
                             IKeyIndex *thisKey = thisBase->queryPart(fileNo);
+                            if (!thisKey->isTopLevelKey())
+                            {
+                                if (keyedLimit != (unsigned __int64) -1)
+                                {
+                                    if ((indexHelper.getFlags() & TIRcountkeyedlimit) != 0)
+                                    {
+                                        Owned<IKeyManager> countKey;
+                                        countKey.setown(createKeyManager(thisKey, 0, this));
+                                        countKey->setLayoutTranslator(translators->item(fileNo));
+                                        createSegmentMonitors(countKey);
+                                        unsigned __int64 count = countKey->checkCount(keyedLimit);
+                                        if (count > keyedLimit)
+                                        {
+                                            if (traceLevel > 4)
+                                                DBGLOG("activityid = %d  line = %d", activityId, __LINE__);
+                                            onLimitExceeded(true);
+                                        }
+                                    }
+                                }
+                            }
                             if (seekGEOffset && !thisKey->isTopLevelKey())
                             {
                                 tlk.setown(createSingleKeyMerger(thisKey, 0, seekGEOffset, this));
@@ -20973,21 +21470,6 @@ public:
                                     }
                                     else
                                     {
-                                        if (keyedLimit != (unsigned __int64) -1)
-                                        {
-                                            if ((indexHelper.getFlags() & TIRcountkeyedlimit) != 0)
-                                            {
-                                                unsigned __int64 count = tlk->checkCount(keyedLimit);
-                                                if (count > keyedLimit)
-                                                {
-                                                    if (traceLevel > 4)
-                                                        DBGLOG("activityid = %d  line = %d", activityId, __LINE__);
-                                                    onLimitExceeded(true); 
-                                                }
-                                                tlk->reset();
-                                            }
-                                        }
-
                                         if (processSingleKey(thisKey, translators->item(fileNo)))
                                             break;
                                     }
@@ -21511,7 +21993,7 @@ public:
         steppedExtra = static_cast<IHThorSteppedSourceExtra *>(indexHelper.selectInterface(TAIsteppedsourceextra_1));
         limitTransformExtra = static_cast<IHThorSourceLimitTransformExtra *>(indexHelper.selectInterface(TAIsourcelimittransformextra_1));
         unsigned flags = indexHelper.getFlags();
-        variableFileName = allFilesDynamic || ((flags & (TIRvarfilename|TIRdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((flags & (TIRvarfilename|TIRdynamicfilename)) != 0);
         variableInfoPending = false;
         isOpt = (flags & TIRoptional) != 0;
         optimizeSteppedPostFilter = (flags & TIRunfilteredtransform) != 0;
@@ -21608,6 +22090,23 @@ public:
         return nextSteppedGE(NULL, 0, matched, dummySmartStepExtra);
     }
 
+    unsigned __int64 checkCount(unsigned __int64 limit)
+    {
+        unsigned numParts = keyIndexSet->numParts();
+        unsigned __int64 result = 0;
+        for (unsigned i = 0; i < numParts; i++)
+        {
+            Owned<IKeyManager> countTlk = createKeyManager(keyIndexSet->queryPart(i), 0, this);
+            countTlk->setLayoutTranslator(translators->item(i));
+            indexHelper.createSegmentMonitors(countTlk);
+            countTlk->finishSegmentMonitors();
+            result += countTlk->checkCount(limit-result);
+            if (result > limit)
+                break;
+        }
+        return result;
+    }
+
     virtual const void *nextSteppedGE(const void * seek, unsigned numFields, bool &wasCompleteMatch, const SmartStepExtra & stepExtra)
     {
         ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
@@ -21655,7 +22154,7 @@ public:
             {
                 if ((indexHelper.getFlags() & TIRcountkeyedlimit) != 0)
                 {
-                    unsigned __int64 count = tlk->checkCount(keyedLimit);
+                    unsigned __int64 count = checkCount(keyedLimit);
                     if (count > keyedLimit)
                     {
                         if ((indexHelper.getFlags() & (TIRkeyedlimitskips|TIRkeyedlimitcreates)) == 0)
@@ -21667,7 +22166,6 @@ public:
                         onEOF();
                         return ret;
                     }
-                    tlk->reset();
                     keyedLimit = (unsigned __int64) -1;
                 }
             }
@@ -21853,12 +22351,12 @@ public:
         activityMeta.setown(deserializeRecordMeta(m, true));
         enableFieldTranslation = queryFactory.getEnableFieldTranslation();
         translatorArray.setown(new TranslatorArray);
-        variableFileName = allFilesDynamic || ((flags & (TIRvarfilename|TIRdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || _queryFactory.isDynamic() || ((flags & (TIRvarfilename|TIRdynamicfilename)) != 0);
         if (!variableFileName)
         {
             bool isOpt = (flags & TIRoptional) != 0;
             OwnedRoxieString indexName(indexHelper->getFileName());
-            indexfile.setown(queryFactory.queryPackage().lookupFileName(indexName, isOpt, true, queryFactory.queryWorkUnit()));
+            indexfile.setown(queryFactory.queryPackage().lookupFileName(indexName, isOpt, true, true, queryFactory.queryWorkUnit()));
             if (indexfile)
                 keySet.setown(indexfile->getKeyArray(activityMeta, translatorArray, isOpt, isLocal ? queryFactory.queryChannel() : 0, enableFieldTranslation));
         }
@@ -22675,155 +23173,6 @@ IRoxieServerActivityFactory *createRoxieServerIndexNormalizeActivityFactory(unsi
 
 //=================================================================================
 
-class CRoxieServerCountDiskActivity : public CRoxieServerActivity, implements IRoxieServerErrorHandler
-{
-    unsigned __int64 answer;
-
-public:
-    CRoxieServerCountDiskActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager, unsigned __int64 _answer)
-        : CRoxieServerActivity(_factory, _probeManager), 
-          answer(_answer)
-    {
-    }
-
-    virtual const void *nextInGroup()
-    {
-        throwUnexpected();
-    }
-
-    virtual void setInput(unsigned idx, IRoxieInput *_in)
-    {
-        throw MakeStringException(ROXIE_SET_INPUT, "Internal error: setInput() called for source activity");
-    }
-
-    virtual __int64 evaluate() 
-    {
-        return answer;
-    }
-
-    virtual void onLimitExceeded(bool isKeyed) 
-    {
-        if (traceLevel > 4)
-            DBGLOG("activityid = %d  isKeyed = %d  line = %d", activityId, isKeyed, __LINE__);
-        throwUnexpected();
-    }
-
-    virtual const void *createLimitFailRow(bool isKeyed)
-    {
-        throwUnexpected();
-    }
-
-};
-
-class CRoxieServerVariableCountDiskActivity : public CRoxieServerActivity, implements IRoxieServerErrorHandler
-{
-
-public:
-    CRoxieServerVariableCountDiskActivity(const IRoxieServerActivityFactory *_factory, IProbeManager *_probeManager)
-        : CRoxieServerActivity(_factory, _probeManager)
-    {
-    }
-
-    virtual const void *nextInGroup()
-    {
-        throwUnexpected();
-    }
-
-    virtual void setInput(unsigned idx, IRoxieInput *_in)
-    {
-        throw MakeStringException(ROXIE_SET_INPUT, "Internal error: setInput() called for source activity");
-    }
-
-    virtual __int64 evaluate() 
-    {
-        IHThorCountFileArg &helper = (IHThorCountFileArg &) basehelper;
-        bool isOpt = (helper.getFlags() & TDRoptional) != 0;
-        unsigned recsize = helper.queryRecordSize()->getFixedSize();
-        assertex(recsize);
-        OwnedRoxieString fname(helper.getFileName());
-        Owned<const IResolvedFile> varFileInfo = resolveLFN(fname, isOpt);
-        return varFileInfo->getFileSize() / recsize; 
-    }
-
-    virtual void onLimitExceeded(bool isKeyed) 
-    {
-        if (traceLevel > 4)
-            DBGLOG("activityid = %d  isKeyed = %d  line = %d", activityId, isKeyed, __LINE__);
-        throwUnexpected();
-    }
-    virtual const void *createLimitFailRow(bool isKeyed)
-    {
-        throwUnexpected();
-    }
-};
-
-class CRoxieServerCountDiskActivityFactory : public CRoxieServerActivityFactory
-{
-public:
-    unsigned __int64 answer;
-    bool variableFileName;
-    Owned<const IResolvedFile> datafile;
-
-    CRoxieServerCountDiskActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
-        : CRoxieServerActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind)
-    {
-        Owned<IHThorCountFileArg> helper = (IHThorCountFileArg *) helperFactory();
-        variableFileName = allFilesDynamic || ((helper->getFlags() & (TDXvarfilename|TDXdynamicfilename)) != 0);
-        assertex(helper->queryRecordSize()->isFixedSize());
-        if (!variableFileName)
-        {
-            unsigned recsize = helper->queryRecordSize()->getFixedSize();
-            assertex(recsize);
-            OwnedRoxieString fileName(helper->getFileName());
-            bool isOpt = (helper->getFlags() & TDRoptional) != 0;
-            datafile.setown(queryFactory.queryPackage().lookupFileName(fileName, isOpt, true, queryFactory.queryWorkUnit()));
-            offset_t filesize = datafile ? datafile->getFileSize() : 0;
-            if (filesize % recsize != 0)
-                throw MakeStringException(ROXIE_MISMATCH, "Record size mismatch for file %s - %"I64F"d is not a multiple of fixed record size %d", fileName.get(), filesize, recsize);
-            answer = filesize / recsize; 
-        }
-        else
-            answer = 0;
-    }
-
-    virtual void getXrefInfo(IPropertyTree &reply, const IRoxieContextLogger &logctx) const
-    {
-        if (datafile)
-            addXrefFileInfo(reply, datafile);
-    }
-
-    virtual IRoxieServerActivity *createFunction(IHThorArg &arg, IProbeManager *_probeManager) const
-    {
-        arg.Release();
-        if (variableFileName)
-            return new CRoxieServerVariableCountDiskActivity(this, _probeManager);
-        else
-            return new CRoxieServerCountDiskActivity(this, _probeManager, answer);
-    }
-
-    virtual void setInput(unsigned idx, unsigned source, unsigned sourceidx)
-    {
-        throw MakeStringException(ROXIE_SET_INPUT, "Internal error: setInput() should not be called for CountDisk activity");
-    }
-
-    virtual bool isFunction() const
-    {
-        return true;
-    }
-
-    virtual IRoxieServerActivity *createActivity(IProbeManager *_probeManager) const
-    {
-        return NULL;
-    }
-};
-
-IRoxieServerActivityFactory *createRoxieServerDiskCountActivityFactory(unsigned _id, unsigned _subgraphId, IQueryFactory &_queryFactory, HelperFactory *_helperFactory, ThorActivityKind _kind, IPropertyTree &_graphNode)
-{
-    return new CRoxieServerCountDiskActivityFactory(_id, _subgraphId, _queryFactory, _helperFactory, _kind, _graphNode);
-}
-
-//=================================================================================
-
 class CRoxieServerFetchActivity : public CRoxieServerActivity, implements IRecordPullerCallback, implements IRoxieServerErrorHandler
 {
     IHThorFetchBaseArg &helper;
@@ -22842,7 +23191,7 @@ public:
     {
         fetchContext = static_cast<IHThorFetchContext *>(helper.selectInterface(TAIfetchcontext_1));
         needsRHS = helper.transformNeedsRhs();
-        variableFileName = allFilesDynamic || ((fetchContext->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((fetchContext->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
         isOpt = (fetchContext->getFetchFlags() & FFdatafileoptional) != 0;
     }
 
@@ -22989,13 +23338,13 @@ public:
     {
         Owned<IHThorFetchBaseArg> helper = (IHThorFetchBaseArg *) helperFactory();
         IHThorFetchContext *fetchContext = static_cast<IHThorFetchContext *>(helper->selectInterface(TAIfetchcontext_1));
-        variableFileName = allFilesDynamic || ((fetchContext->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
+        variableFileName = allFilesDynamic || _queryFactory.isDynamic() || ((fetchContext->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
         if (!variableFileName)
         {
             OwnedRoxieString fname(fetchContext->getFileName());
             datafile.setown(_queryFactory.queryPackage().lookupFileName(fname,
                                                                         (fetchContext->getFetchFlags() & FFdatafileoptional) != 0,
-                                                                        true,
+                                                                        true, true,
                                                                         _queryFactory.queryWorkUnit()));
             if (datafile)
                 map.setown(datafile->getFileMap());
@@ -23040,15 +23389,17 @@ public:
                 return;  // ignore 'spills'
             bool isLocal = _graphNode.getPropBool("att[@name='local']/@value") && queryFactory.queryChannel()!=0;
             bool isOpt = _graphNode.getPropBool("att[@name='_isOpt']/@value") || pretendAllOpt;
-            if (queryNodeIndexName(_graphNode))
+            const char *fileName = queryNodeFileName(_graphNode);
+            const char *indexName = queryNodeIndexName(_graphNode);
+            if (indexName && (!fileName || !streq(indexName, fileName)))
             {
-                indexfile.setown(queryFactory.queryPackage().lookupFileName(queryNodeIndexName(_graphNode), isOpt, true, queryFactory.queryWorkUnit()));
+                indexfile.setown(queryFactory.queryPackage().lookupFileName(indexName, isOpt, true, true, queryFactory.queryWorkUnit()));
                 if (indexfile)
                     keySet.setown(indexfile->getKeyArray(NULL, &layoutTranslators, isOpt, isLocal ? queryFactory.queryChannel() : 0, false));
             }
-            if (queryNodeFileName(_graphNode))
+            if (fileName)
             {
-                datafile.setown(_queryFactory.queryPackage().lookupFileName(queryNodeFileName(_graphNode), isOpt, true, queryFactory.queryWorkUnit()));
+                datafile.setown(_queryFactory.queryPackage().lookupFileName(fileName, isOpt, true, true, queryFactory.queryWorkUnit()));
                 if (datafile)
                 {
                     if (isLocal)
@@ -23486,7 +23837,7 @@ public:
           puller(false),
           isLocal(_isLocal)
     {
-        variableIndexFileName = allFilesDynamic || ((helper.getJoinFlags() & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
+        variableIndexFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((helper.getJoinFlags() & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
         indexReadInputRecordVariable = indexReadMeta->isVariableSize();
         indexReadInput = NULL;
         rootIndex = NULL;
@@ -24200,7 +24551,7 @@ public:
           map(_map)
     {
         CRoxieServerKeyedJoinBase::setInput(0, head.queryOutput(0));
-        variableFetchFileName = allFilesDynamic || ((helper.getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
+        variableFetchFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((helper.getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
     }
     
     virtual const IResolvedFile *queryVarFileInfo() const
@@ -24312,7 +24663,7 @@ public:
           keySet(_keySet),
           translators(_translators)
     {
-        variableIndexFileName = allFilesDynamic || ((helper.getJoinFlags() & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
+        variableIndexFileName = allFilesDynamic || factory->queryQueryFactory().isDynamic() || ((helper.getJoinFlags() & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
         indexReadInputRecordVariable = indexReadMeta->isVariableSize();
     }
 
@@ -24577,13 +24928,13 @@ public:
         enableFieldTranslation = queryFactory.getEnableFieldTranslation();
         translatorArray.setown(new TranslatorArray);
         joinFlags = helper->getJoinFlags();
-        variableIndexFileName = allFilesDynamic || ((joinFlags & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
-        variableFetchFileName = allFilesDynamic || ((helper->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
+        variableIndexFileName = allFilesDynamic || _queryFactory.isDynamic() || ((joinFlags & (JFvarindexfilename|JFdynamicindexfilename)) != 0);
+        variableFetchFileName = allFilesDynamic || _queryFactory.isDynamic() || ((helper->getFetchFlags() & (FFvarfilename|FFdynamicfilename)) != 0);
         if (!variableIndexFileName)
         {
             bool isOpt = (joinFlags & JFindexoptional) != 0;
             OwnedRoxieString indexFileName(helper->getIndexFileName());
-            indexfile.setown(queryFactory.queryPackage().lookupFileName(indexFileName, isOpt, true, queryFactory.queryWorkUnit()));
+            indexfile.setown(queryFactory.queryPackage().lookupFileName(indexFileName, isOpt, true, true, queryFactory.queryWorkUnit()));
             if (indexfile)
                 keySet.setown(indexfile->getKeyArray(activityMeta, translatorArray, isOpt, isLocal ? queryFactory.queryChannel() : 0, enableFieldTranslation));
         }
@@ -24602,7 +24953,7 @@ public:
         if (!isHalfKeyed && !variableFetchFileName)
         {
             bool isFetchOpt = (helper->getFetchFlags() & FFdatafileoptional) != 0;
-            datafile.setown(_queryFactory.queryPackage().lookupFileName(queryNodeFileName(_graphNode), isFetchOpt, true, _queryFactory.queryWorkUnit()));
+            datafile.setown(_queryFactory.queryPackage().lookupFileName(queryNodeFileName(_graphNode), isFetchOpt, true, true, _queryFactory.queryWorkUnit()));
             if (datafile)
             {
                 if (isLocal)
@@ -25016,6 +25367,10 @@ public:
     {
         select(id).getLinkedResult(count, ret);
     }
+    virtual const void * getLinkedRowResult(unsigned id)
+    {
+        return select(id).getLinkedRowResult();
+    }
     void setResult(unsigned id, IGraphResult * result)
     {
         CriticalBlock procedure(cs);
@@ -25325,6 +25680,7 @@ public:
 
     virtual void execute()
     {
+        results.setown(new CGraphResults);
         doExecute(0, NULL);
     }
 
@@ -25486,6 +25842,10 @@ public:
     virtual void getDictionaryResult(unsigned & count, byte * * & ret, unsigned id)
     {
         results->getLinkedResult(count, ret, id);
+    }
+    virtual const void * getLinkedRowResult(unsigned id)
+    {
+        return results->getLinkedRowResult(id);
     }
     virtual void setResult(unsigned id, IGraphResult * result)
     {
@@ -25809,6 +26169,7 @@ public:
     virtual IOutputRowSerializer * createInternalSerializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual IOutputRowDeserializer * createInternalDeserializer(ICodeContext * ctx, unsigned activityId) { return NULL; }
     virtual void walkIndirectMembers(const byte * self, IIndirectMemberVisitor & visitor) {}
+    virtual IOutputMetaData * queryChildMeta(unsigned i) { return NULL; }
 } testMeta;
 
 class TestInput : public CInterface, implements IRoxieInput
@@ -25874,7 +26235,7 @@ public:
     virtual unsigned queryId() const { return activityId; };
     virtual const void *nextInGroup() 
     {
-        ActivityTimer t(totalCycles, timeActivities, ctx->queryDebugContext());
+        ActivityTimer t(totalCycles, ctx->queryTimeActivities(), ctx->queryDebugContext());
         ASSERT(state == STATEstarted);
         ASSERT(allRead || !eof);
         if (eof)
@@ -25983,7 +26344,7 @@ protected:
         package.setown(createRoxiePackage(NULL, NULL));
         ctx.setown(createSlaveContext(NULL, logctx, 0, 50*1024*1024, NULL));
         queryDll.setown(createExeQueryDll("roxie"));
-        queryFactory.setown(createServerQueryFactory("test", queryDll.getLink(), *package, NULL));
+        queryFactory.setown(createServerQueryFactory("test", queryDll.getLink(), *package, NULL, false, false));
         timer->reset();
     }
 
