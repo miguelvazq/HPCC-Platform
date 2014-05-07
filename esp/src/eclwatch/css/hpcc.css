@@ -179,6 +179,10 @@ hr.dashedLine {
     overflow: hidden;
 }
 
+.claro .dojoxUploaderFileListProgressBar{
+    background:rgb(0, 108, 204);
+ }
+
 .claro .miniTitlebar .dijitToggleButton .dijitButtonNode {
     background: none;
     border: none;
