@@ -443,6 +443,7 @@ define([
                     },
                     __hpcc_displayName: tree({
                         label: this.i18n.LogicalName,
+                        //width: 200,
                         formatter: function (name, row) {
                             if (row.__hpcc_isDir) {
                                 return name;
@@ -460,11 +461,12 @@ define([
                             return node;
                         }
                     }),
-                    Owner: { label: this.i18n.Owner, width: 72 },
+                    Owner: { label: this.i18n.Owner, width:108 },
                     Description: { label: this.i18n.Description, width: 153 },
                     ClusterName: { label: this.i18n.Cluster, width: 108 },
                     RecordCount: { label: this.i18n.Records, width: 72},
                     Totalsize: { label: this.i18n.Size, width: 72},
+                    CompressedFileSize: {label: this.i18n.CompressedSize, width: 155},
                     Parts: { label: this.i18n.Parts, width: 45},
                     Modified: { label: this.i18n.ModifiedUTCGMT, width: 155}
                 }

@@ -54,6 +54,7 @@ define({root:
     Component: "Component",
     Compress: "Compress",
     Compressed: "Compressed",
+    CompressedSize: "Compressed Size",
     Configuration: "Configuration",
     ConfirmPassword: "Confirm Password",
     Content: "Content",
