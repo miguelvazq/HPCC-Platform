@@ -1,0 +1,41 @@
+{
+  "width": "400",
+  "height": "150",
+  "largeWidth":"800",
+  "largeHeight": "500",
+  "refreshInterval": "300000",
+  "tabs": [
+    {
+      "name": "QueryCount Bytes",
+      "metrics":[
+        ["queryCount", "cpu_user", "pkts_in", "pkts_out", "bytes_in"],
+        ["bytes_out"],
+        ["bytes_in"]
+      ],
+      "time":["Hour", "Month", "Week"]
+    },
+    {
+      "name": "Locks And More",
+      "metrics":[
+        ["rowsOut","rowsIn","part_max_used"],
+        ["maxQueueLength", "globalLocks"]
+      ],
+      "time":["Hour", "Month", "Week"]
+    },
+    {
+      "name": "Ibyti Packets",
+      "metrics":[
+        ["loMin_s"],
+        ["ibytiPacketsWorked", "ibytiPacketsReceived_s"]
+      ],
+      "time":["Hour", "Month", "Week"]
+    },
+    {
+      "name": "SLA Average",
+      "metrics":[
+        ["slaAverage","loMin_s"]
+      ],
+      "time":["Hour", "Month", "Week"]
+    }
+  ]
+}
