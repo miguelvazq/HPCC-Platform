@@ -457,6 +457,12 @@ hr.dashedLine {
     width: 16px;
     height: 16px;
 }
+
+.iconGanglia{
+    background-image: url("../img/ganglia.png"); 
+    width: 16px;
+    height: 16px;
+}
 /*###############################*/
 #appLayout {
     height: 100%;
