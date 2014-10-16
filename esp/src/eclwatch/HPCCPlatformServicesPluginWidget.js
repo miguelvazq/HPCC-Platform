@@ -69,7 +69,7 @@ define([
                         var pluginWidget = new DelayLoadWidget({
                             id: context.createChildTabID(item.ShortName),
                             title: item.ShortName,
-                            delayWidget: "WUQueryWidget",//item.WidgetName,
+                            delayWidget: item.WidgetName,//item.WidgetName,
                             hpcc: {
                                 params: {
                                 }
