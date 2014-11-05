@@ -31,8 +31,7 @@ define([
     "dijit/layout/TabContainer",
     "dijit/layout/ContentPane",
 
-    "hpcc/DelayLoadWidget",
-    "hpcc/GangliaWidget"
+    "hpcc/DelayLoadWidget"
 
 ], function (declare, lang, i18n, nlsHPCC,
                 registry,
