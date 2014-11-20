@@ -23,6 +23,7 @@ define([
     "hpcc/_TabContainerWidget",
     "hpcc/DelayLoadWidget",
     "hpcc/WsTopology",
+    "plugins/ganglia/GangliaWidget",
 
     "dojo/text!../templates/HPCCPlatformServicesPluginWidget.html",
 
@@ -31,7 +32,7 @@ define([
     "dijit/layout/ContentPane"
 
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil,
-                _TabContainerWidget, DelayLoadWidget, WsTopology,
+                _TabContainerWidget, DelayLoadWidget, WsTopology, GangliaWidget,
                 template) {
     return declare("HPCCPlatformServicesPluginWidget", [_TabContainerWidget], {
         templateString: template,
