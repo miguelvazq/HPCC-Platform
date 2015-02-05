@@ -19,6 +19,7 @@ define([
     "dojo/i18n",
     "dojo/i18n!./nls/hpcc",
     "dojo/dom",
+    "dojo/dom-construct",
     "dojo/dom-form",
     "dojo/dom-attr",
     "dojo/request/iframe",
@@ -63,7 +64,7 @@ define([
     "dijit/form/SimpleTextarea",
 
     "hpcc/TableContainer"
-], function (declare, lang, i18n, nlsHPCC, dom, domForm, domAttr, iframe, domClass, query, Memory, Observable,
+], function (declare, lang, i18n, nlsHPCC, dom, domConstruct, domForm, domAttr, iframe, domClass, query, Memory, Observable,
                 registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
                 _TabContainerWidget, ESPWorkunit, ESPRequest, TargetSelectWidget, DelayLoadWidget, InfoGridWidget, WsWorkunits,
@@ -141,6 +142,7 @@ define([
             var protectedCheckbox = registry.byId(this.id + "Protected");
             var context = this;
             this.wu.update({
+                Scope: dom.byId(context.id + "Scope").value,
                 Description: dom.byId(context.id + "Description").value,
                 Jobname: dom.byId(context.id + "Jobname").value,
                 Protected: protectedCheckbox.get("value")
@@ -234,6 +236,15 @@ define([
                 });
                 this.wu.refresh();
             }
+            WsWorkunits.WUInfo({
+                request: {
+                    Wuid: this.wu.Wuid
+                }
+            }).then(function (response) {
+                if (response.WUInfoResponse.SecMethod === null) {
+                    query(".scopeOptional").forEach(domConstruct.destroy);
+                }
+            });
             this.infoGridWidget.init(params);
         },
 
