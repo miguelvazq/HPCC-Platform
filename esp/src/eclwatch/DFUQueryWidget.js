@@ -51,6 +51,7 @@ define([
     "hpcc/TargetSelectWidget",
     "hpcc/FilterDropDownWidget",
     "hpcc/SelectionGridWidget",
+    "hpcc/WsTopology",
 
     "put-selector/put",
 
@@ -77,7 +78,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domAttr, domConstruct, domClass, domForm, date, on, topic,
                 registry, Dialog, Menu, MenuItem, MenuSeparator, PopupMenuItem, Textarea, ValidationTextBox,
                 editor, selector, tree,
-                _TabContainerWidget, WsDfu, FileSpray, ESPUtil, ESPLogicalFile, ESPDFUWorkunit, DelayLoadWidget, TargetSelectWidget, FilterDropDownWidget, SelectionGridWidget,
+                _TabContainerWidget, WsDfu, FileSpray, ESPUtil, ESPLogicalFile, ESPDFUWorkunit, DelayLoadWidget, TargetSelectWidget, FilterDropDownWidget, SelectionGridWidget, WsTopology,
                 put,
                 template) {
     return declare("DFUQueryWidget", [_TabContainerWidget, ESPUtil.FormHelper], {
@@ -102,6 +103,7 @@ define([
             this.desprayForm = registry.byId(this.id + "DesprayForm");
             this.desprayTargetSelect = registry.byId(this.id + "DesprayTargetSelect");
             this.desprayGrid = registry.byId(this.id + "DesprayGrid");
+            this.remoteCopyReplicateCheckbox = registry.byId(this.id + "RemoteCopyReplicate");
         },
 
         startup: function (args) {
@@ -296,6 +298,9 @@ define([
             var context = this;
             this.importTargetSelect.init({
                 Groups: true
+            });
+            this.importTargetSelect.on('change', function (value){
+                context.checkReplicate(value, context.remoteCopyReplicateCheckbox);
             });
             this.copyTargetSelect.init({
                 Groups: true
@@ -533,6 +538,26 @@ define([
                         autoSave: true,
                         editor: "text"
                     })
+                }
+            });
+        },
+
+        checkReplicate: function (value, checkBoxValue) {
+            var context = this;
+            WsTopology.TpGroupQuery({
+                request: {}
+            }).then(function (response) {
+                if (lang.exists("TpGroupQueryResponse.TpGroups.TpGroup", response)) {
+                    var arr = response.TpGroupQueryResponse.TpGroups.TpGroup;
+                    for (index in arr) {
+                        if (arr[index].Name === value && arr[index].ReplicateOutputs === true) {
+                            checkBoxValue.set("disabled", false);
+                            break;
+                        } else if (arr[index].Name === value) {
+                            checkBoxValue.set("disabled", true);
+                            break;
+                        }
+                    }
                 }
             });
         },
