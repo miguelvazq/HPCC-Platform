@@ -472,6 +472,7 @@ define({root:
     SuspendedReason: "Suspended Reason",
     SVGSource: "SVG Source",
     SyncSelection: "Sync To Selection",
+    SystemHealth: "System Health",
     SystemServers: "System Servers",
     tag: "tag",
     Target: "Target",

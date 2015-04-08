@@ -27,6 +27,7 @@ define([
     "dojo/text!../templates/HPCCPlatformOpsWidget.html",
 
     "hpcc/UserQueryWidget",
+    "hpcc/NagiosWidget",
     "dijit/layout/BorderContainer",
     "dijit/layout/TabContainer",
     "dijit/layout/ContentPane",
