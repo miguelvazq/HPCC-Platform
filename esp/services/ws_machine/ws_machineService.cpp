@@ -200,9 +200,8 @@ void Cws_machineEx::init(IPropertyTree *cfg, const char *process, const char *se
 
     setupLegacyFilters();
 
-    Owned<IComponentStatusUtils> componentStatusUtils = getComponentStatusUtils();
-    componentStatusUtils->setComponentTypes(pServiceNode);
-    componentStatusUtils->setComponentStatusTypes(pServiceNode);
+    Owned<IComponentStatusFactory> factory = getComponentStatusFactory();
+    factory->initStatusMap(pServiceNode);
 }
 
 StringBuffer& Cws_machineEx::getAcceptLanguage(IEspContext& context, StringBuffer& acceptLanguage)
@@ -2270,41 +2269,48 @@ bool Cws_machineEx::onTestGetComponentStatus(IEspContext &context, IEspTestGetCo
         if (!reporter || !*reporter)
             throw MakeStringException(ECLWATCH_INVALID_INPUT, "Report not specified.");
 
-        Owned<IComponentStatusFactory> factory = getComponentStatusFactory();
+        time_t tNow;
+        time(&tNow);
         IArrayOf<IConstComponentStatus> statusList;
         if (id == 1)
         {
             Owned<IEspComponentStatus> cs1 = createComponentStatus();
-            cs1->setComponentTypeID(1);
+            cs1->setComponentType("ESPProcess");
+            cs1->setEndPoint("10.10.10.10:8010");
 
             IArrayOf<IConstStatusReport> statusReports1;
             Owned<IEspStatusReport> statusReport1 = createStatusReport();
-            statusReport1->setStatusTypeID(0);
+            statusReport1->setStatus("Normal");
             statusReport1->setURL("www.yahoo.com");
+            statusReport1->setTimeReported(tNow);
             statusReports1.append(*statusReport1.getClear());
             cs1->setStatusReports(statusReports1);
             statusList.append(*cs1.getClear());
 
             Owned<IEspComponentStatus> cs2 = createComponentStatus();
-            cs2->setComponentTypeID(2);
+            cs2->setComponentType("ECLAgentProcess");
+            cs2->setEndPoint("10.10.10.10");
 
             IArrayOf<IConstStatusReport> statusReports2;
             Owned<IEspStatusReport> statusReport2 = createStatusReport();
-            statusReport2->setStatusTypeID(2);
+            statusReport2->setStatus("Warning");
             statusReport2->setStatusDetails("This is error test1.");
             statusReport2->setURL("www.yahoo.com");
+            statusReport2->setTimeReported(tNow);
             statusReports2.append(*statusReport2.getClear());
             cs2->setStatusReports(statusReports2);
             statusList.append(*cs2.getClear());
 
             Owned<IEspComponentStatus> cs3 = createComponentStatus();
-            cs3->setComponentTypeID(3);
+            cs3->setComponentType("ECLServer");
+            cs3->setEndPoint("10.10.10.11");
 
             IArrayOf<IConstStatusReport> statusReports3;
             Owned<IEspStatusReport> statusReport3 = createStatusReport();
-            statusReport3->setStatusTypeID(2);
+            statusReport3->setStatus("Error");
             statusReport3->setStatusDetails("This is error test1.");
             statusReport3->setURL("www.yahoo.com");
+            statusReport3->setTimeReported(tNow);
             statusReports3.append(*statusReport3.getClear());
             cs3->setStatusReports(statusReports3);
             statusList.append(*cs3.getClear());
@@ -2312,30 +2318,42 @@ bool Cws_machineEx::onTestGetComponentStatus(IEspContext &context, IEspTestGetCo
         else
         {
             Owned<IEspComponentStatus> cs1 = createComponentStatus();
-            cs1->setComponentTypeID(4);
+            cs1->setComponentType("ThorProcess");
+            cs1->setEndPoint("10.10.10.10:7501");
 
             IArrayOf<IConstStatusReport> statusReports1;
             Owned<IEspStatusReport> statusReport1 = createStatusReport();
-            statusReport1->setStatusTypeID(1);
+            statusReport1->setStatus("Warning");
             statusReport1->setStatusDetails("This is warning test2.");
             statusReport1->setURL("www.hpcc.com");
+            statusReport1->setTimeReported(tNow);
             statusReports1.append(*statusReport1.getClear());
             cs1->setStatusReports(statusReports1);
             statusList.append(*cs1.getClear());
 
             Owned<IEspComponentStatus> cs2 = createComponentStatus();
-            cs2->setComponentTypeID(2);
+            cs2->setComponentType("ECLAgentProcess");
+            cs2->setEndPoint("10.10.10.10");
 
             IArrayOf<IConstStatusReport> statusReports2;
             Owned<IEspStatusReport> statusReport2 = createStatusReport();
-            statusReport2->setStatusTypeID(0);
+            statusReport2->setStatus("Normal1");
             statusReport2->setURL("www.hpcc1.com");
+            statusReport2->setTimeReported(tNow);
             statusReports2.append(*statusReport2.getClear());
             cs2->setStatusReports(statusReports2);
             statusList.append(*cs2.getClear());
         }
-        factory->updateComponentStatus(reporter, statusList);
-        resp.setStatusCode(0);
+
+        Owned<IClientws_machine> pServer = new CClientws_machine();
+        pServer->addServiceUrl("http://10.176.152.178:8010/ws_machine/");
+
+        Owned<IClientUpdateComponentStatusRequest> request =  pServer->createUpdateComponentStatusRequest();
+        request->setReporter(reporter);
+        request->setComponentStatusList(statusList);
+
+        Owned<IClientUpdateComponentStatusResponse> response =  pServer->UpdateComponentStatus(request);
+        resp.setStatusCode(response->getStatusCode());
     }
     catch(IException* e)
     {
@@ -2360,17 +2378,14 @@ bool Cws_machineEx::onGetComponentStatus(IEspContext &context, IEspGetComponentS
         int statusID = status->getComponentStatusID();
         if (statusID < 0)
         {
-            resp.setComponentStatus("Not reported");
+            resp.setStatus("Not reported");
         }
         else
         {
-            StringBuffer statusStr, componentTypeStr;
-            int componentTypeID = status->getComponentTypeID();
-            resp.setComponentTypeID(componentTypeID);
-
-            Owned<IComponentStatusUtils> componentStatusUtils = getComponentStatusUtils();
-            resp.setComponentType(componentStatusUtils->getComponentTypeByID(componentTypeID, componentTypeStr).str());
-            resp.setComponentStatus(componentStatusUtils->getComponentStatusTypeByID(statusID, statusStr).str());
+            resp.setComponentType(status->getComponentType());
+            resp.setEndPoint(status->getEndPoint());
+            resp.setComponentStatus(status->getComponentStatus());
+            resp.setTimeReportedStr(status->getTimeReportedStr());
 
             IConstStatusReport* componentStatus = status->getStatusReport();
             if (componentStatus)
@@ -2379,7 +2394,7 @@ bool Cws_machineEx::onGetComponentStatus(IEspContext &context, IEspGetComponentS
             const char* reporter = status->getReporter();
             if (reporter && *reporter)
                 resp.setReporter(reporter);
-            resp.setComponentStatusList(status->getComponentStatus());
+            resp.setComponentStatusList(status->getComponentStatusList());
         }
         resp.setComponentStatusID(statusID);
     }

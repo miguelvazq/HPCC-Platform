@@ -22,89 +22,29 @@
 #include "ws_machine_esp.ipp"
 #include "ws_machine.hpp"
 
-class CComponentStatusUtils : public CInterface, implements IComponentStatusUtils
-{
-    StringArray componentTypes, componentStatusTypes;
-    unsigned numOfComponentTypes, numOfComponentStatusTypes;
-
-    void readTypeStringsFromCFGTree(const char* xpath, IPropertyTree* cfg, StringArray& typeStrings)
-    {
-        Owned<IPropertyTreeIterator> itr = cfg->getElements(xpath);
-        ForEach(*itr)
-        {
-            IPropertyTree& branch = itr->query();
-            const char* type = branch.queryProp("@type");
-            if (type && *type)
-                typeStrings.append(type);
-        }
-    }
-
-    StringBuffer& getTypeStringByID(int id, int idLimit, const char* type, StringArray& typeStrings, StringBuffer& out)
-    {
-        if (id < idLimit)
-            out.set(typeStrings.item(id));
-        else //in case of undefined ID
-            out.setf("%s %d", type, id);
-        return out;
-    };
-public:
-    IMPLEMENT_IINTERFACE
-    CComponentStatusUtils()
-    {
-        numOfComponentTypes = 0;
-        numOfComponentStatusTypes = 0;
-    };
-    virtual ~CComponentStatusUtils() { };
-
-    virtual StringBuffer& getComponentTypeByID(unsigned id, StringBuffer& out)
-    {
-        return getTypeStringByID(id, numOfComponentTypes, "Component", componentTypes, out);
-    }
-    virtual StringBuffer& getComponentStatusTypeByID(unsigned id, StringBuffer& out)
-    {
-        return getTypeStringByID(id, numOfComponentStatusTypes, "Status", componentStatusTypes, out);
-    }
-    virtual void setComponentTypes(IPropertyTree* cfg)
-    {
-        for (unsigned i = 0; i < ComponentTypeIDSize; i++)
-            componentTypes.append(componentType[i]);
-
-        //Read more components from config if any
-        readTypeStringsFromCFGTree("ComponentStatus/ComponentTypes/ComponentType", cfg, componentTypes);
-        numOfComponentTypes = componentTypes.length();
-    };
-    virtual void setComponentStatusTypes(IPropertyTree* cfg)
-    {
-        //Read component status from config if any.
-        readTypeStringsFromCFGTree("ComponentStatus/ComponentStatusTypes/ComponentStatusType", cfg, componentStatusTypes);
-
-        if (!componentStatusTypes.length())
-        {//If status type is not defined in config, use default status types.
-            for (unsigned ii = 0; ii < ComponentStatusTypeIDSize; ii++)
-                componentStatusTypes.append(componentStatusType[ii]);
-        }
-        numOfComponentStatusTypes = componentStatusTypes.length();
-    };
-};
+static MapStringTo<int> componentTypeMap;
+static MapStringTo<int> componentStatusTypeMap;
+static unsigned componentTypeIDCount;
 
 class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatusInfo
 {
     StringAttr reporter;
     StringAttr timeCached;
     IArrayOf<IEspComponentStatus> statusList;
-    Owned<IComponentStatusUtils> componentStatusUtils;
 
-    bool fromReporter; //this CESPComponentStatusInfo object is created by ws_machine.UpdateComponentStatus
+    bool addToCache; //this CESPComponentStatusInfo object is created by ws_machine.UpdateComponentStatus
     int componentStatusID; //the worst component status in the system
     int componentTypeID; //the worst component status in the system
+    StringAttr componentType; //the worst component status in the system
+    StringAttr endPoint; //the worst component status in the system
+    StringAttr componentStatus; //the worst component status in the system
+    StringAttr timeReportedStr; //the worst component status in the system
+    __int64 timeReported; //the worst component status in the system
     Owned<IEspStatusReport> componentStatusReport; //the worst component status in the system
 
-    void updateTimeStamp()
+    void formatTimeStamp(time_t tNow, StringAttr& out)
     {
         char timeStr[32];
-        time_t tNow;
-        time(&tNow);
-
 #ifdef _WIN32
         struct tm *ltNow;
         ltNow = localtime(&tNow);
@@ -114,20 +54,39 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
         localtime_r(&tNow, &ltNow);
         strftime(timeStr, 32, "%Y-%m-%d %H:%M:%S", &ltNow);
 #endif
-        timeCached.set(timeStr);
+        out.set(timeStr);
+    }
+    bool isSameComponent(const char* ep, int componentTypeID, IConstComponentStatus& status)
+    {
+        const char* ep1 = status.getEndPoint();
+        if (!ep1 || !*ep1 || !ep || !*ep)
+            return false;
+        bool hasPort = strchr(ep, ':');
+        if (hasPort)
+            return streq(ep1, ep);
+        //If no port, report one componentType per IP
+        return ((componentTypeID == status.getComponentTypeID()) && streq(ep1, ep));
     }
     void addStatusReport(const char* reporterIn, const char* timeCachedIn, IConstComponentStatus& csIn, IEspComponentStatus& csOut)
     {
-        int componentType = csIn.getComponentTypeID();
         IArrayOf<IConstStatusReport>& statusReports = csOut.getStatusReports();
         IArrayOf<IConstStatusReport>& reportsIn = csIn.getStatusReports();
         ForEachItemIn(i, reportsIn)
         {
             IConstStatusReport& report = reportsIn.item(i);
+            const char* status = report.getStatus();
+            if (!status || !*status)
+                continue;
 
-            int statusID = report.getStatusTypeID();
+            int statusID;
+            if (addToCache)
+                statusID = queryComponentStatusID(status);
+            else
+                statusID = report.getStatusID();
+
             Owned<IEspStatusReport> statusReport = createStatusReport();
-            statusReport->setStatusTypeID(statusID);
+            statusReport->setStatusID(statusID);
+            statusReport->setStatus(status);
 
             const char* details = report.getStatusDetails();
             if (details && *details)
@@ -139,21 +98,31 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
 
             statusReport->setReporter(reporterIn);
             statusReport->setTimeCached(timeCachedIn);
-            if (!fromReporter)
-            {//We need to add more info for a user-friendly output
-                StringBuffer statusStr;
-                statusReport->setStatusType(componentStatusUtils->getComponentStatusTypeByID(statusID, statusStr).str());
+            statusReport->setTimeReported(report.getTimeReported());
 
-                if (statusID > csOut.getComponentStatusID()) //worst case
+            if (!addToCache)
+            {//We need to add more info for a user-friendly output
+                StringAttr timeStr;
+                time_t seconds = report.getTimeReported();
+                formatTimeStamp(seconds, timeStr);
+                statusReport->setTimeReportedStr(timeStr.get());
+
+                if (statusID > csOut.getStatusID()) //worst case
                 {
-                    csOut.setComponentStatusID(statusID);
-                    csOut.setComponentStatus(statusStr.str());
+                    csOut.setStatusID(statusID);
+                    csOut.setStatus(status);
+                    csOut.setTimeReportedStr(timeStr.get());
                     csOut.setReporter(reporterIn);
                 }
                 if (statusID > componentStatusID) //worst case
                 {
-                    componentTypeID = componentType;
+                    componentTypeID = csIn.getComponentTypeID();
+                    componentType.set(csIn.getComponentType());
+                    endPoint.set(csIn.getEndPoint());
+                    componentStatus.set(status);
                     componentStatusID = statusID;
+                    timeReported = report.getTimeReported();
+                    timeReportedStr.set(timeStr.get());
                     componentStatusReport.setown(statusReport.getLink());
                     reporter.set(reporterIn);
                 }
@@ -164,13 +133,10 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
     void addComponentStatus(const char* reporterIn, const char* timeCachedIn, IConstComponentStatus& st)
     {
         Owned<IEspComponentStatus> cs = createComponentStatus();
-        cs->setComponentStatusID(-1);
-
-        int componentType = st.getComponentTypeID();
-        cs->setComponentTypeID(componentType);
-
-        StringBuffer componentTypeStr;
-        cs->setComponentType(componentStatusUtils->getComponentTypeByID(componentType, componentTypeStr).str());
+        cs->setEndPoint(st.getEndPoint());
+        cs->setComponentType(st.getComponentType());
+        if (addToCache)
+            cs->setComponentTypeID(queryComponentTypeID(st.getComponentType()));
 
         IArrayOf<IConstStatusReport> statusReports;
         cs->setStatusReports(statusReports);
@@ -178,38 +144,101 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
         addStatusReport(reporterIn, timeCachedIn, st, *cs);
         statusList.append(*cs.getClear());
     }
+    void appendUnchangedComponentStatus(IEspComponentStatus& statusOld)
+    {
+        bool componentFound = false;
+        const char* ep = statusOld.getEndPoint();
+        int componentTypeID = statusOld.getComponentTypeID();
+        ForEachItemIn(i, statusList)
+        {
+            if (isSameComponent(ep, componentTypeID, statusList.item(i)))
+            {
+                componentFound =  true;
+                break;
+            }
+        }
+        if (!componentFound)
+            addComponentStatus(reporter.get(), timeCached, statusOld);
+    }
 public:
     IMPLEMENT_IINTERFACE;
 
     CESPComponentStatusInfo(const char* _reporter)
     {
-        componentStatusUtils.setown(getComponentStatusUtils());
         componentStatusID = -1;
-        fromReporter = _reporter? true : false;
+        addToCache = _reporter? true : false;
         if (_reporter && *_reporter)
             reporter.set(_reporter);
     };
 
     virtual const char* getReporter() { return reporter.get(); };
-    virtual const char* getTimeStamp() { return timeCached.get(); };
+    virtual const char* getTimeCached() { return timeCached.get(); };
     virtual int getComponentStatusID() { return componentStatusID; };
+    virtual const char* getComponentStatus() { return componentStatus.get(); };
+    virtual const char* getTimeReportedStr() { return timeReportedStr.get(); };
+    virtual __int64 getTimeReported() { return timeReported; };
     virtual const int getComponentTypeID() { return componentTypeID; };
+    virtual const char* getComponentType() { return componentType.get(); };
+    virtual const char* getEndPoint() { return endPoint.get(); };
     virtual IEspStatusReport* getStatusReport() { return componentStatusReport; };
-    virtual IArrayOf<IEspComponentStatus>& getComponentStatus() { return statusList; };
+    virtual IArrayOf<IEspComponentStatus>& getComponentStatusList() { return statusList; };
 
-    virtual void mergeComponentStatusInfo(IESPComponentStatusInfo& statusInfo)
+    static void initStatusMap(IPropertyTree* cfg)
+    {
+        StringArray statusTypeMap;
+        Owned<IPropertyTreeIterator> statusTypes = cfg->getElements("StatusType");
+        ForEach(*statusTypes)
+        {
+            IPropertyTree& statusType = statusTypes->query();
+            const char* name = statusType.queryProp("@name");
+            if (name && *name)
+                componentStatusTypeMap.setValue(name, statusType.getPropInt("@id"));
+        }
+
+        if (componentStatusTypeMap.count() < 1)
+        {
+            componentStatusTypeMap.setValue("normal", 1);
+            componentStatusTypeMap.setValue("Normal", 1);
+            componentStatusTypeMap.setValue("warning", 2);
+            componentStatusTypeMap.setValue("Warning", 2);
+            componentStatusTypeMap.setValue("error", 3);
+            componentStatusTypeMap.setValue("Error", 3);
+        }
+        componentTypeIDCount = 0;
+    }
+    int queryComponentTypeID(const char *key)
+    {
+        int* id = componentTypeMap.getValue(key);
+        if (id)
+            return *id;
+
+        componentTypeMap.setValue(key, ++componentTypeIDCount);
+        return componentTypeIDCount;
+    }
+    int queryComponentStatusID(const char *key)
+    {
+        int* value = componentStatusTypeMap.getValue(key);
+        if (!value)
+            return 0;
+        return *value;
+    }
+
+    virtual void mergeComponentStatusInfoFromReports(IESPComponentStatusInfo& statusInfo)
     {
         const char* reporterIn = statusInfo.getReporter();
-        const char* timeCachedIn = statusInfo.getTimeStamp();
-        IArrayOf<IEspComponentStatus>& statusListIn = statusInfo.getComponentStatus();
+        const char* timeCachedIn = statusInfo.getTimeCached();
+        IArrayOf<IEspComponentStatus>& statusListIn = statusInfo.getComponentStatusList();
         ForEachItemIn(i, statusListIn)
         {
-            bool newCompoment = true;
             IEspComponentStatus& statusIn = statusListIn.item(i);
+
+            bool newCompoment = true;
+            const char* ep = statusIn.getEndPoint();
+            int componentTypeID = statusIn.getComponentTypeID();
             ForEachItemIn(ii, statusList)
             {
                 IEspComponentStatus& statusOut = statusList.item(ii);
-                if (statusIn.getComponentTypeID() == statusOut.getComponentTypeID())
+                if (isSameComponent(ep, componentTypeID, statusOut))
                 {
                     addStatusReport(reporterIn, timeCachedIn, statusIn, statusOut);
                     newCompoment =  false;
@@ -220,12 +249,21 @@ public:
                 addComponentStatus(reporterIn, timeCachedIn, statusIn);
         }
     }
-    virtual void updateComponentStatus(IArrayOf<IConstComponentStatus>& statusListIn)
+    virtual void setComponentStatus(IArrayOf<IConstComponentStatus>& statusListIn)
     {
+        time_t tNow;
+        time(&tNow);
+        formatTimeStamp(tNow, timeCached);
+
         statusList.kill();
-        updateTimeStamp();
-        ForEachItemIn(s, statusListIn)
-            addComponentStatus(reporter, timeCached, statusListIn.item(s));
+        ForEachItemIn(i, statusListIn)
+            addComponentStatus(reporter, timeCached, statusListIn.item(i));
+    }
+    void mergeCachedComponentStatus(IESPComponentStatusInfo& statusInfo)
+    {
+        IArrayOf<IEspComponentStatus>& csList = statusInfo.getComponentStatusList();
+        ForEachItemIn(i, csList)
+            appendUnchangedComponentStatus(csList.item(i));
     }
 };
 
@@ -234,19 +272,6 @@ static CriticalSection componentStatusSect;
 class CComponentStatusFactory : public CInterface, implements IComponentStatusFactory
 {
     IArrayOf<IESPComponentStatusInfo> cache; //multiple caches from different reporter
-
-    void updateCache(const char* reporter, Owned<IESPComponentStatusInfo> status)
-    {
-        ForEachItemIn(i, cache)
-        {
-            IESPComponentStatusInfo& item = cache.item(i);
-            if (!strieq(reporter, item.getReporter()))
-                continue;
-            cache.remove(i);
-            break;
-        }
-        cache.append(*status.getClear());
-    }
 public:
     IMPLEMENT_IINTERFACE;
 
@@ -257,6 +282,11 @@ public:
         cache.kill();
     };
 
+    virtual void initStatusMap(IPropertyTree* cfg)
+    {
+        CESPComponentStatusInfo::initStatusMap(cfg);
+    };
+
     virtual IESPComponentStatusInfo* getComponentStatus()
     {
         CriticalBlock block(componentStatusSect);
@@ -265,7 +295,7 @@ public:
         ForEachItemIn(i, cache)
         {
             IESPComponentStatusInfo& item = cache.item(i);
-            status->mergeComponentStatusInfo(item);
+            status->mergeComponentStatusInfoFromReports(item);
         }
         return status.getClear();
     }
@@ -275,8 +305,19 @@ public:
         CriticalBlock block(componentStatusSect);
 
         Owned<IESPComponentStatusInfo> status = new CESPComponentStatusInfo(reporter);
-        status->updateComponentStatus(statusList);
-        updateCache(reporter, status.getClear());
+        status->setComponentStatus(statusList);
+
+        ForEachItemIn(i, cache)
+        {
+            IESPComponentStatusInfo& cachedStatus = cache.item(i);
+            if (strieq(reporter, cachedStatus.getReporter()))
+            {
+                status->mergeCachedComponentStatus(cachedStatus);
+                cache.remove(i);
+                break;
+            }
+        }
+        cache.append(*status.getClear());
     }
 };
 
@@ -292,18 +333,4 @@ extern COMPONENTSTATUS_API IComponentStatusFactory* getComponentStatusFactory()
         csFactory = new CComponentStatusFactory();
 
     return LINK(csFactory);
-}
-
-static CComponentStatusUtils *csUtils = NULL;
-
-static CriticalSection getComponentStatusUtilsSect;
-
-extern COMPONENTSTATUS_API IComponentStatusUtils* getComponentStatusUtils()
-{
-    CriticalBlock block(getComponentStatusUtilsSect);
-
-    if (!csUtils)
-        csUtils = new CComponentStatusUtils();
-
-    return LINK(csUtils);
 }

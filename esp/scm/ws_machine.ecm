@@ -312,10 +312,12 @@ ESPresponse [encode(0), exceptions_inline] GetTargetClusterInfoResponse
 
 ESPstruct [nil_remove] StatusReport
 {
-    int StatusTypeID;
-    string StatusType;
+    int StatusID;
+    string Status;
     string StatusDetails;
     string Reporter;
+    int64 TimeReported;
+    string TimeReportedStr;
     string TimeCached;
     string URL;
 };
@@ -324,8 +326,11 @@ ESPstruct [nil_remove] ComponentStatus
 {
     int ComponentTypeID;
     string ComponentType;
-    int ComponentStatusID;
-    string ComponentStatus;
+    string EndPoint;
+    int StatusID;
+    string Status;
+    int64 TimeReported;
+    string TimeReportedStr;
     string Reporter;
     ESParray<ESPstruct StatusReport> StatusReports;
 };
@@ -336,10 +341,14 @@ ESPrequest [nil_remove] GetComponentStatusRequest
 
 ESPresponse [encode(0), nil_remove, exceptions_inline] GetComponentStatusResponse 
 {
-    int ComponentTypeID;
+    string Status;
+
     string ComponentType;
+    string EndPoint;
     int ComponentStatusID;
     string ComponentStatus;
+    int64 TimeReported;
+    string TimeReportedStr;
     string Reporter;
     ESPstruct StatusReport StatusReport;
     ESParray<ESPstruct ComponentStatus, ComponentStatus> ComponentStatusList;

@@ -42,65 +42,36 @@ template<class IEspComponentStatus> class IArrayOf;
     #define COMPONENTSTATUS_API
 #endif
 
-enum ComponentTypeID
-{
-    CTThorCluster = 0,
-    CTHThorCluster = 1,
-    CTRoxieCluster = 2,
-    CTDaliServer = 3,
-    CTDFUServer = 4,
-    CTEclServer = 5,
-    CTEclCCServer = 6,
-    CTEclAgent = 7,
-    CTEclSechduler = 8,
-    CTSashaServer = 9,
-    CTESPServer = 10,
-    ComponentTypeIDSize = 11
-};
-
-static const char *componentType[] = { "ThorCluster", "HThorCluster", "RoxieCluster", "DaliServer",
-    "DFUServer", "EclServer", "EclCCServer", "EclAgent", "EclSechduler", "SashaServer", "ESPServer" };
-
-enum ComponentStatusTypeID
-{
-    CSTNormal = 0,
-    CSTWarning = 1,
-    CSTError = 2,
-    ComponentStatusTypeIDSize = 3
-};
-
-static const char *componentStatusType[] = { "Normal", "Warning", "Error"};
-
-class IComponentStatusUtils : public IInterface
-{
-public:
-    virtual StringBuffer& getComponentTypeByID(unsigned ID, StringBuffer& out) = 0;
-    virtual StringBuffer& getComponentStatusTypeByID(unsigned ID, StringBuffer& out) = 0;
-    virtual void setComponentTypes(IPropertyTree* cfg) = 0;
-    virtual void setComponentStatusTypes(IPropertyTree* cfg) = 0;
-};
-
 class IESPComponentStatusInfo : public IInterface
 {
 public:
+    virtual int queryComponentTypeID(const char *key) = 0;
+    virtual int queryComponentStatusID(const char *key) = 0;
+
     virtual const char* getReporter() = 0;
-    virtual const char* getTimeStamp() = 0;
+    virtual const char* getTimeCached() = 0;
+    virtual const char* getComponentStatus() = 0;
     virtual int getComponentStatusID() = 0;
+    virtual const char* getTimeReportedStr() = 0;
+    virtual __int64 getTimeReported() = 0;
+    virtual const char* getEndPoint() = 0;
+    virtual const char* getComponentType() = 0;
     virtual const int getComponentTypeID() = 0;
     virtual IEspStatusReport* getStatusReport() = 0;
-    virtual IArrayOf<IEspComponentStatus>& getComponentStatus() = 0;
-    virtual void mergeComponentStatusInfo(IESPComponentStatusInfo& statusInfo) = 0;
-    virtual void updateComponentStatus(IArrayOf<IConstComponentStatus>& StatusList) = 0;
+    virtual IArrayOf<IEspComponentStatus>& getComponentStatusList() = 0;
+    virtual void setComponentStatus(IArrayOf<IConstComponentStatus>& StatusList) = 0;
+    virtual void mergeCachedComponentStatus(IESPComponentStatusInfo& statusInfo) = 0;
+    virtual void mergeComponentStatusInfoFromReports(IESPComponentStatusInfo& statusInfo) = 0;
 };
 
 class IComponentStatusFactory : public IInterface
 {
 public:
+    virtual void initStatusMap(IPropertyTree* cfg) = 0;
     virtual IESPComponentStatusInfo* getComponentStatus() = 0;
     virtual void updateComponentStatus(const char* reporter, IArrayOf<IConstComponentStatus>& StatusList) = 0;
 };
 
 extern "C" COMPONENTSTATUS_API IComponentStatusFactory* getComponentStatusFactory();
-extern "C" COMPONENTSTATUS_API IComponentStatusUtils* getComponentStatusUtils();
 
 #endif  //_COMPONENTSTATUS_HPP__
