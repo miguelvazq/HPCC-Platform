@@ -2347,6 +2347,8 @@ bool Cws_machineEx::onTestGetComponentStatus(IEspContext &context, IEspTestGetCo
 
         Owned<IClientws_machine> pServer = new CClientws_machine();
         pServer->addServiceUrl("http://10.176.152.178:8010/ws_machine/");
+        if (context.queryUserId() && *context.queryUserId())
+            pServer->setUsernameToken(context.queryUserId(), context.queryPassword(), NULL);
 
         Owned<IClientUpdateComponentStatusRequest> request =  pServer->createUpdateComponentStatusRequest();
         request->setReporter(reporter);
