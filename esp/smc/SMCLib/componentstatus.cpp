@@ -67,7 +67,7 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
         //If no port, report one componentType per IP
         return ((componentTypeID == status.getComponentTypeID()) && streq(ep1, ep));
     }
-    void addStatusReport(const char* reporterIn, const char* timeCachedIn, IConstComponentStatus& csIn, IEspComponentStatus& csOut)
+    void addStatusReport(const char* reporterIn, const char* timeCachedIn, IConstComponentStatus& csIn, IEspComponentStatus& csOut, bool firstReport)
     {
         IArrayOf<IConstStatusReport>& statusReports = csOut.getStatusReports();
         IArrayOf<IConstStatusReport>& reportsIn = csIn.getStatusReports();
@@ -107,7 +107,7 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
                 formatTimeStamp(seconds, timeStr);
                 statusReport->setTimeReportedStr(timeStr.get());
 
-                if (statusID > csOut.getStatusID()) //worst case
+                if (firstReport || (statusID > csOut.getStatusID())) //worst case
                 {
                     csOut.setStatusID(statusID);
                     csOut.setStatus(status);
@@ -135,13 +135,12 @@ class CESPComponentStatusInfo : public CInterface, implements IESPComponentStatu
         Owned<IEspComponentStatus> cs = createComponentStatus();
         cs->setEndPoint(st.getEndPoint());
         cs->setComponentType(st.getComponentType());
-        if (addToCache)
-            cs->setComponentTypeID(queryComponentTypeID(st.getComponentType()));
+        cs->setComponentTypeID(queryComponentTypeID(st.getComponentType()));
 
         IArrayOf<IConstStatusReport> statusReports;
         cs->setStatusReports(statusReports);
 
-        addStatusReport(reporterIn, timeCachedIn, st, *cs);
+        addStatusReport(reporterIn, timeCachedIn, st, *cs, true);
         statusList.append(*cs.getClear());
     }
     void appendUnchangedComponentStatus(IEspComponentStatus& statusOld)
@@ -239,8 +238,8 @@ public:
             {
                 IEspComponentStatus& statusOut = statusList.item(ii);
                 if (isSameComponent(ep, componentTypeID, statusOut))
-                {
-                    addStatusReport(reporterIn, timeCachedIn, statusIn, statusOut);
+                {// multiple reports from different reporters.
+                    addStatusReport(reporterIn, timeCachedIn, statusIn, statusOut, false);
                     newCompoment =  false;
                     break;
                 }
