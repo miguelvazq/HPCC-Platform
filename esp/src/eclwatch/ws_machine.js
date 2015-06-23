@@ -16,6 +16,7 @@
 define([
     "dojo/_base/declare",
     "dojo/_base/lang",
+    "dojo/_base/array",
     "dojo/topic",
     "dojo/store/JsonRest",
     "dojo/store/Memory",
@@ -24,7 +25,7 @@ define([
 
     "hpcc/ESPRequest",
     "hpcc/ws_machine"
-], function (declare, lang, topic, JsonRest, Memory, Cache, Observable,
+], function (declare, lang, arrayUtil, topic, JsonRest, Memory, Cache, Observable,
     ESPRequest, WsMachine) {
 
     var NagiosStore = declare([ESPRequest.Store], {
@@ -33,11 +34,26 @@ define([
         responseQualifier: "GetComponentStatusResponse.ComponentStatusList.ComponentStatus",
         idProperty: "calculatedID",
 
-        preProcessRow: function (row) {
-            lang.mixin(row, {
-                calculatedID: row.ComponentType+row.EndPoint
-            });
-        }
+        preProcessRow: function (row) { 
+     lang.mixin(row, { 
+          calculatedID: row.ComponentType, 
+          parentID: null 
+     }); 
+}, 
+postProcessResults: function (rows) { 
+     var newRows = []; 
+     arrayUtil.forEach(rows, function (row, idx) { 
+          arrayUtil.forEach(row.StatusReports.StatusReport, function (statusReport) { 
+              newRows.push({ 
+                    parentID: row.ComponentType, 
+                    calculatedID: row.ComponentType + row.EndPoint + "_" + idx 
+               }); 
+          }); 
+     }); 
+     arrayUtil.forEach(newRows, function (newRow) { 
+          rows.push(newRow); 
+     }); 
+}   
     });
 
     /*var NagiosErrorStore = declare([ESPRequest.Store], {

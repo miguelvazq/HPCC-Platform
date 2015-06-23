@@ -63,6 +63,9 @@ define([
             var retVal = new declare([ESPUtil.Grid(false, true)])({
                 store: this.store,
                 columns: {
+                    //calculatedID: {},
+                    parentID: {label: "End Point", width: 172, sortable: true},
+                    calculatedID: {label: "End Point", width: 172, sortable: true},
                     ComponentType: tree({
                         label: "Name", sortable: true,
                         formatter: function (Name, row) {
