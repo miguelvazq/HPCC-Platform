@@ -472,6 +472,24 @@ hr.dashedLine {
     width: 16px;
     height: 16px;
 }
+
+.iconOK{
+    background-image: url("../img/normal.png"); 
+    width: 16px;
+    height: 16px;
+}
+
+.iconWarning{
+    background-image: url("../img/warning.png"); 
+    width: 16px;
+    height: 16px;
+}
+
+.iconError{
+    background-image: url("../img/error.png"); 
+    width: 16px;
+    height: 16px;
+}
 /*###############################*/
 #appLayout {
     height: 100%;

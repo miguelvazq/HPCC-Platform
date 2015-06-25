@@ -40,6 +40,7 @@ define([
     "hpcc/WsTopology",
     "hpcc/GraphWidget",
     "hpcc/DelayLoadWidget",
+    "hpcc/ws_machine",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -64,7 +65,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domStyle, domGeo, cookie,
                 registry, Tooltip,
                 UpgradeBar, ColorPicker,
-                _TabContainerWidget, ESPRequest, ESPActivity, WsAccount, WsAccess, WsSMC, WsTopology, GraphWidget, DelayLoadWidget,
+                _TabContainerWidget, ESPRequest, ESPActivity, WsAccount, WsAccess, WsSMC, WsTopology, GraphWidget, DelayLoadWidget, WsMachine,
                 template) {
     return declare("HPCCPlatformWidget", [_TabContainerWidget], {
         templateString: template,

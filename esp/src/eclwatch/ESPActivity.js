@@ -35,7 +35,10 @@ define([
     var Store = declare([Memory], {
         idProperty: "__hpcc_id",
         mayHaveChildren: function (item) {
-            return (item.getChildCount && item.getChildCount());
+            if (item.StatusReports.StatusReport) {
+                    return true;
+                }
+                return false;
         },
         getChildren: function (parent, options) {
             return parent.queryChildren();

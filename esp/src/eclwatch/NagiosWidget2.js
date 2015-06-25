@@ -38,19 +38,16 @@ define([
         i18n: nlsHPCC,
 
         gridTitle: "Nagios",
-        idProperty: "calculatedID",
-
-        //alert: null,
+        idProperty: "__hpcc_id",
 
         init: function (params) {
             if (this.inherited(arguments))
                 return;
             this._refreshActionState();
-            //this.alert = WsMachine.Get(this.idProperty);
+            this.refreshGrid();
         },
 
         createGrid: function (domID) {
-            this.store = WsMachine.CreateNagiosStore();
             this.store.mayHaveChildren = function (item) {
                 if (item.StatusReports.StatusReport) {
                     return true;
@@ -58,20 +55,18 @@ define([
                 return false;
             };
             this.store.getChildren = function (parent, options) {
-                return context.store.query({__hpcc_parentName: parent.ComponentType});
+               return context.store.query({__hpcc_parentName: parent.__hpcc_id});
             };
             var retVal = new declare([ESPUtil.Grid(false, true)])({
                 store: this.store,
                 columns: {
-                    //calculatedID: {},
-                    parentID: {label: "End Point", width: 172, sortable: true},
-                    calculatedID: {label: "End Point", width: 172, sortable: true},
-                    ComponentType: tree({
+                    /*__hpcc_parentName: {label: "parent ID", width: 172, sortable: true},
+                    __hpcc_id: {label: "calcuated ID", width: 172, sortable: true},
+                    StatusDetails: {label: "status details", width: 172, sortable: true},*/
+                    __hpcc_id: tree({
                         label: "Name", sortable: true,
                         formatter: function (Name, row) {
                             switch (row.Status) {
-                                /*case "Normal1":
-                                    return dojoConfig.getImageHTML("nodata.png") + "&nbsp;<a href='#' class='dgrid-row-url'>" + Name + "</a>";*/
                                 case "Normal":
                                     return dojoConfig.getImageHTML("normal.png") + "&nbsp;<a href='#' class='dgrid-row-url'>" + Name + "</a>";
                                 case "Warning":
@@ -84,7 +79,7 @@ define([
                     }),
                     EndPoint: {label: "End Point", width: 172, sortable: true},
                     TimeReportedStr: {label: "Time Reported", width: 172, sortable: true},
-                    /*Status: { label: this.i18n.Severity, width: 72, sortable: true,
+                    Status: { label: this.i18n.Severity, width: 72, sortable: true,
                         renderCell: function (object, value, node, options) {
                             switch (value) {
                                 case "Error":
@@ -96,7 +91,7 @@ define([
                             }
                             node.innerText = value;
                         }
-                    }*/
+                    }
                 }
             }, domID);
 
@@ -152,17 +147,35 @@ define([
                 request: {}
             }).then(function (response) {
                 var results = [];
+                var newRows = [];
                 if (lang.exists("GetComponentStatusResponse.ComponentStatusList.ComponentStatus", response)) {
                     results = response.GetComponentStatusResponse.ComponentStatusList.ComponentStatus;
                 }
-                /*context.store.setData(results);
-                context.grid.set("query", { __hpcc_parentName: "" });*/
-                //context.grid.refresh();
                 arrayUtil.forEach(results, function (row, idx) {
-                        row.calculatedID = idx;
+                    lang.mixin(row, {
+                        __hpcc_parentName: null,
+                        __hpcc_id: row.ComponentType + row.EndPoint
                     });
-                    context.store.setData(results);
-                    context.grid.set("query", { __hpcc_parentName: "" });
+            
+                    arrayUtil.forEach(row.StatusReports.StatusReport, function (statusReport, idx) {
+                        newRows.push({
+                            
+                            __hpcc_parentName: row.ComponentType + "_" + row.EndPoint,
+                            __hpcc_id: row.ComponentType + row.EndPoint + "_" + idx,
+                            Reporter:statusReport.Reporter,
+                            Status:statusReport.Status,
+                            StatusDetails:statusReport.StatusDetails
+                        });
+                    });
+                });
+
+                arrayUtil.forEach(newRows, function (newRow) { 
+                    results.push(newRow);
+                    console.log(newRow);
+                });
+
+                context.store.setData(results);
+                context.grid.set("query", {__hpcc_parentName: null });
             });
         }
     });

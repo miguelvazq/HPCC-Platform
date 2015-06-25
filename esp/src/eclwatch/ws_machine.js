@@ -32,28 +32,34 @@ define([
         service: "ws_machine",
         action: "GetComponentStatus",
         responseQualifier: "GetComponentStatusResponse.ComponentStatusList.ComponentStatus",
-        idProperty: "calculatedID",
+        idProperty: "__hpcc_id",
 
-        preProcessRow: function (row) { 
-     lang.mixin(row, { 
-          calculatedID: row.ComponentType, 
-          parentID: null 
-     }); 
-}, 
-postProcessResults: function (rows) { 
-     var newRows = []; 
-     arrayUtil.forEach(rows, function (row, idx) { 
-          arrayUtil.forEach(row.StatusReports.StatusReport, function (statusReport) { 
-              newRows.push({ 
-                    parentID: row.ComponentType, 
-                    calculatedID: row.ComponentType + row.EndPoint + "_" + idx 
-               }); 
-          }); 
-     }); 
-     arrayUtil.forEach(newRows, function (newRow) { 
-          rows.push(newRow); 
-     }); 
-}   
+        preProcessRow: function (row) {
+            lang.mixin(row, {
+                __hpcc_parentName: null,
+                __hpcc_id: row.ComponentType + row.EndPoint
+            });
+        },
+
+        postProcessResults: function (rows) {
+            var newRows = [];
+            arrayUtil.forEach(rows, function (row, idx) {
+                arrayUtil.forEach(row.StatusReports.StatusReport, function (statusReport, idx) {
+                    newRows.push({
+                        __hpcc_parentName: row.ComponentType + row.EndPoint,
+                        __hpcc_id: row.ComponentType + row.EndPoint + "_" + idx,
+                        Reporter:statusReport.Reporter,
+                        Status:statusReport.Status,
+                        StatusDetails:statusReport.StatusDetails
+                    });
+                });
+            });
+            arrayUtil.forEach(newRows, function (newRow) {
+                //rows.push(newRow);
+                console.log(newRows[newRow]);
+            });
+        }
+
     });
 
     /*var NagiosErrorStore = declare([ESPRequest.Store], {
@@ -71,12 +77,12 @@ postProcessResults: function (rows) {
             return parent.queryChildren();
         }
     });*/
-    
+
     return {
         GetComponentStatus: function (params) {
             return ESPRequest.send("ws_machine", "GetComponentStatus", params);
         },
-        
+
         CreateNagiosStore: function (options) {
             var store = new NagiosStore(options);
             return Observable(store);
@@ -85,7 +91,7 @@ postProcessResults: function (rows) {
         /*CreateNagiosErrorStore: function (options) {
             var store = new NagiosErrorStore(options);
             return Observable(store);
-        },*/
+        },
 
         Get: function (id, data) {
             var store = new NagiosStore();
@@ -94,7 +100,7 @@ postProcessResults: function (rows) {
                 retVal.updateData(data);
             }
             return retVal;
-        },
+        },*/
     };
 });
 
