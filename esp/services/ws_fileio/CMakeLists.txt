@@ -56,7 +56,8 @@ include_directories (
          ./../../../common/dllserver 
          ./../../bindings 
          ./../../smc/SMCLib 
-         ./../../bindings/SOAP/xpp 
+         ./../../bindings/SOAP/xpp
+         ./../../../system/security/zcrypt
     )
 
 ADD_DEFINITIONS( -D_USRDLL )
@@ -75,3 +76,10 @@ target_link_libraries ( ws_fileio
          xmllib 
          esphttp 
     )
+
+IF (USE_ZLIB)
+  target_link_libraries ( ws_fileio
+      ${ZLIB_LIBRARIES}
+      zcrypt
+      )
+ENDIF()
