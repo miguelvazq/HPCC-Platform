@@ -370,7 +370,7 @@ bool CWsFileIOEx::onWriteFileData(IEspContext &context, IEspWriteFileDataRequest
     return true;
 }
 
-#define SAVETOFILE_TEST
+//#define SAVETOFILE_TEST
 void readTableContentCSV(IEspSaveTableToFileRequest& req, StringBuffer& buf)
 {
 #ifdef SAVETOFILE_TEST
