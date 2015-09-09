@@ -260,6 +260,8 @@ define([
                                 return false;
                             }
                         });
+                    } else {
+                        dojoConfig.isUser = true;
                     }
                 });
             }

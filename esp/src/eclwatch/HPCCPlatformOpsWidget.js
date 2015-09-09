@@ -67,7 +67,7 @@ define([
         },
 
         refresh: function (params) {
-            if (dojoConfig.isAdmin) {
+            if (dojoConfig.isAdmin || dojoConfig.isUser) {
                 registry.byId(this.id + "_Permissions").set("disabled", false);
             }
         },

@@ -21,6 +21,7 @@ define([
     "dojo/_base/array",
     "dojo/dom",
     "dojo/dom-form",
+    "dojo/dom-construct",
     "dojo/on",
     "dojo/promise/all",
 
@@ -29,6 +30,7 @@ define([
     "dijit/MenuItem",
     "dijit/MenuSeparator",
     "dijit/form/Select",
+    "dijit/Tooltip",
 
     "dgrid/tree",
     "dgrid/selector",
@@ -60,8 +62,8 @@ define([
 
     "hpcc/TableContainer"
 
-], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, on, all,
-                registry, Menu, MenuItem, MenuSeparator, Select,
+], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domConstruct, on, all,
+                registry, Menu, MenuItem, MenuSeparator, Select, Tooltip,
                 tree, selector,
                 _TabContainerWidget, WsAccess, ESPBase, ESPUtil, ESPRequest, UserDetailsWidget, GroupDetailsWidget, FilterDropDownWidget,
                 template) {
@@ -79,10 +81,25 @@ define([
             this.groupsTab = registry.byId(this.id + "_Groups");
             this.addUserForm = registry.byId(this.id + "AddUserForm");
             this.usersTab = registry.byId(this.id + "_Users");
+            this.summaryTab = registry.byId(this.id + "_Summary");
             this.addPermissionForm = registry.byId(this.id + "AddPermissionForm");
             this.addPermissionType = registry.byId(this.id + "AddPermissionType");
             this.permissionsTab = registry.byId(this.id + "_Permissions");
+            this.workunitScopesTab = registry.byId(this.id + "_WorkunitScopes");
+            this.modulesTab = registry.byId(this.id + "_Modules");
             this.filter = registry.byId(this.id + "Filter");
+            //groups buttons
+            this.addGroupsDropDown = registry.byId(this.id + "AddGroupsDropDown");
+            this.editGroups = registry.byId(this.id + "EditGroups");
+            this.deleteGroups = registry.byId(this.id + "DeleteGroups");
+            this.exportGroups = registry.byId(this.id + "ExportGroups");
+            //permission buttons
+            this.addPermissionDropDown = registry.byId(this.id + "AddPermissionsDropDown");
+            this.deletePermissions = registry.byId(this.id + "DeletePermissions");
+            this.clearPermissionsCache = registry.byId(this.id + "ClearPermissionsCache");
+            //fs buttons
+            this.enableScopeScans = registry.byId(this.id + "EnableScopeScans");
+            this.disableScopeScans = registry.byId(this.id + "DisableScopeScans");
         },
 
         //  Hitched actions  ---
@@ -356,8 +373,28 @@ define([
             this.initGroupsGrid();
             this.initUsersGrid();
             this.initPermissionsGrid();
+            this.initFileScopesGrid();
+            this.initWorkunitScopesGrid();
+            this.initModulesGrid();
+
 
             var context = this;
+
+            if (dojoConfig.isUser) {
+                this.disableAdminFeatures(this.usersTab, true);
+                this.disableAdminFeatures(this.addGroupsDropDown, true);
+                this.disableAdminFeatures(this.editGroups, true);
+                this.disableAdminFeatures(this.deleteGroups, true);
+                this.disableAdminFeatures(this.exportGroups, true);
+                this.disableAdminFeatures(this.addPermissionDropDown, true);
+                this.disableAdminFeatures(this.deletePermissions, true);
+                this.disableAdminFeatures(this.clearPermissionsCache, true);
+                this.disableAdminFeatures(this.enableScopeScans, true);
+                this.disableAdminFeatures(this.disableScopeScans, true);
+
+                this.createStackControllerTooltip(this.id + "_Users", this.i18n.AdminFeatureOnly);
+            }
+
             this.usersGrid.on("dgrid-refresh-complete", function (evt) {
                 if (context.usersStore.ldapTooMany) {
                     context.setVisible(context.id + "LDAPWarning", true);
@@ -374,6 +411,19 @@ define([
             });
 
             this.refreshActionState();
+        },
+
+        disableAdminFeatures : function (item, status) {
+            item.set("disabled", status);
+        },
+
+        createStackControllerTooltip: function (widgetID, text) {
+            return new Tooltip({
+                connectId: [this.id + "TabContainer_tablist_" + widgetID],
+                label: text,
+                showDelay: 1,
+                position: ["above"]
+            });
         },
 
         //  Groups  ---
@@ -431,6 +481,39 @@ define([
             }));
         },
 
+        //Filescopes
+        initFileScopesGrid: function () {
+            this.initGroupsContextMenu();
+            var store = WsAccess.CreateGroupsStore(null, true);
+            this.fileScopesGrid = declare([ESPUtil.Grid(false, true)])({
+                store: store,
+                columns: {
+                    check: selector({
+                        width: 27,
+                        label: " "
+                    }, "checkbox"),
+                    name: {
+                        label: this.i18n.Name
+                    },
+                    basedn: {
+                        sortable: false,
+                        label: "basedn"
+                    }
+                }
+            }, this.id + "FileScopesGrid");
+            var context = this;
+            this.fileScopesGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onGroupsRowDblClick) {
+                    var item = context.groupsGrid.row(evt).data;
+                    context._onGroupsRowDblClick(item.name);
+                }
+            });
+            this.fileScopesGrid.onSelectionChanged(function (event) {
+                context.refreshActionState();
+            });
+            this.fileScopesGrid.startup();
+        },
+
         refreshGroupsGrid: function (clearSelection) {
             this.groupsGrid.set("query", {
                 id: "*"
@@ -438,6 +521,72 @@ define([
             if (clearSelection) {
                 this.groupsGrid.clearSelection();
             }
+        },
+
+        //Workunit Scopes
+        initWorkunitScopesGrid: function () {
+            this.initGroupsContextMenu();
+            var store = WsAccess.CreateGroupsStore(null, true);
+            this.workunitScopesGrid = declare([ESPUtil.Grid(false, true)])({
+                store: store,
+                columns: {
+                    check: selector({
+                        width: 27,
+                        label: " "
+                    }, "checkbox"),
+                    name: {
+                        label: this.i18n.Name
+                    },
+                    basedn: {
+                        sortable: false,
+                        label: "basedn"
+                    }
+                }
+            }, this.id + "WorkunitScopesGrid");
+            var context = this;
+            this.workunitScopesGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onGroupsRowDblClick) {
+                    var item = context.groupsGrid.row(evt).data;
+                    context._onGroupsRowDblClick(item.name);
+                }
+            });
+            this.workunitScopesGrid.onSelectionChanged(function (event) {
+                context.refreshActionState();
+            });
+            this.workunitScopesGrid.startup();
+        },
+
+        //Workunit Scopes
+        initModulesGrid: function () {
+            this.initGroupsContextMenu();
+            var store = WsAccess.CreateGroupsStore(null, true);
+            this.modulesGrid = declare([ESPUtil.Grid(false, true)])({
+                store: store,
+                columns: {
+                    check: selector({
+                        width: 27,
+                        label: " "
+                    }, "checkbox"),
+                    name: {
+                        label: this.i18n.Name
+                    },
+                    basedn: {
+                        sortable: false,
+                        label: "basedn"
+                    }
+                }
+            }, this.id + "ModulesGrid");
+            var context = this;
+            this.modulesGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onGroupsRowDblClick) {
+                    var item = context.groupsGrid.row(evt).data;
+                    context._onGroupsRowDblClick(item.name);
+                }
+            });
+            this.modulesGrid.onSelectionChanged(function (event) {
+                context.refreshActionState();
+            });
+            this.modulesGrid.startup();
         },
 
         ensureGroupPane: function (id, params) {
@@ -643,7 +792,10 @@ define([
             if (currSel && !currSel.initalized) {
                 if (currSel.id === this.groupsTab.id) {
                 } else if (currSel.id === this.usersTab.id) {
+                } else if (currSel.id === this.summaryTab.id) {
                 } else if (currSel.id === this.permissionsTab.id) {
+                } else if (currSel.id === this.workunitScopesTab.id) {
+                } else if (currSel.id === this.modulesTab.id) {
                 } else if (currSel.id === this.id + "_FileScopes") {
                     currSel.set("content", dojo.create("iframe", {
                         src: dojoConfig.urlInfo.pathname + "?Widget=IFrameWidget&src=" + encodeURIComponent(ESPRequest.getBaseURL("ws_access") + "/Resources?rtype=file&rtitle=FileScope"),
