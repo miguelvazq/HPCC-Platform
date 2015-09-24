@@ -40,6 +40,7 @@ define([
     "hpcc/DelayLoadWidget",
     "hpcc/TargetSelectWidget",
     "hpcc/FilterDropDownWidget",
+    "hpcc/WsFileIO",
 
     "dojo/text!../templates/WUQueryWidget.html",
 
@@ -59,7 +60,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, date, on, topic,
                 registry, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 selector,
-                _TabContainerWidget, WsWorkunits, ESPUtil, ESPWorkunit, DelayLoadWidget, TargetSelectWidget, FilterDropDownWidget,
+                _TabContainerWidget, WsWorkunits, ESPUtil, ESPWorkunit, DelayLoadWidget, TargetSelectWidget, FilterDropDownWidget, WsFileIO,
                 template) {
     return declare("WUQueryWidget", [_TabContainerWidget, ESPUtil.FormHelper], {
         templateString: template,
@@ -79,6 +80,7 @@ define([
             this.clusterTargetSelect = registry.byId(this.id + "ClusterTargetSelect");
             this.stateSelect = registry.byId(this.id + "StateSelect");
             this.logicalFileSearchTypeSelect = registry.byId(this.id + "LogicalFileSearchType");
+            this.downloadToList = registry.byId(this.id + "DownloadToList");
         },
 
         startup: function (args) {
@@ -125,6 +127,34 @@ define([
             }
         },
 
+        _onDownloadToList: function (event) {
+            var context = this;
+            var selection = this.workunitsGrid.getSelected();
+            var results = [];
+            var headers = this.workunitsGrid.columns;
+            var headerLabels = headers.Wuid.field + " " + headers.Owner.field + " " + headers.Jobname.field + " " + headers.Cluster.field + " " + headers.State.field + " " + headers.TotalClusterTime.field;
+
+            /*for (var i = 0; i < selection.length; ++i) {
+                TableRows.Row.[i].Cells
+            }*/
+
+            WsFileIO.WUCreateFileList({
+                request: {
+                    FileName: "DownloadedFile",
+                    FileFormat: "Plain",
+                    ContentFormat: "CSV",
+                    Headers: "WUID"
+                }
+            });
+        },
+
+        /*_getRowValues: function (evt) {
+            var context = this;
+            var item = context.workunitsGrid.row(evt).data;
+            console.log(item);
+            //return
+        },*/
+
         _onDelete: function (event) {
             var selection = this.workunitsGrid.getSelected();
             var list = this.arrayToList(selection, "Wuid");
@@ -155,11 +185,9 @@ define([
         },
 
         _onReschedule: function (event) {
-            WsWorkunits.WUAction(this.workunitsGrid.getSelected(), "Reschedule");
         },
 
         _onDeschedule: function (event) {
-            WsWorkunits.WUAction(this.workunitsGrid.getSelected(), "Deschedule");
         },
 
         _onRowDblClick: function (wuid) {
@@ -455,6 +483,12 @@ define([
             });
             this.workunitsGrid.onSelectionChanged(function (event) {
                 context.refreshActionState();
+                var selection = context.workunitsGrid.getSelected();
+                if (context.filter.exists() && selection.length > 0) {
+                    context.downloadToList.set("disabled", false);
+                } else {
+                    context.downloadToList.set("disabled", true);
+                }
             });
             this.workunitsGrid.startup();
         },
@@ -475,8 +509,6 @@ define([
             var hasNotFailed = false;
             var hasCompleted = false;
             var hasNotCompleted = false;
-            var isScheduled = false;
-            var isNotScheduled = false;
             for (var i = 0; i < selection.length; ++i) {
                 hasSelection = true;
                 if (selection[i] && selection[i].Protected !== null) {
@@ -498,11 +530,6 @@ define([
                         hasNotCompleted = true;
                     }
                 }
-                if (selection[i].EventSchedule === 2) {
-                    isScheduled = true;
-                } else if (selection[i].EventSchedule === 1) {
-                    isNotScheduled = true;
-                }
             }
 
             registry.byId(this.id + "Open").set("disabled", !hasSelection);
@@ -511,8 +538,8 @@ define([
             registry.byId(this.id + "SetToFailed").set("disabled", !hasNotProtected);
             registry.byId(this.id + "Protect").set("disabled", !hasNotProtected);
             registry.byId(this.id + "Unprotect").set("disabled", !hasProtected);
-            registry.byId(this.id + "Reschedule").set("disabled", !isNotScheduled);
-            registry.byId(this.id + "Deschedule").set("disabled", !isScheduled);
+            registry.byId(this.id + "Reschedule").set("disabled", true);    //TODO
+            registry.byId(this.id + "Deschedule").set("disabled", true);    //TODO
 
             this.menuProtect.set("disabled", !hasNotProtected);
             this.menuUnprotect.set("disabled", !hasProtected);
