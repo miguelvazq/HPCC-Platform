@@ -47,6 +47,8 @@ define([
     "dijit/layout/BorderContainer",
     "dijit/layout/TabContainer",
     "dijit/layout/ContentPane",
+    "dijit/form/DropDownButton",
+    "dijit/Dialog",
     "dijit/form/Textarea",
     "dijit/form/DateTextBox",
     "dijit/form/TimeTextBox",
@@ -81,6 +83,9 @@ define([
             this.stateSelect = registry.byId(this.id + "StateSelect");
             this.logicalFileSearchTypeSelect = registry.byId(this.id + "LogicalFileSearchType");
             this.downloadToList = registry.byId(this.id + "DownloadToList");
+            this.downloadToListDialog = registry.byId(this.id + "DownloadToListDialog");
+            this.downListForm = registry.byId(this.id + "DownListForm");
+            this.fileName = registry.byId(this.id + "FileName");
         },
 
         startup: function (args) {
@@ -127,33 +132,124 @@ define([
             }
         },
 
-        _onDownloadToList: function (event) {
-            var context = this;
-            var selection = this.workunitsGrid.getSelected();
-            var results = [];
-            var headers = this.workunitsGrid.columns;
-            var headerLabels = headers.Wuid.field + " " + headers.Owner.field + " " + headers.Jobname.field + " " + headers.Cluster.field + " " + headers.State.field + " " + headers.TotalClusterTime.field;
-
-            /*for (var i = 0; i < selection.length; ++i) {
-                TableRows.Row.[i].Cells
-            }*/
-
-            WsFileIO.WUCreateFileList({
-                request: {
-                    FileName: "DownloadedFile",
-                    FileFormat: "Plain",
-                    ContentFormat: "CSV",
-                    Headers: "WUID"
-                }
-            });
+        _onDownloadToListCancelDialog: function (event){
+            this.downloadToListDialog.hide();
         },
 
-        /*_getRowValues: function (evt) {
+        _onDownloadToList: function (event) {
+            this.downloadToListDialog.show();
+        },
+
+        _buildCSV: function (event) {
+            var selections = this.workunitsGrid.getSelected();
+            var csvContent = "";
+            var headers = this.workunitsGrid.columns;
+            var container = [];
+            var headerNames = [headers.Wuid.field,headers.Protected.field,headers.Owner.field,headers.Jobname.field,headers.Cluster.field,headers.State.field,headers.TotalClusterTime.field];
+            container.push(headerNames);
+
+            arrayUtil.forEach(selections, function (cell, idx){
+                var row = [cell.Wuid,cell.Protected,cell.Owner,cell.Jobname,cell.Cluster,cell.State,cell.TotalClusterTime];
+                    container.push(row);
+            });
+
+            arrayUtil.forEach(container, function (header, idx) {
+                dataString = header.join(",");
+                csvContent += dataString + "\n";
+            });
+
+            /*var encodedUri = encodeURI(csvContent);
+            window.open(encodedUri);*/
+
+            var download = function(content, fileName, mimeType) {
+            var a = document.createElement('a');
+            mimeType = mimeType || 'application/octet-stream';
+
+            if (navigator.msSaveBlob) { // IE10
+                return navigator.msSaveBlob(new Blob([content], { type: mimeType }), fileName);
+            } else if ('download' in a) { //html5 A[download]
+                a.href = 'data:' + mimeType + ',' + encodeURIComponent(content);
+                a.setAttribute('download', fileName);
+                document.body.appendChild(a);
+                setTimeout(function() {
+                  a.click();
+                  document.body.removeChild(a);
+                }, 66);
+                return true;
+              } else { //do iframe dataURL download (old ch+FF):
+                var f = document.createElement('iframe');
+                document.body.appendChild(f);
+                f.src = 'data:' + mimeType + ',' + encodeURIComponent(content);
+
+                setTimeout(function() {
+                  document.body.removeChild(f);
+                }, 333);
+                return true;
+              }
+            }
+            download(csvContent,  this.fileName.get("value")+".csv", 'text/csv');
+            this._onDownloadToListCancelDialog();
+
+        },
+
+        /*_onDownloadToListSaveDialog: function (event) {
             var context = this;
-            var item = context.workunitsGrid.row(evt).data;
-            console.log(item);
-            //return
-        },*/
+            var filter = domForm.toObject("DownListForm");
+            var formPrefix = "WsFileIO/SaveTableToFile?FileName="+filter.FileName+"&ContentFormat="+filter.ContentFormat+"&FileFormat="+filter.FileFormat+"&Headers_i1=Header1&Headers_i2=Header2&Headers_i3=Header3&Headers_i4=Header4&Headers_i5=Header5&Headers_i6=Header6&Headers_i7=Header7";            
+            dom.byId("DownListForm").action = formPrefix;
+            dom.byId("DownListForm").submit();
+
+            console.log(formPrefix)
+
+
+            var selections = this.workunitsGrid.getSelected(); //get the amount of rows clicked
+            var headers = this.workunitsGrid.columns; //make headers available to get values
+            var headerLabels = [headers.Wuid.field,headers.Protected.field,headers.Owner.field,headers.Jobname.field,headers.Cluster.field,headers.State.field,headers.TotalClusterTime.field] //concat all the row names
+            //var tableRows = [];
+            //var header = {};
+            var staticHeader;
+            //var totalCount = selections.length;
+            //var cells = {}
+
+            for (var i=0; i < headerLabels.length; i++) {
+                staticHeader = "Header_i"+i+headerLabels[i];
+                //header["Headers_i"+i] = headerLabels[i]
+            }*/
+            //console.log(header);
+
+            ///LAST WORKING PART
+                /*arrayUtil.forEach(selections, function (row, idx) {
+                    var row = [row.Wuid,row.Protected,row.Owner,row.Jobname,row.Cluster,row.State,row.TotalClusterTime];
+                    for (var i=0; i < row.length; i++) {
+                        tableRows["TableRows.Row."+[idx]+".Cells_"+"i"+i] = row[i]
+                    }
+                    //tableRows.push(row)
+                });*/
+                //tableRows["TableRows.Row.itemcount"] = totalCount;
+
+            //SHOULD BE CLEANING OBJECT THIS WAY vs. ABOVE
+             /*arrayUtil.forEach(selections, function (row, idx) {
+                lang.mixin(row, {
+                    Wuid: row.Wuid,
+                    Owner: row.Owner,
+                    Jobname: row.Jobname,
+                    Cluster: row.Cluster,
+                    State: row.State,
+                    TotalClusterTime: row.TotalClusterTime
+                });
+                console.log(row);
+            });*/
+
+           /* WsFileIO.WUCreateFileList({
+                request: {
+                    FileName: filter.FileName,
+                    FileFormat: filter.FileFormat,
+                    ContentFormat: filter.ContentFormat,
+                    Headers: header,
+                    TableRows: tableRows
+                }
+            });*/
+        //},
 
         _onDelete: function (event) {
             var selection = this.workunitsGrid.getSelected();

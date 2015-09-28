@@ -36,7 +36,34 @@
                     </div>
                     <span data-dojo-type="dijit.ToolbarSeparator"></span>
                     <div id="${id}NewPage" class="right" data-dojo-attach-event="onClick:_onNewPage" data-dojo-props="iconClass:'iconNewPage', showLabel:false" data-dojo-type="dijit.form.Button">${i18n.OpenInNewPage}</div>
-                    <div id="${id}DownloadToList" class="right" data-dojo-attach-event="onClick:_onDownloadToList" data-dojo-type="dijit.form.Button">${i18n.Download}</div>
+                    <div id="${id}DownloadToList" class="right" data-dojo-attach-event="onClick:_onDownloadToList" data-dojo-type="dijit.form.Button"><span>${i18n.Download}</span>
+                    </div>
+                    <!-- <div id="${id}DownloadToListDialog" data-dojo-type="dijit.Dialog" title="Export Selections to List">
+                        <form id="DownListForm" style="width:460px" method="post" encType="application/x-www-form-urlencoded">
+                            <div data-dojo-props="cols:2" data-dojo-type="hpcc.TableContainer">
+                                <input id="${id}FileName" title="File Name:" name="FileName" colspan="2" data-dojo-props="trim: true" data-dojo-type="dijit.form.TextBox" />
+                                <select data-dojo-type="dijit.form.Select" id="${id}ExportFormat" title="Export Format:" name="ContentFormat" colspan="2" data-dojo-props="trim: true">
+                                    <option selected="true" value="CSV">CSV</option>
+                                    <option value="XML">XML</option>
+                                    <option value="JSON">JSON</option>
+                                </select>
+                                <input type="hidden" title="Export Format:" name="FileFormat" colspan="2" value="Plain"/>
+                            </div>
+                            <div class="dijitDialogPaneActionBar">
+                                <button id="${id}onDownloadSubmit" data-dojo-attach-event="onClick:_buildCSV" class="bottomFormButtons" data-dojo-type="dijit.form.Button">${i18n.Submit}</button>
+                                <button class="bottomFormButtons" data-dojo-attach-event="onClick:_onDownloadToListCancelDialog" data-dojo-type="dijit.form.Button">${i18n.Cancel}</button>
+                            </div>
+                        </form>
+                    </div> -->
+                    <div id="${id}DownloadToListDialog" data-dojo-type="dijit.Dialog" title="Export Selections to List">
+                            <div data-dojo-props="cols:2" data-dojo-type="hpcc.TableContainer">
+                                <input id="${id}FileName" title="File Name:" name="FileName" colspan="2" data-dojo-props="trim: true" data-dojo-type="dijit.form.TextBox" />
+                            </div>
+                            <div class="dijitDialogPaneActionBar">
+                                <button id="${id}onDownloadSubmit" data-dojo-attach-event="onClick:_buildCSV" class="bottomFormButtons" data-dojo-type="dijit.form.Button">${i18n.Submit}</button>
+                                <button class="bottomFormButtons" data-dojo-attach-event="onClick:_onDownloadToListCancelDialog" data-dojo-type="dijit.form.Button">${i18n.Cancel}</button>
+                            </div>
+                    </div>
                 </div>
                 <div id="${id}WorkunitsGridCP" style="border:0px; padding: 0px; border-color:none" data-dojo-props="region: 'center'" data-dojo-type="dijit.layout.ContentPane">
                     <div id="${id}WorkunitsGrid">
