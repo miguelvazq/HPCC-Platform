@@ -28,6 +28,7 @@ define([
     "dojo/store/Observable",
 
     "dijit/registry",
+    "dijit/Tooltip",
 
     "dgrid/OnDemandGrid",
     "dgrid/Keyboard",
@@ -65,7 +66,7 @@ define([
 
     "hpcc/TableContainer"
 ], function (declare, lang, i18n, nlsHPCC, dom, domForm, domAttr, iframe, domClass, query, Memory, Observable,
-                registry,
+                registry, Tooltip,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
                 _TabContainerWidget, ESPWorkunit, ESPRequest, TargetSelectWidget, DelayLoadWidget, InfoGridWidget, WsWorkunits,
                 template) {
@@ -120,6 +121,8 @@ define([
 
             this.infoGridWidget = registry.byId(this.id + "InfoContainer");
             this.zapDialog = registry.byId(this.id + "ZapDialog");
+            this.createStackControllerTooltip(this.id + "Resubmit", this.i18n.ResubmitToolTip);
+            this.createStackControllerTooltip(this.id + "Restore", this.i18n.ResubmitToolTip);
         },
 
         startup: function (args) {
@@ -248,6 +251,7 @@ define([
             }
             this.infoGridWidget.init(params);
             this.checkIfClustersAllowed();
+           	this.createStackControllerTooltip(this.id + "Resubmit", this.i18n.Activity);
         },
 
         initTab: function () {
@@ -525,6 +529,15 @@ define([
         },
 
         monitorWorkunit: function (response) {
+        },
+
+        createStackControllerTooltip: function (widgetID, text) {
+            return new Tooltip({
+                connectId: [widgetID],
+                label: text,
+                showDelay: 1,
+                position: ["below"]
+            });
         }
     });
 });

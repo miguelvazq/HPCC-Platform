@@ -411,6 +411,7 @@ define({root:
     Restore: "Restore",
     Resubmit: "Resubmit",
     Resubmitted: "Resubmitted",
+    ResubmitToolTip: "Resubmit the workunit without resetting workflow",
     Results: "Result(s)",
     Resume: "Resume",
     RetainSuperfileStructure: "Retain Superfile Structure",
