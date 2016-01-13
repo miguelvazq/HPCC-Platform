@@ -143,12 +143,12 @@ define([
                             return "<a href='#' class='dgrid-row-url'>" + Wuid + "</a>";
                         }
                     },
-                    Cluster: { label: this.i18n.Cluster, width: 100, sortable: true },
-                    JobName: { label: this.i18n.JobName, sortable: true },
-                    EventName: { label: this.i18n.EventName, width: 180, sortable: true },
-                    EventText: { label: this.i18n.EventText, width: 180, sortable: true },
-                    Owner: { label: this.i18n.Owner, width: 180, sortable: true },
-                    State: { label: this.i18n.State, width: 180, sortable: false }
+                    Cluster: { label: this.i18n.Cluster, width: 100},
+                    JobName: { label: this.i18n.JobName},
+                    EventName: { label: this.i18n.EventName, width: 180},
+                    EventText: { label: this.i18n.EventText, width: 180},
+                    Owner: { label: this.i18n.Owner, width: 180},
+                    State: { label: this.i18n.State, width: 180}
                 }
             }, this.id + "EventGrid");
 
