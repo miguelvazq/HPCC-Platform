@@ -33,8 +33,8 @@ define([
     ESPBase, ESPRequest) {
     var FileListStore = declare([ESPRequest.Store], {
         service: "FileSpray",
-        action: "FileList",
-        responseQualifier: "FileListResponse.files.PhysicalFileStruct",
+        action: "DropZoneFileSearch",
+        responseQualifier: "DropZoneFileSearchResponse.Files.PhysicalFileStruct",
         idProperty: "calculatedID",
         create: function (id) {
             var retVal = {

@@ -38,6 +38,7 @@ define([
     "dgrid/selector",
 
     "hpcc/_TabContainerWidget",
+    "hpcc/FilterDropDownWidget",
     "hpcc/FileSpray",
     "hpcc/ESPUtil",
     "hpcc/ESPRequest",
@@ -72,7 +73,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domClass, iframe, on, topic,
                 registry, Dialog, Menu, MenuItem, MenuSeparator, PopupMenuItem,
                 tree, editor, selector,
-                _TabContainerWidget, FileSpray, ESPUtil, ESPRequest, ESPDFUWorkunit, DelayLoadWidget, TargetSelectWidget, TargetComboBoxWidget, SelectionGridWidget,
+                _TabContainerWidget, FilterDropDownWidget, FileSpray, ESPUtil, ESPRequest, ESPDFUWorkunit, DelayLoadWidget, TargetSelectWidget, TargetComboBoxWidget, SelectionGridWidget,
                 template) {
     return declare("LZBrowseWidget", [_TabContainerWidget, ESPUtil.FormHelper], {
         templateString: template,
@@ -81,6 +82,7 @@ define([
 
         postCreate: function (args) {
             this.inherited(arguments);
+            this.filter = registry.byId(this.id + "Filter");
             this.sprayFixedForm = registry.byId(this.id + "SprayFixedForm");
             this.sprayFixedDestinationSelect = registry.byId(this.id + "SprayFixedDestination");
             this.sprayFixedGrid = registry.byId(this.id + "SprayFixedGrid");
@@ -103,6 +105,7 @@ define([
             this.uploader = registry.byId(this.id + "Upload");
             this.uploadFileList = registry.byId(this.id + "UploadFileList");
             this.dropZoneTargetSelect = registry.byId(this.id + "DropZoneTargetSelect");
+            this.dropZoneTargetSearchSelect = registry.byId(this.id + "DropZoneNameSearchTargetSelect")
             this.dropZoneFolderSelect = registry.byId(this.id + "DropZoneFolderSelect");
             this.fileListDialog = registry.byId(this.id + "FileListDialog");
             this.overwriteCheckbox = registry.byId(this.id + "FileOverwriteCheckbox");
@@ -456,6 +459,7 @@ define([
 
         //  Implementation  ---
         init: function (params) {
+
             if (this.inherited(arguments))
                 return;
 
@@ -484,6 +488,11 @@ define([
                 includeBlank: true
             });
 
+            this.dropZoneTargetSearchSelect.init({
+                DropZones: true,
+                includeBlank: true
+            });
+
             this.sprayFixedDestinationSelect.on('change', function (value){
                 context.checkReplicate(value, context.fixedSprayReplicateCheckbox);
             });
@@ -503,6 +512,18 @@ define([
             this.sprayBlobDestinationSelect.on('change', function (value){
                 context.checkReplicate(value, context.blobSprayReplicateCheckbox);
             });
+
+            this.filter.on("clear", function (evt) {
+                context.refreshGrid();
+            });
+            this.filter.on("apply", function (evt) {
+                context.refreshGrid();
+            });
+        },
+
+        getFilter: function () {
+            var retVal = this.filter.toObject();
+            return retVal;
         },
 
         checkReplicate: function (value, checkBoxValue) {
@@ -546,6 +567,7 @@ define([
             this.landingZoneStore = new FileSpray.CreateLandingZonesStore();
             this.landingZonesGrid = new declare([ESPUtil.Grid(false, true)])({
                 store: this.landingZoneStore,
+                query: this.getFilter(),
                 columns: {
                     col1: selector({
                         width: 27,
@@ -709,9 +731,17 @@ define([
         },
 
         refreshGrid: function (clearSelection) {
-            this.landingZonesGrid.set("query", {
-                id: "*"
-            });
+            var context = this;
+            this.landingZonesGrid.set("query", this.getFilter());
+            /*FileSpray.DropZoneFileSearch({
+                request: {
+                    DropZoneName: "mydropzone",
+                    NameFilter: "MiguelTesting"
+                }
+            }).then(function (response) {
+                context.landingZonesGrid.store.query(response.DropZoneFileSearchResponse.Files.PhysicalFileStruct)
+            })*/
+
             if (clearSelection) {
                 this.landingZonesGrid.clearSelection();
             }

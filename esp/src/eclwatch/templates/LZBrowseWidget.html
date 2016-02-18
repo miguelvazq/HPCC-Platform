@@ -251,6 +251,14 @@
                         </div>
                     </div>
                     <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                    <div id="${id}Filter" data-dojo-type="FilterDropDownWidget">
+                        <input id="${id}DropZoneNameSearchTargetSelect" title="${i18n.DropZoneName}:" colspan="2" name="DropZoneName" data-dojo-props="placeHolder:'${i18n.DropZoneName}'" required="true" data-dojo-type="TargetSelectWidget" />
+                        <input title="${i18n.FileName}:" colspan="2" name="NameFilter" data-dojo-props="trim: true, placeHolder:'${i18n.FileName}'" required="false" data-dojo-type="dijit.form.TextBox" />
+                        <!-- <input title="${i18n.Directory}:" colspan="2" name="Path" data-dojo-props="trim: true, placeHolder:'${i18n.Directory}'" required="true" data-dojo-type="dijit.form.ValidationTextBox" /> -->
+                        <!-- <input title="${i18n.FileOnlyQ}:" name="FileOnly" colspan="2" data-dojo-type="dijit.form.CheckBox" />
+                        <input title="${i18n.DirectoryOnlyQ}:" name="DirectoryOnly" colspan="2" data-dojo-type="dijit.form.CheckBox" /> -->
+                    </div>
+                    <span data-dojo-type="dijit.ToolbarSeparator"></span>
                     <div id="${id}NewPage" class="right" data-dojo-attach-event="onClick:_onNewPage" data-dojo-props="iconClass:'iconNewPage', showLabel:false" data-dojo-type="dijit.form.Button">${i18n.OpenInNewPage}</div>
                 </div>
                 <div id="${id}LandingZonesGridCP" style="border:0px; padding: 0px; border-color:none" data-dojo-props="region: 'center'" data-dojo-type="dijit.layout.ContentPane">
