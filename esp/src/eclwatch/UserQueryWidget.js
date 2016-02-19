@@ -41,6 +41,7 @@ define([
     "hpcc/UserDetailsWidget",
     "hpcc/GroupDetailsWidget",
     "hpcc/FilterDropDownWidget",
+    "hpcc/TargetSelectWidget",
 
     "dojo/text!../templates/UserQueryWidget.html",
 
@@ -63,7 +64,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, on, all,
                 registry, Menu, MenuItem, MenuSeparator, Select,
                 tree, selector,
-                _TabContainerWidget, WsAccess, ESPBase, ESPUtil, ESPRequest, UserDetailsWidget, GroupDetailsWidget, FilterDropDownWidget,
+                _TabContainerWidget, WsAccess, ESPBase, ESPUtil, ESPRequest, UserDetailsWidget, GroupDetailsWidget, FilterDropDownWidget, TargetSelectWidget,
                 template) {
     return declare("UserQueryWidget", [_TabContainerWidget], {
         templateString: template,
@@ -83,6 +84,9 @@ define([
             this.addPermissionType = registry.byId(this.id + "AddPermissionType");
             this.permissionsTab = registry.byId(this.id + "_Permissions");
             this.filter = registry.byId(this.id + "Filter");
+            this.filePermissionDialog = registry.byId(this.id + "FilePermissionDialog");
+            this.usersSelect = registry.byId(this.id + "UsersSelect");
+            this.groupsSelect = registry.byId(this.id + "GroupsSelect");
         },
 
         //  Hitched actions  ---
@@ -103,6 +107,19 @@ define([
             if (confirm(this.i18n.DisableScopeScanConfirm)) {
                 WsAccess.DisableScopeScans();
             }
+        },
+
+        _onDefaultPermissions: function () {
+            WsAccess.DefaultPermissions();
+        },
+
+        _onPhysicalFiles: function () {
+            WsAccess.PhysicalFiles();
+        },
+
+        _onCheckFilePermissions: function () {
+            this.filePermissionDialog.show();
+            //WsAccess.CheckFilePermissions();
         },
 
         getRow: function (rtitle) {
@@ -366,6 +383,17 @@ define([
                     context.setVisible(context.id + "LDAPWarning", false);
                 }
             });
+
+            this.usersSelect.init({
+                Users: true,
+                includeBlank: true
+            });
+
+            this.groupsSelect.init({
+                UserGroups: true,
+                includeBlank: true
+            });
+
             this.filter.on("clear", function (evt) {
                 context.refreshUsersGrid();
             });
@@ -603,7 +631,7 @@ define([
                 }
             });
             this.permissionsGrid.onSelectionChanged(function (event) {
-                context.refreshActionState();
+                context.refreshActionState(event);
             });
             this.permissionsGrid.startup();
         },
@@ -663,7 +691,13 @@ define([
             }
         },
 
-        refreshActionState: function () {
+        refreshActionState: function (event) {
+            registry.byId(this.id + "EnableScopeScans").set("disabled", true);
+            registry.byId(this.id + "DisableScopeScans").set("disabled", true);
+            registry.byId(this.id + "DefaultPermissions").set("disabled", true);
+            registry.byId(this.id + "PhysicalFiles").set("disabled", true);
+            registry.byId(this.id + "CheckFilePermissions").set("disabled", true);
+
             var userSelection = this.usersGrid.getSelected();
             var hasUserSelection = userSelection.length;
             registry.byId(this.id + "EditUsers").set("disabled", !hasUserSelection);
@@ -679,6 +713,14 @@ define([
             var permissionSelection = this.permissionsGrid.getSelected();
             var hasPermissionSelection = permissionSelection.length;
             registry.byId(this.id + "DeletePermissions").set("disabled", !hasPermissionSelection);
+            if (hasPermissionSelection && event.rows[0].data.__hpcc_parent.DisplayName === "File Scopes") {
+                registry.byId(this.id + "EnableScopeScans").set("disabled", false);
+                registry.byId(this.id + "DisableScopeScans").set("disabled", false);
+                registry.byId(this.id + "DefaultPermissions").set("disabled", false);
+                registry.byId(this.id + "PhysicalFiles").set("disabled", false);
+                registry.byId(this.id + "CheckFilePermissions").set("disabled", false);
+            }
+
         }
     });
 });

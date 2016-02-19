@@ -437,6 +437,10 @@ define([
             return this._doCall("PermissionAction", params);
         },
 
+        FilePermission: function (params) {
+            return this._doCall("FilePermission", params);
+        },
+
         ClearPermissionsCache: function() {
             return this._doCall("ClearPermissionsCache", {
                 request: {
@@ -457,6 +461,37 @@ define([
             return this._doCall("DisableScopeScans", {
                 request: {
                     action: "Disable Scope Scans"
+                }
+            });
+        },
+
+        DefaultPermissions: function () {
+            return this._doCall("ResourcePermissions", {
+                request: {
+                    basedn: "ou=ecl,dc=hpccdev,dc=local",
+                    rtype: "file",
+                    name: "files",
+                    action: "Default Permissions"
+                }
+            });
+        },
+
+        PhysicalFiles: function () {
+            return this._doCall("ResourcePermissions", {
+                request: {
+                    basedn: "ou=files,ou=ecl,dc=hpccdev,dc=local",
+                    rtype: "file",
+                    rtitle: "FileScope",
+                    name: "file",
+                    action: "Physical Files"
+                }
+            });
+        },
+
+        CheckFilePermissions: function () {
+            return this._doCall("FilePermission", {
+                request: {
+                    action: "Check File Permission"
                 }
             });
         },
