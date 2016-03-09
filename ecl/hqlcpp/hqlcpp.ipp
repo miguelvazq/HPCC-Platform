@@ -1900,6 +1900,7 @@ protected:
     void postProcessOptions();
     SourceFieldUsage * querySourceFieldUsage(IHqlExpression * expr);
     void noteAllFieldsUsed(IHqlExpression * expr);
+    IHqlExpression * translateGetGraphResult(BuildCtx & ctx, IHqlExpression * expr);
 
 public:
     IHqlExpression * convertToPhysicalIndex(IHqlExpression * tableExpr);
@@ -1962,6 +1963,7 @@ protected:
     unsigned            nextTypeId;
     unsigned            nextFieldId;
     unsigned            curWfid;
+    unsigned            implicitFunctionId = 0;
     HqlExprArray        internalFunctions;
     HqlExprArray        internalFunctionExternals;
     UniqueSequenceCounter spillSequence;

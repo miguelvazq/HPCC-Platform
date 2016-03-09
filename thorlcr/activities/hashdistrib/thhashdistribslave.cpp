@@ -77,7 +77,7 @@
 #define HDSendPrintLog5(M,P1,P2,P3,P4)
 #endif
 
-class CDistributorBase : public CSimpleInterface, implements IHashDistributor, implements IExceptionHandler
+class CDistributorBase : public CInterface, implements IHashDistributor, implements IExceptionHandler
 {
     Linked<IRowInterfaces> rowIf;
     IEngineRowAllocator *allocator;
@@ -973,7 +973,7 @@ protected:
     ICompressHandler *compressHandler;
     StringBuffer compressOptions;
 public:
-    IMPLEMENT_IINTERFACE_USING(CSimpleInterface);
+    IMPLEMENT_IINTERFACE_USING(CInterface);
 
     CDistributorBase(CActivityBase *_activity, bool _doDedup, IStopInput *_istop, const char *_id)
         : activity(_activity), recvthread(this), sendthread(this), sender(*this), id(_id)
@@ -1027,7 +1027,7 @@ public:
         ActPrintLog("targetWriterLimit : %d", targetWriterLimit);
     }
 
-    ~CDistributorBase()
+    virtual void beforeDispose()
     {
         try
         {
@@ -2184,7 +2184,12 @@ public:
                 MemoryAttr ma;
                 activity->startInput(in);
                 if (activity->getOptBool(THOROPT_COMPRESS_SPILLS, true))
+                {
                     rwFlags |= rw_compress;
+                    StringBuffer compType;
+                    activity->getOpt(THOROPT_COMPRESS_SPILL_TYPE, compType);
+                    setCompFlag(compType, rwFlags);
+                }
                 Owned<IExtRowWriter> out = createRowWriter(tempfile, activity, rwFlags);
                 if (!out)
                     throw MakeStringException(-1,"Could not created file %s",tempname.str());
@@ -2551,7 +2556,12 @@ public:
         OwnedIFile iFile = createIFile(tempname.str());
         spillFile.setown(new CFileOwner(iFile.getLink()));
         if (owner.getOptBool(THOROPT_COMPRESS_SPILLS, true))
+        {
             rwFlags |= rw_compress;
+            StringBuffer compType;
+            owner.getOpt(THOROPT_COMPRESS_SPILL_TYPE, compType);
+            setCompFlag(compType, rwFlags);
+        }
         writer = createRowWriter(iFile, rowIf, rwFlags);
     }
     IRowStream *getReader(rowcount_t *_count=NULL) // NB: also detatches ownership of 'fileOwner'

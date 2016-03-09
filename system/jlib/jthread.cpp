@@ -33,7 +33,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/resource.h>
-#ifndef __APPLE__
+#ifdef _USE_NUMA
 #include <numa.h>
 #endif
 #endif
@@ -2421,11 +2421,12 @@ void setProcessAffinity(const char * cpuList)
         throw makeStringException(errno, "Failed to set affinity");
     DBGLOG("Process affinity set to %s", cpuList);
 #endif
+    clearAffinityCache();
 }
 
 void setAutoAffinity(unsigned curProcess, unsigned processPerMachine, const char * optNodes)
 {
-#if defined(CPU_ZERO) && !defined(__APPLE__)
+#if defined(CPU_ZERO) && defined(_USE_NUMA)
     if (processPerMachine <= 1)
         return;
 
@@ -2462,6 +2463,7 @@ void setAutoAffinity(unsigned curProcess, unsigned processPerMachine, const char
 
     DBGLOG("Process bound to numa node %u of %u", curNode, numNumaNodes);
 #endif
+    clearAffinityCache();
 }
 
 void bindMemoryToLocalNodes()

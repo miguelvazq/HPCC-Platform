@@ -1,6 +1,6 @@
 /*##############################################################################
 
-    HPCC SYSTEMS software Copyright (C) 2014 HPCC Systems®.
+    HPCC SYSTEMS software Copyright (C) 2016 HPCC Systems®.
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -14,9 +14,12 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 ############################################################################## */
-#ifndef RESERVEDWORDS_HPP
-#define RESERVEDWORDS_HPP
 
-void printKeywordsToXml();
+//nothor
+//nothorlcr
 
-#endif
+
+ds := dataset(60, TRANSFORM({ unsigned id }, SELF.id := COUNTER));
+s := SORT(NOFOLD(ds), -id) : independent;
+
+output(choosen(s, 2),NAMED('MyLogging'),EXTEND)       : when(cron('* * * * *'),count(2));

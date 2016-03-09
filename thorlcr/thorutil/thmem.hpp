@@ -458,7 +458,7 @@ public:
 
     //A thread calling the following functions must own the lock, or guarantee no other thread will access
     void sort(ICompare & compare, unsigned maxcores);
-    rowidx_t save(IFile &file, bool useCompression, const char *tracingPrefix);
+    rowidx_t save(IFile &file, unsigned _spillCompInfo, bool skipNulls, const char *tracingPrefix);
 
     inline rowidx_t numCommitted() const { return commitRows - firstRow; } //MORE::Not convinced this is very safe!
 
@@ -472,7 +472,7 @@ public:
     void transferFrom(CThorExpandingRowArray &src);
     void transferFrom(CThorSpillableRowArray &src);
 
-    IRowStream *createRowStream(unsigned spillPriority, bool compressSpills);
+    IRowStream *createRowStream(unsigned spillPriority, unsigned spillCompInfo);
 
     offset_t serializedSize()
     {
@@ -533,6 +533,7 @@ interface IThorRowCollector : extends IThorRowCollectorCommon
     virtual IRowWriter *getWriter() = 0;
     virtual void reset() = 0;
     virtual IRowStream *getStream(bool shared=false, CThorExpandingRowArray *allMemRows=NULL) = 0;
+    virtual bool spill() = 0; // manual spill. Returns true if anything spilt
 };
 
 extern graph_decl IThorRowLoader *createThorRowLoader(CActivityBase &activity, IRowInterfaces *rowIf, ICompare *iCompare=NULL, StableSortFlag stableSort=stableSort_none, RowCollectorSpillFlags diskMemMix=rc_mixed, unsigned spillPriority=SPILL_PRIORITY_DEFAULT);
