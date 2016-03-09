@@ -198,7 +198,7 @@ define([
         loadDropZoneFolders: function () {
             var context = this;
             this.getDropZoneFolder = function () {
-                var baseFolder = this._dropZoneTarget.machine.Directory + (this.endsWith(this._dropZoneTarget.machine.Directory, "/") ? "" : "/");
+                var baseFolder = this._dropZoneTarget.machine.Directory + (this.endsWith(this._dropZoneTarget.machine.Directory, "/") ? "" : "");
                 var selectedFolder = this.get("value");
                 return baseFolder + selectedFolder;
             }
@@ -208,10 +208,17 @@ define([
                     var store = new Memory({
                         data: arrayUtil.map(results, function (_path) {
                             var path = _path.substring(context._dropZoneTarget.machine.Directory.length);
-                            return {
-                                name: "." + path,
-                                id: _path
-                            };
+                            if (path.length === 0) {
+                                return {
+                                    name: ".",
+                                    id: _path
+                                }
+                            } else {
+                                return {
+                                    name: path,
+                                    id: _path
+                                }
+                            }
                         })
                     });
                     context.set("store", store);
