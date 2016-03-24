@@ -42,6 +42,8 @@ define([
     "hpcc/GroupDetailsWidget",
     "hpcc/FilterDropDownWidget",
     "hpcc/TargetSelectWidget",
+    "hpcc/ShowAccountPermissionsWidget",
+    "hpcc/ShowIndividualPermissionsWidget",
 
     "dojo/text!../templates/UserQueryWidget.html",
 
@@ -64,7 +66,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, on, all,
                 registry, Menu, MenuItem, MenuSeparator, Select,
                 tree, selector,
-                _TabContainerWidget, WsAccess, ESPBase, ESPUtil, ESPRequest, UserDetailsWidget, GroupDetailsWidget, FilterDropDownWidget, TargetSelectWidget,
+                _TabContainerWidget, WsAccess, ESPBase, ESPUtil, ESPRequest, UserDetailsWidget, GroupDetailsWidget, FilterDropDownWidget, TargetSelectWidget, ShowAccountPermissionsWidget, ShowIndividualPermissionsWidget,
                 template) {
     return declare("UserQueryWidget", [_TabContainerWidget], {
         templateString: template,
@@ -85,8 +87,12 @@ define([
             this.permissionsTab = registry.byId(this.id + "_Permissions");
             this.filter = registry.byId(this.id + "Filter");
             this.filePermissionDialog = registry.byId(this.id + "FilePermissionDialog");
+            this.showPermissionDialog = registry.byId(this.id + "ShowPermissionDialog");
             this.usersSelect = registry.byId(this.id + "UsersSelect");
             this.groupsSelect = registry.byId(this.id + "GroupsSelect");
+            this.showPermissionsGrid = registry.byId(this.id + "ShowPermissionsGrid");
+            this.checkFileSubmit = registry.byId(this.id + "CheckFileSubmit");
+            this.nameSelect = registry.byId(this.id + "NameSelect");
         },
 
         //  Hitched actions  ---
@@ -109,17 +115,86 @@ define([
             }
         },
 
-        _onDefaultPermissions: function () {
-            WsAccess.DefaultPermissions();
+        _onFileScopeDefaultPermissions: function () {
+            var row = this.getRow("FileScope");
+            if (row) {
+                var clean = row.basedn.split(/,(.+)?/)[1] //the request does not like the ou with prefix have to issue JIRA to fix this
+                var fileScopeDefaultPermissionsTab = this.ensureDefaultPermissionsPane(row.basedn, {
+                    Basedn: clean,
+                    Rtype: "file",
+                    Rtitle: "",
+                    Name: "files",
+                    TabName: this.i18n.title_FileScopeDefaultPermissions,
+                    DefaultPermissions: true
+                });
+                this.selectChild(fileScopeDefaultPermissionsTab);
+            }
+        },
+
+        _onWorkunitScopeDefaultPermissions: function () {
+            var row = this.getRow("WorkunitScope");
+            if (row) {
+                var clean = row.basedn.split(/,(.+)?/)[1] //the request does not like the ou with prefix have to issue JIRA to fix this
+                var workunitScopeDefaultPermissionsTab = this.ensureDefaultPermissionsPane(row.basedn, {
+                    Basedn: clean,
+                    Rtype: "file",
+                    Rtitle: "",
+                    Name: "files",
+                    TabName: this.i18n.title_WorkunitScopeDefaultPermissions,
+                    DefaultPermissions: true
+                });
+                this.selectChild(workunitScopeDefaultPermissionsTab);
+            }
         },
 
         _onPhysicalFiles: function () {
-            WsAccess.PhysicalFiles();
+            var row = this.getRow("FileScope");
+            if (row) {
+                var physicalPermissionsTab = this.ensurePhysicalFilesPermissionsPane("PhysicalFiles", {
+                    Basedn: row.basedn,
+                    Rtype: "file",
+                    Rtitle: "FileScope",
+                    Name: "file",
+                    TabName: "Physical Files"
+                });
+                this.selectChild(physicalPermissionsTab);
+            }
         },
 
+       _onCloseFilePermissions: function () {
+        this.filePermissionDialog.hide();
+       },
         _onCheckFilePermissions: function () {
+            var context = this;
             this.filePermissionDialog.show();
-            //WsAccess.CheckFilePermissions();
+            this.checkFileSubmit.set("disabled", true);
+            this.usersSelect.on("change", function (evt) {
+                if (context.usersSelect.value === "") {
+                    context.checkFileSubmit.set("disabled", true);
+                } else {
+                    context.checkFileSubmit.set("disabled", false)
+                }
+            });
+
+            this.groupsSelect.on("change", function (evt) {
+                if (context.groupsSelect.value === "") {
+                    context.checkFileSubmit.set("disabled", true);
+                } else {
+                    context.checkFileSubmit.set("disabled", false)
+                }
+            });
+        },
+        _onCheckFileSubmit: function () {
+            var context = this;
+            WsAccess.FilePermission({
+                request:{
+                    FileName: this.nameSelect.get("value"),
+                    UserName: this.usersSelect.get("value"),
+                    GroupName: this.groupsSelect.get("value")
+                }
+            }).then(function (response) {
+                dojo.byId("PermissionResponse").innerHTML = context.i18n.FilePermission + ": " + response.FilePermissionResponse.UserPermission;
+            });
         },
 
         getRow: function (rtitle) {
@@ -134,15 +209,18 @@ define([
         _onCodeGenerator: function () {
             var row = this.getRow("Module");
             if (row) {
-                WsAccess.Resources({
-                    request: {
-                        basedn: row.basedn,
-                        rtype: "service",
-                        rtitle: "CodeGenerator Permission",
-                        prefix: "codegenerator.",
-                        action: "Code Generator"
-                    }
+                var codeGeneratorPermissionsTab = this.ensureDefaultPermissionsPane(row.basedn, {
+                    Basedn: row.basedn,
+                    Rtype: "service",
+                    Rtitle: "CodeGenerator Permission",
+                    Name: "",
+                    prefix: "codegenerator.",
+                    action: "Code Generator",
+                    TabName: this.i18n.title_CodeGeneratorPermissions,
+
+                    DefaultPermissions: true
                 });
+                this.selectChild(codeGeneratorPermissionsTab);
             }
         },
 
@@ -359,7 +437,15 @@ define([
             }
         },
 
-        _onPermissionsRowDblClick: function (username, fullname, passwordexpiration) {
+        _onPermissionsRowDblClick: function (basedn, rtype, rtitle, name, description) {
+            var permissionsTab = this.ensurePermissionsPane(name, {
+                Basedn: basedn,
+                Rtype: rtype,
+                Rtitle: rtitle,
+                Name: name,
+                Description: description
+            });
+            this.selectChild(permissionsTab);
         },
 
         _onSubmitAddPermissionDialog: function (event) {
@@ -409,6 +495,7 @@ define([
             this.initGroupsContextMenu();
             var store = WsAccess.CreateGroupsStore(null, true);
             this.groupsGrid = declare([ESPUtil.Grid(false, true)])({
+                sort: [{ attribute: "name" }],
                 store: store,
                 columns: {
                     check: selector({
@@ -416,7 +503,10 @@ define([
                         label: " "
                     }, "checkbox"),
                     name: {
-                        label: this.i18n.GroupName
+                        label: this.i18n.GroupName,
+                        formatter: function (_name, idx) {
+                            return "<a href='#' class='dgrid-row-url'>" + _name + "</a>"
+                        }
                     },
                     groupOwner: {
                         label: this.i18n.ManagedBy
@@ -428,6 +518,12 @@ define([
             }, this.id + "GroupsGrid");
             var context = this;
             this.groupsGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onGroupsRowDblClick) {
+                    var item = context.groupsGrid.row(evt).data;
+                    context._onGroupsRowDblClick(item.name);
+                }
+            });
+            this.groupsGrid.on(".dgrid-row-url:click", function (evt) {
                 if (context._onGroupsRowDblClick) {
                     var item = context.groupsGrid.row(evt).data;
                     context._onGroupsRowDblClick(item.name);
@@ -497,6 +593,7 @@ define([
             this.usersGrid = declare([ESPUtil.Grid(false, true)])({
                 store: this.usersStore,
                 query: this.filter.toObject(),
+                sort: [{ attribute: "username" }],
                 columns: {
                     check: selector({
                         width: 27,
@@ -504,7 +601,10 @@ define([
                     },"checkbox"),
                     username: {
                         width: 180,
-                        label: this.i18n.Username
+                        label: this.i18n.Username,
+                        formatter: function (_name, idx) {
+                            return "<a href='#' class='dgrid-row-url'>" + _name + "</a>"
+                        }
                     },
                     fullname: {
                         label: this.i18n.FullName
@@ -516,6 +616,13 @@ define([
                 }
             }, this.id + "UsersGrid");
             var context = this;
+
+            this.usersGrid.on(".dgrid-row-url:click", function (evt) {
+                if (context._onUsersRowDblClick) {
+                    var item = context.usersGrid.row(evt).data;
+                    context._onUsersRowDblClick(item.username,item.fullname,item.passwordexpiration);
+                }
+            });
             this.usersGrid.on(".dgrid-row:dblclick", function (evt) {
                 if (context._onUsersRowDblClick) {
                     var item = context.usersGrid.row(evt).data;
@@ -565,7 +672,7 @@ define([
                     closable: true,
                     params: params
                 });
-                this.addChild(retVal, 3);
+                this.addChild(retVal, "last");
             }
             return retVal;
         },
@@ -604,6 +711,7 @@ define([
             this.permissionsGrid = declare([ESPUtil.Grid(false, true)])({
                 allowSelectAll: true,
                 deselectOnRefresh: false,
+                sort: [{ attribute: "DisplayName" }],
                 store: this.permissionsStore,
                 columns: {
                     check: selector({
@@ -612,11 +720,23 @@ define([
                             return row.children ? true : false;
                         }
                     }, "checkbox"),
-                    DisplayName: tree({
+                    name: tree({
                         width: 360,
                         sortable: false,
-                        label: this.i18n.Name
+                        label: this.i18n.Name,
+                        formatter: function (_name, idx) {
+                            if (idx.__hpcc_parent) {
+                                return "<a href='#' class='dgrid-row-url'>" + _name + "</a>" 
+                            } else {
+                              return _name;
+                            }
+                        }
                     }),
+                    description: {
+                        width: 360,
+                        sortable: false,
+                        label: this.i18n.Description
+                    },
                     basedn: {
                         sortable: false,
                         label: "basedn"
@@ -624,10 +744,16 @@ define([
                 }
             }, this.id + "PermissionsGrid");
             var context = this;
+            this.permissionsGrid.on(".dgrid-row-url:click", function (evt) {
+                if (context._onPermissionsRowDblClick) {
+                    var item = context.permissionsGrid.row(evt).data;
+                    context._onPermissionsRowDblClick(item.__hpcc_parent.basedn, item.__hpcc_parent.rtype, item.__hpcc_parent.rtitle, item.name, item.DisplayName);
+                }
+            });
             this.permissionsGrid.on(".dgrid-row:dblclick", function (evt) {
                 if (context._onPermissionsRowDblClick) {
                     var item = context.permissionsGrid.row(evt).data;
-                    context._onPermissionsRowDblClick(item.username, item.fullname, item.passwordexpiration);
+                    context._onPermissionsRowDblClick(item.__hpcc_parent.basedn, item.__hpcc_parent.rtype, item.__hpcc_parent.rtitle, item.name, item.DisplayName);
                 }
             });
             this.permissionsGrid.onSelectionChanged(function (event) {
@@ -671,6 +797,71 @@ define([
             }
         },
 
+        ensurePermissionsPane: function (id, params) {
+            id = this.createChildTabID(id);
+            var retVal = registry.byId(id);
+            if (!retVal) {
+                retVal = new ShowIndividualPermissionsWidget({
+                    id: id,
+                    title: params.Name,
+                    iconClass: 'iconPeople',
+                    closable: true,
+                    params: params
+                });
+                this.addChild(retVal, "last");
+            }
+            return retVal;
+        },
+
+        ensurePhysicalFilesPermissionsPane: function (id, params) {
+            id = this.createChildTabID(id);
+            var retVal = registry.byId(id);
+            if (!retVal) {
+                retVal = new ShowIndividualPermissionsWidget({
+                    id: id,
+                    title: params.TabName,
+                    iconClass: 'iconPeople',
+                    closable: true,
+                    params: params
+                });
+                this.addChild(retVal, "last");
+            }
+            return retVal;
+        },
+
+        ensureDefaultPermissionsPane: function (id, params) {
+            id = this.createChildTabID(id);
+            var retVal = registry.byId(id);
+            if (!retVal) {
+                retVal = new ShowIndividualPermissionsWidget({
+                    id: id,
+                    title: params.TabName,
+                    iconClass: 'iconPeople',
+                    closable: true,
+                    params: params
+                });
+                this.addChild(retVal, "last");
+            }
+            return retVal;
+        },
+
+        ensurePhysicalFilesPermissionsPane: function (id, params) {
+            id = this.createChildTabID(id);
+            var retVal = registry.byId(id);
+            if (!retVal) {
+                retVal = new ShowIndividualPermissionsWidget({
+                    id: id,
+                    title: params.TabName,
+                    iconClass: 'iconPeople',
+                    closable: true,
+                    params: params
+                });
+                this.addChild(retVal, "last");
+            }
+            return retVal;
+        },
+
+
         //  ---  ---
         initTab: function () {
             var currSel = this.getSelectedChild();
@@ -678,11 +869,6 @@ define([
                 if (currSel.id === this.groupsTab.id) {
                 } else if (currSel.id === this.usersTab.id) {
                 } else if (currSel.id === this.permissionsTab.id) {
-                } else if (currSel.id === this.id + "_FileScopes") {
-                    currSel.set("content", dojo.create("iframe", {
-                        src: dojoConfig.urlInfo.pathname + "?Widget=IFrameWidget&src=" + encodeURIComponent(ESPRequest.getBaseURL("ws_access") + "/Resources?rtype=file&rtitle=FileScope"),
-                        style: "border: 0; width: 100%; height: 100%"
-                    }));
                 } else {
                     if (!currSel.initalized) {
                         currSel.init(currSel.params);
@@ -694,9 +880,11 @@ define([
         refreshActionState: function (event) {
             registry.byId(this.id + "EnableScopeScans").set("disabled", true);
             registry.byId(this.id + "DisableScopeScans").set("disabled", true);
-            registry.byId(this.id + "DefaultPermissions").set("disabled", true);
+            registry.byId(this.id + "FileScopeDefaultPermissions").set("disabled", true);
+            registry.byId(this.id + "WorkUnitScopeDefaultPermissions").set("disabled", true);
             registry.byId(this.id + "PhysicalFiles").set("disabled", true);
             registry.byId(this.id + "CheckFilePermissions").set("disabled", true);
+            registry.byId(this.id + "CodeGenerator").set("disabled", true);
 
             var userSelection = this.usersGrid.getSelected();
             var hasUserSelection = userSelection.length;
@@ -713,14 +901,20 @@ define([
             var permissionSelection = this.permissionsGrid.getSelected();
             var hasPermissionSelection = permissionSelection.length;
             registry.byId(this.id + "DeletePermissions").set("disabled", !hasPermissionSelection);
-            if (hasPermissionSelection && event.rows[0].data.__hpcc_parent.DisplayName === "File Scopes") {
-                registry.byId(this.id + "EnableScopeScans").set("disabled", false);
-                registry.byId(this.id + "DisableScopeScans").set("disabled", false);
-                registry.byId(this.id + "DefaultPermissions").set("disabled", false);
-                registry.byId(this.id + "PhysicalFiles").set("disabled", false);
-                registry.byId(this.id + "CheckFilePermissions").set("disabled", false);
-            }
 
+            if (hasPermissionSelection && event.rows[0].data.__hpcc_parent.DisplayName === "File Scopes") {
+                registry.byId(this.id + "EnableScopeScans").set("disabled", !hasPermissionSelection);
+                registry.byId(this.id + "DisableScopeScans").set("disabled", !hasPermissionSelection);
+                registry.byId(this.id + "PhysicalFiles").set("disabled", !hasPermissionSelection);
+                registry.byId(this.id + "FileScopeDefaultPermissions").set("disabled", !hasPermissionSelection);
+                registry.byId(this.id + "CheckFilePermissions").set("disabled", !hasPermissionSelection);
+            }
+            if (hasPermissionSelection && event.rows[0].data.__hpcc_parent.DisplayName === "Workunit Scopes") {
+                registry.byId(this.id + "WorkUnitScopeDefaultPermissions").set("disabled", !hasPermissionSelection);
+            }
+            if (hasPermissionSelection && event.rows[0].data.__hpcc_parent.DisplayName === "Repository Modules") {
+                registry.byId(this.id + "CodeGenerator").set("disabled", !hasPermissionSelection);
+            }
         }
     });
 });
