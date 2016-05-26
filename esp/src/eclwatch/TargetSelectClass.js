@@ -31,10 +31,11 @@ define([
     "hpcc/WsTopology",
     "hpcc/WsWorkunits",
     "hpcc/FileSpray",
-    "hpcc/ws_access"
+    "hpcc/ws_access",
+    "hpcc/WsESDLConfig"
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, xhr, Deferred, ItemFileReadStore, all, Memory, on,
     registry,
-    WsTopology, WsWorkunits, FileSpray, WsAccess) {
+    WsTopology, WsWorkunits, FileSpray, WsAccess, WsESDLConfig) {
 
     return {
         i18n: nlsHPCC,
@@ -92,6 +93,8 @@ define([
                 this.loadECLSamples();
             } else if (params.Logs === true) {
                 this.loadLogs(params);
+            } else if (params.LoadDESDLDefinitions === true) {
+                this.loadESDLDefinitions(params);
             } else {
                 this.loadTargets();
             }
@@ -416,6 +419,24 @@ define([
                     context._value = shortestLabel;
                 }
                 context._postLoad();
+            });
+        },
+
+        loadESDLDefinitions: function () {
+            var context = this;
+            WsESDLConfig.ListESDLDefinitions({
+                load: function (response) {
+                    if (lang.exists("ListESDLDefinitionsResponse.Definitions.Definition", response)) {
+                        var targetData = response.ListESDLDefinitionsResponse.Definitions.Definition;
+                        for (var i = 0; i < targetData.length; ++i) {
+                            context.options.push({
+                                label: targetData[i].Id,
+                                value: targetData[i].Id
+                            });
+                        }
+                        context._postLoad();
+                    }
+                }
             });
         }
     };

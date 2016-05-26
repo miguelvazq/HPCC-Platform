@@ -248,7 +248,6 @@ define([
         init: function (params) {
             if (this.inherited(arguments))
                 return;
-
             if (this.params.searchResults) {
                 this.filter.disable(true);
             }

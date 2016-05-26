@@ -33,15 +33,17 @@ define([
 
     "hpcc/GridDetailsWidget",
     "hpcc/WsTopology",
+    "hpcc/WsESDLConfig",
     "hpcc/ESPWorkunit",
     "hpcc/DelayLoadWidget",
     "hpcc/ESPUtil",
-    "hpcc/DynamicESDLDetailsWidget"
+    "hpcc/DynamicESDLDetailsWidget",
+    "hpcc/TargetSelectWidget"
 
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, on, domClass, topic,
                 registry, ToggleButton, ToolbarSeparator, Button,
                 tree, ColumnHider,
-                GridDetailsWidget, WsTopology, ESPWorkunit, DelayLoadWidget, ESPUtil, DynamicESDLDetailsWidget) {
+                GridDetailsWidget, WsTopology, WsESDLConfig, ESPWorkunit, DelayLoadWidget, ESPUtil, DynamicESDLDetailsWidget, TargetSelectWidget) {
     return declare("DynamicESDLWidget", [GridDetailsWidget], {
         i18n: nlsHPCC,
 
@@ -52,17 +54,20 @@ define([
             var context = this;
             if (this.inherited(arguments))
                 return;
+
             this._refreshActionState();
             this.refreshGrid();
+            this.detailsWidget.widget._Binding.set("disabled", true);
         },
 
         postCreate: function (args) {
+            var context = this;
             this.inherited(arguments);
             this.detailsWidget = new DynamicESDLDetailsWidget({
                 id: this.id + "Details",
                 region: "right",
                 splitter: true,
-                style: "width: 66%",
+                style: "width: 80%",
                 minSize: 240
             });
             this.detailsWidget.placeAt(this.gridTab, "last");
@@ -70,24 +75,8 @@ define([
 
         createGrid: function (domID) {
             var context = this;
-            this.openButton = registry.byId(this.id + "Open");
-            this.bindButton = registry.byId(this.id + "Bind");
-            this.bindButton = new Button({
-                showLabel: true,
-                checked: false,
-                //style:{display: "none"},
-               /* onChange: function (val) {
-                    if (val) {
-                        context.viewModeMachines.set("checked", false);
-                        context.viewModeServices.set("checked", false);
-                        context.viewModeTargets.set("checked", false);
-                        context.refreshGrid("Debug");
-                    }
-                },*/
-                label: "Bind"
-            }).placeAt(this.openButton.domNode, "after");
 
-            this.store.mayHaveChildren = function (item) {
+           this.store.mayHaveChildren = function (item) {
                 if (item.__hpcc_parentName) {
                     return false;
                 }
@@ -98,120 +87,71 @@ define([
                var retVal =  this.query({__hpcc_parentName: parent.__hpcc_id}, options);
                return retVal;
             };
-
             var retVal = new declare([ESPUtil.Grid(false, true)])({
                 store: this.store,
-                //sort: [{ attribute: "StatusID", descending: true },{ attribute: "Status", descending: true }],
                 columns: {
-                    StatusID: {label: "", width: 0, sortable: false, hidden: true},
                     Name: tree({
-                        label: "Name", sortable: true, width:200,
-                        /*formatter: function (Name, row) {
-                            switch (row.Status) {
-                                case "Normal":
-                                    return dojoConfig.getImageHTML("normal.png") + Name;
-                                case "Warning":
-                                    return dojoConfig.getImageHTML("warning.png") + Name;
-                                case "Error":
-                                    return dojoConfig.getImageHTML("error.png") + Name;
-                            }
-                            return "";
-                        }*/
-                    }),
-                    /*Service: {label: "ESP Binding", sortable: false},
-                    Port: {label: "Port", sortable: false},
-                    Protocol: {label: "Protocol", sortable: false}
-                    
-                    URL: {label: "URL", width: 200, sortable: false,
-                        formatter: function (Name, row) {
-                            if (Name) {
-                                return "<a href=http://"+Name+" target='_blank'>" + Name + "</a>";
-                            } else {
-                                return "";
-                            }
-                        }},
-                    EndPoint: {label: "IP", sortable: true, width:140},
-                    TimeReportedStr: {label: "Time Reported", width:140, sortable: true},
-                    Status: { label: this.i18n.Severity, width: 130, sortable: false,
-                        renderCell: function (object, value, node, options) {
-                            switch (value) {
-                                case "Error":
-                                    domClass.add(node, "ErrorCell");
-                                    break;
-                                case "Warning":
-                                    domClass.add(node, "WarningCell");
-                                    break;
-                                case "Normal":
-                                    domClass.add(node, "NormalCell");
-                                    break;
-                            }
-                            node.innerText = value;
-                        }*/
-                    }
-                //}
+                        collapseOnRefresh: false, label: "Name", sortable: true, width:200,
+                    })
+                }
             }, domID);
 
             retVal.on("dgrid-select", function (event) {
                 var selection = context.grid.getSelected();
                 if (selection.length) {
+                    lang.mixin(selection[0],{
+                        Owner: context
+                    });
                     context.detailsWidget.init(selection[0]);
                 }
             });
-
             return retVal;
         },
 
-        createDetail: function (id, row, params) {
-            return new DelayLoadWidget({
-                id: id,
-                title: row.__hpcc_displayName,
-                closable: true,
-                delayWidget: "DynamicESDLDetailsWidget",
-                hpcc: {
-                    params: row
-                }
-            });
+        _onRefresh: function () {
+            this.refreshGrid();
         },
 
         refreshGrid: function () {
             var context = this;
 
-            WsTopology.TpServiceQuery({
-                    request: {}
-                }).then(function (response) {
-                    var results = [];
-                    var newRows = [];
-                    if (lang.exists("TpServiceQueryResponse.ServiceList.TpEspServers.TpEspServer", response)) {
-                        results = response.TpServiceQueryResponse.ServiceList.TpEspServers.TpEspServer;
-                    }
-                    arrayUtil.forEach(results, function (row, idx) {
-                        lang.mixin(row, {
-                            __hpcc_parentName: null,
-                            __hpcc_id: row.Name
-                        });
-
-                        arrayUtil.forEach(row.TpBindings.TpBinding, function (tpBinding, idx) {
-                            if (tpBinding.ServiceType === 'DynamicESDL') {
-                                newRows.push({
-                                    __hpcc_parentName: row.Name,
-                                    __hpcc_id: row.Name + idx,
-                                    __hpcc_type: "ESP Process",
-                                    Name: tpBinding.Service,
-                                    Port: tpBinding.Port,
-                                    Service: tpBinding.Name,
-                                    Protocol: tpBinding.Protocol
-                                });
-                            }
-                        });
+            WsESDLConfig.ListDESDLEspBindings({
+                request: {
+                    IncludeESDLBindingInfo: true
+                }
+            }).then(function (response) {
+                var results = [];
+                var newRows = [];
+                if (lang.exists("ListDESDLEspBindingsResp.ESPServers.ESPServer", response)) {
+                    results = response.ListDESDLEspBindingsResp.ESPServers.ESPServer;
+                }
+                arrayUtil.forEach(results, function (row, idx) {
+                    lang.mixin(row, {
+                        __hpcc_parentName: null,
+                        __hpcc_id: row.Name
                     });
 
-                    arrayUtil.forEach(newRows, function (newRow) {
-                        results.push(newRow);
+                    arrayUtil.forEach(row.TpBindingEx.TpBindingEx, function (TpBinding, idx) {
+                        newRows.push({
+                            __hpcc_parentName: row.Name,
+                            __hpcc_id: row.Name + idx,
+                            __binding_info: TpBinding.ESDLBinding,
+                            Name: TpBinding.Name,
+                            Port: TpBinding.Port,
+                            DefinitionID: TpBinding.ESDLBinding.Definition.Id,
+                            Service: TpBinding.ESDLBinding.Definition.Name,
+                            Protocol: TpBinding.Protocol
+                        });
                     });
-
-                    context.store.setData(results);
-                    context.grid.set("query", {__hpcc_parentName: null });
                 });
+
+                arrayUtil.forEach(newRows, function (newRow) {
+                    results.push(newRow);
+                });
+
+                context.store.setData(results);
+                context.grid.set("query", {__hpcc_parentName: null });
+            });
         }
     });
 });

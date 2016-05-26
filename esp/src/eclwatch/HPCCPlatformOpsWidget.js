@@ -1,8 +1,102 @@
-//>>built
-require({cache:{"url:templates/HPCCPlatformOpsWidget.html":'\x3cdiv class\x3d"${baseClass}"\x3e\n    \x3cdiv id\x3d"${id}BorderContainer" class\x3d"${baseClass}BorderContainer" style\x3d"width: 100%; height: 100%; margin:0; padding:0" data-dojo-props\x3d"gutters:false, liveSplitters:false" data-dojo-type\x3d"dijit.layout.BorderContainer"\x3e\n        \x3cdiv id\x3d"${id}TitlebarMini" class\x3d"miniTitlebar" data-dojo-props\x3d"region: \'top\'" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3cdiv id\x3d"${id}StackController" style\x3d"width: 100%" data-dojo-props\x3d"containerId:\'${id}TabContainer\'" data-dojo-type\x3d"dijit.layout.StackController"\x3e\x3c/div\x3e\n        \x3c/div\x3e\n        \x3cdiv id\x3d"${id}TabContainer" data-dojo-props\x3d"region: \'center\', tabPosition: \'top\'" style\x3d"width: 100%; height: 100%" data-dojo-type\x3d"dijit.layout.StackContainer"\x3e\n            \x3cdiv id\x3d"${id}_Topology" title\x3d"${i18n.Topology}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'TopologyWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_DiskUsage" title\x3d"${i18n.DiskUsage}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'DiskUsageWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_TargetClusters" title\x3d"${i18n.TargetClusters}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_ClusterProcesses" title\x3d"${i18n.ClusterProcesses}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_SystemServers" title\x3d"${i18n.SystemServers}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Permissions" title\x3d"${i18n.Security}" data-dojo-type\x3d"UserQueryWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Resources" title\x3d"${i18n.Resources}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Monitoring" title\x3d"${i18n.Monitoring}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'MonitoringWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_DESDL" title\x3d"${i18n.DynamicESDL}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'DynamicESDLQueryWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n        \x3c/div\x3e\n    \x3c/div\x3e\n\x3c/div\x3e\n'}});
-require({cache:{"url:templates/HPCCPlatformOpsWidget.html":'\x3cdiv class\x3d"${baseClass}"\x3e\n    \x3cdiv id\x3d"${id}BorderContainer" class\x3d"${baseClass}BorderContainer" style\x3d"width: 100%; height: 100%; margin:0; padding:0" data-dojo-props\x3d"gutters:false, liveSplitters:false" data-dojo-type\x3d"dijit.layout.BorderContainer"\x3e\n        \x3cdiv id\x3d"${id}TitlebarMini" class\x3d"miniTitlebar" data-dojo-props\x3d"region: \'top\'" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3cdiv id\x3d"${id}StackController" style\x3d"width: 100%" data-dojo-props\x3d"containerId:\'${id}TabContainer\'" data-dojo-type\x3d"dijit.layout.StackController"\x3e\x3c/div\x3e\n        \x3c/div\x3e\n        \x3cdiv id\x3d"${id}TabContainer" data-dojo-props\x3d"region: \'center\', tabPosition: \'top\'" style\x3d"width: 100%; height: 100%" data-dojo-type\x3d"dijit.layout.StackContainer"\x3e\n            \x3cdiv id\x3d"${id}_Topology" title\x3d"${i18n.Topology}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'TopologyWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_DiskUsage" title\x3d"${i18n.DiskUsage}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'DiskUsageWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_TargetClusters" title\x3d"${i18n.TargetClusters}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_ClusterProcesses" title\x3d"${i18n.ClusterProcesses}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_SystemServers" title\x3d"${i18n.SystemServers}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Permissions" title\x3d"${i18n.Security}" data-dojo-type\x3d"UserQueryWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Resources" title\x3d"${i18n.Resources}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-type\x3d"dijit.layout.ContentPane"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_Monitoring" title\x3d"${i18n.Monitoring}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'MonitoringWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n            \x3cdiv id\x3d"${id}_DESDL" title\x3d"${i18n.DynamicESDL}" style\x3d"padding: 0px; border:0px; border-color:none; overflow: hidden" data-dojo-props\x3d"delayWidget: \'DynamicESDLQueryWidget\'" data-dojo-type\x3d"DelayLoadWidget"\x3e\n            \x3c/div\x3e\n        \x3c/div\x3e\n    \x3c/div\x3e\n\x3c/div\x3e\n'}});
-define("hpcc/HPCCPlatformOpsWidget","dojo/_base/declare dojo/_base/lang dojo/i18n dojo/i18n!./nls/hpcc dijit/registry hpcc/_TabContainerWidget hpcc/ESPRequest dojo/text!../templates/HPCCPlatformOpsWidget.html hpcc/UserQueryWidget dijit/layout/BorderContainer dijit/layout/TabContainer dijit/layout/ContentPane hpcc/DelayLoadWidget".split(" "),function(d,h,k,e,c,f,b,g){return d("HPCCPlatformOpsWidget",[f],{templateString:g,baseClass:"HPCCPlatformOpsWidget",i18n:e,postCreate:function(a){this.inherited(arguments);
-c.byId(this.id+"_Permissions").set("disabled",!0)},startup:function(a){this.inherited(arguments)},getTitle:function(){return this.i18n.title_HPCCPlatformOps},init:function(a){this.inherited(arguments)||(this.refresh(),this.initTab())},refresh:function(a){dojoConfig.isAdmin&&c.byId(this.id+"_Permissions").set("disabled",!1)},initTab:function(){var a=this.getSelectedChild();a&&!a.initalized&&(a.id===this.id+"_Resources"?a.set("content",dojo.create("iframe",{src:dojoConfig.urlInfo.pathname+"?Widget\x3dIFrameWidget\x26src\x3d"+
-encodeURIComponent(b.getBaseURL("WsSMC")+"/BrowseResources"),style:"border: 0; width: 100%; height: 100%"})):a.id===this.id+"_TargetClusters"?a.set("content",dojo.create("iframe",{src:dojoConfig.urlInfo.pathname+"?Widget\x3dIFrameWidget\x26src\x3d"+encodeURIComponent(b.getBaseURL("WsTopology")+"/TpTargetClusterQuery?Type\x3dROOT"),style:"border: 0; width: 100%; height: 100%"})):a.id===this.id+"_ClusterProcesses"?a.set("content",dojo.create("iframe",{src:dojoConfig.urlInfo.pathname+"?Widget\x3dIFrameWidget\x26src\x3d"+
-encodeURIComponent(b.getBaseURL("WsTopology")+"/TpClusterQuery?Type\x3dROOT"),style:"border: 0; width: 100%; height: 100%"})):a.id===this.id+"_SystemServers"?a.set("content",dojo.create("iframe",{src:dojoConfig.urlInfo.pathname+"?Widget\x3dIFrameWidget\x26src\x3d"+encodeURIComponent(b.getBaseURL("WsTopology")+"/TpServiceQuery?Type\x3dALLSERVICES"),style:"border: 0; width: 100%; height: 100%"})):a.init&&a.init({}),a.initalized=!0)}})});
-//# sourceMappingURL=HPCCPlatformOpsWidget.js.map
+/*##############################################################################
+#	HPCC SYSTEMS software Copyright (C) 2012 HPCC Systems®.
+#
+#	Licensed under the Apache License, Version 2.0 (the "License");
+#	you may not use this file except in compliance with the License.
+#	You may obtain a copy of the License at
+#
+#	   http://www.apache.org/licenses/LICENSE-2.0
+#
+#	Unless required by applicable law or agreed to in writing, software
+#	distributed under the License is distributed on an "AS IS" BASIS,
+#	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#	See the License for the specific language governing permissions and
+#	limitations under the License.
+############################################################################## */
+define([
+    "dojo/_base/declare",
+    "dojo/_base/lang",
+    "dojo/i18n",
+    "dojo/i18n!./nls/hpcc",
+
+    "dijit/registry",
+
+    "hpcc/_TabContainerWidget",
+    "hpcc/ESPRequest",
+
+    "dojo/text!../templates/HPCCPlatformOpsWidget.html",
+
+    "hpcc/UserQueryWidget",
+    "dijit/layout/BorderContainer",
+    "dijit/layout/TabContainer",
+    "dijit/layout/ContentPane",
+
+    "hpcc/DelayLoadWidget"
+
+], function (declare, lang, i18n, nlsHPCC,
+                registry,
+                _TabContainerWidget, ESPRequest,
+                template) {
+    return declare("HPCCPlatformOpsWidget", [_TabContainerWidget], {
+        templateString: template,
+        baseClass: "HPCCPlatformOpsWidget",
+        i18n: nlsHPCC,
+
+        postCreate: function (args) {
+            this.inherited(arguments);
+            registry.byId(this.id + "_Permissions").set("disabled", true);
+            //registry.byId(this.id + "_DESDL").set("disabled", true);
+        },
+
+        startup: function (args) {
+            this.inherited(arguments);
+        },
+
+        getTitle: function () {
+            return this.i18n.title_HPCCPlatformOps;
+        },
+
+        //  Hitched actions  ---
+
+        //  Implementation  ---
+        init: function (params) {
+            if (this.inherited(arguments))
+                return;
+
+            this.refresh();
+            this.initTab();
+        },
+
+        refresh: function (params) {
+            if (dojoConfig.isAdmin) {
+                registry.byId(this.id + "_Permissions").set("disabled", false);
+                //registry.byId(this.id + "_DESDL").set("disabled", false);
+            }
+        },
+
+        initTab: function () {
+            var currSel = this.getSelectedChild();
+            if (currSel && !currSel.initalized) {
+                if (currSel.id === this.id + "_TargetClusters") {
+                    currSel.set("content", dojo.create("iframe", {
+                        src: dojoConfig.urlInfo.pathname + "?Widget=IFrameWidget&src=" + encodeURIComponent(ESPRequest.getBaseURL("WsTopology") + "/TpTargetClusterQuery?Type=ROOT"),
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
+                } else if (currSel.id === this.id + "_ClusterProcesses") {
+                    currSel.set("content", dojo.create("iframe", {
+                        src: dojoConfig.urlInfo.pathname + "?Widget=IFrameWidget&src=" + encodeURIComponent(ESPRequest.getBaseURL("WsTopology") + "/TpClusterQuery?Type=ROOT"),
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
+                } else if (currSel.id === this.id + "_SystemServers") {
+                    currSel.set("content", dojo.create("iframe", {
+                        src: dojoConfig.urlInfo.pathname + "?Widget=IFrameWidget&src=" + encodeURIComponent(ESPRequest.getBaseURL("WsTopology") + "/TpServiceQuery?Type=ALLSERVICES"),
+                        style: "border: 0; width: 100%; height: 100%"
+                    }));
+                } else if (currSel.init) {
+                    currSel.init({});
+                }
+                currSel.initalized = true;
+            }
+        }
+    });
+});

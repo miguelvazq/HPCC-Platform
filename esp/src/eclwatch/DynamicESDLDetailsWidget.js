@@ -27,8 +27,14 @@ define([
     "dojo/query",
     "dojo/store/Memory",
     "dojo/store/Observable",
+    "dojo/_base/array",
+    "dojo/topic",
 
     "dijit/registry",
+    "dijit/form/ToggleButton",
+    "dijit/form/Button",
+    "dijit/ToolbarSeparator",
+    "dijit/Dialog",
 
     "dgrid/OnDemandGrid",
     "dgrid/Keyboard",
@@ -36,14 +42,19 @@ define([
     "dgrid/selector",
     "dgrid/extensions/ColumnResizer",
     "dgrid/extensions/DijitRegistry",
+    'dgrid/extensions/CompoundColumns',
+    'dgrid/editor',
 
     "hpcc/_TabContainerWidget",
     "hpcc/ESPWorkunit",
     "hpcc/ESPRequest",
+    "hpcc/ESPUtil",
     "hpcc/TargetSelectWidget",
     "hpcc/ECLSourceWidget",
-    "hpcc/LogWidget",
     "hpcc/WsTopology",
+    "hpcc/GridDetailsWidget",
+    "hpcc/WsESDLConfig",
+    "hpcc/DynamicESDLMethodWidget",
 
     "dojo/text!../templates/DynamicESDLDetailsWidget.html",
 
@@ -64,10 +75,10 @@ define([
     "dijit/form/SimpleTextarea",
 
     "hpcc/TableContainer"
-], function (declare, lang, i18n, nlsHPCC, dom, domConstruct, domForm, domAttr, iframe, domClass, query, Memory, Observable,
-                registry,
-                OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                _TabContainerWidget, ESPWorkunit, ESPRequest, TargetSelectWidget, ECLSourceWidget, LogWidget, WsTopology,
+], function (declare, lang, i18n, nlsHPCC, dom, domConstruct, domForm, domAttr, iframe, domClass, query, Memory, Observable, arrayUtil, topic,
+                registry, ToggleButton, Button, ToolbarSeparator, Dialog,
+                OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry, CompoundColumns, editor,
+                _TabContainerWidget, ESPWorkunit, ESPRequest, ESPUtil, TargetSelectWidget, ECLSourceWidget, WsTopology, GridDetailsWidget, WsESDLConfig, DynamicESDLMethodWidget,
                 template) {
     return declare("DynamicESDLDetailsWidget", [_TabContainerWidget], {
         templateString: template,
@@ -75,17 +86,129 @@ define([
         i18n: nlsHPCC,
 
         summaryWidget: null,
+        bindingWidget: null,
+        bindingWidgetLoaded: null,
+        definitionWidget: null,
+        definitionWidgetLoaded: false,
         configurationWidget: null,
         configurationWidgetLoaded: false,
-        logsWidget: null,
-        logsWidgetLoaded: false,
-
+        configurationGrid: null,
 
         postCreate: function (args) {
+            var context = this;
             this.inherited(arguments);
             this.details = registry.byId(this.id + "_Details");
-            this.configurationWidget = registry.byId(this.id + "_Configuration");
-            this.bindingWidget = registry.byId(this.id + "_Binding");
+            this.definitionWidget = registry.byId(this.id + "Definition");
+            this.configurationWidget = registry.byId(this.id + "Configuration");
+            this.definitionID = registry.byId(this.id + "DefinitionID");
+            this.bindingRefresh = registry.byId(this.id + "BindingRefresh");
+            this.refreshButton = registry.byId(this.id + "Refresh");
+
+            this.addBindingButton = new Button({
+                id: this.id + "AddBinding",
+                disabled: true,
+                onClick: function (val) {
+                    context.dialog.show();
+                },
+                label: "Add Binding"
+            }).placeAt(this.refreshButton.domNode, "after");
+            tmpSplitter = new ToolbarSeparator().placeAt(this.addBindingButton.domNode, "before");
+            this.deleteBindingButton = new Button({
+                id: this.id + "DeleteBinding",
+                disabled: true,
+                onClick: function (val) {
+                    if (confirm("You are about to delete this binding. Are you sure you want to do this?")) {
+                        WsESDLConfig.DeleteESDLBinding({
+                        request: {
+                            Id:  context.params.__hpcc_parentName + "." + context.params.Name
+                        }
+                        }).then(function (response) {
+                            if (lang.exists("DeleteESDLRegistryEntryResponse.status.Code", response)) {
+                                if (response.DeleteESDLRegistryEntryResponse.status.Code === 0) {
+                                    dojo.publish("hpcc/brToaster", {
+                                        Severity: "Message",
+                                        Source: "WsESDLConfig.DeleteESDLBinding",
+                                        Exceptions: [{ Source: "Deleted binding", Message: "Binding Deleted" }]
+                                    });
+                                    context.addBindingButton.set("disabled", false);
+                                    context.deleteBindingButton.set("disabled", true);
+                                    context.widget._Binding.set("disabled", true);
+                                    context.params.Owner._onRefresh({});
+                                    context.params.Owner.grid.deselect(context.params.__hpcc_id);
+                                    context.params.Owner.grid.select(context.params.__hpcc_id);
+                                }
+                            }
+                        });
+                    }
+                },
+                label: "Delete Binding"
+            }).placeAt(this.addBindingButton.domNode, "after");
+            this.definitionDropDown = new TargetSelectWidget({});
+            this.definitionDropDown.init({
+                LoadDESDLDefinitions: true
+            });
+            this.dialog = new Dialog({
+                title: "Please pick a definition",
+                style: "width: 300px;"
+            });
+            this.dialog.addChild(this.definitionDropDown);
+            this.addDefinitionButton = new Button({
+                disabled: false,
+                style: "float:right;",
+                label: "Apply",
+                onClick: function (val) {
+                    WsESDLConfig.GetESDLDefinition({
+                        request: {
+                            Id: context.definitionDropDown.get("value"),
+                            ReportMethodsAvailable: true
+                        }
+                    }).then(function (response) {
+                        if (response.GetESDLDefinitionResponse.status.Code === 0) {
+                             WsESDLConfig.PublishESDLBinding({
+                                request: {
+                                    EspProcName: context.params.__hpcc_parentName,
+                                    EspBindingName: context.params.Name,
+                                    EsdlDefinitionID: response.GetESDLDefinitionResponse.Id,
+                                    Overwrite: true,
+                                    EsdlServiceName: response.GetESDLDefinitionResponse.ESDLServices.Name,
+                                    Config: "<Methods><Method name='" + response.GetESDLDefinitionResponse.Methods.Method[0].Name + "'/></Methods>"
+                                }
+                            }).then(function (publishresponse) {
+                                if (publishresponse.PublishESDLBindingResponse.status.Code === 0) {
+                                    context.deleteBindingButton.set("disabled", false);
+                                    context.addBindingButton.set("disabled", true); //add if response .code === 0
+                                    context.widget._Binding.set("disabled", false);
+                                    context.widget._Binding.__hpcc_initalized = true;
+                                    var xml = context.formatXml(response.GetESDLDefinitionResponse.XMLDefinition);
+                                    context.widget.Definition.init({
+                                        sourceMode: "xml"
+                                    });
+                                    context.widget.Definition.setText(xml);
+
+                                    if (!context.widget.Configuration.initalized) {
+                                        context.widget.Configuration.init({
+                                            Configuration: context.params,
+                                            Methods: response.GetESDLDefinitionResponse
+                                        });
+                                    } else if (context.widget.Configuration.refresh) {
+                                        context.widget.Configuration.refresh({
+                                            Configuration: context.params,
+                                            Methods: response.GetESDLDefinitionResponse
+                                        });
+                                    }
+                                    context.params.Owner._onRefresh({});
+                                    context.params.Owner.grid.deselect(context.params.__hpcc_id);
+                                    context.params.Owner.grid.select(context.params.__hpcc_id);
+                                }
+                            });
+                        }
+                    });
+
+                    context.widget._Binding.set("disabled", false);
+                    context.dialog.hide();
+                }
+            });
+            this.dialog.addChild(this.addDefinitionButton)
         },
 
         startup: function (args) {
@@ -108,29 +231,25 @@ define([
         init: function (params) {
             if (this.params.__hpcc_id === params.__hpcc_id)
                 return;
-
+            var context = this;
+            this.selectChild(this.widget._Summary.id);
             this.initalized = false;
             this.widget._Summary.__hpcc_initalized = false;
-            this.widget._Configuration.__hpcc_initalized = false;
             this.widget._Binding.__hpcc_initalized = false;
+
+            if (params.__hpcc_parentName) {
+                if (params.__binding_info.Definition.Id !== null) {
+                    context.widget._Binding.set("disabled", false);
+                    context.addBindingButton.set("disabled", true);
+                    context.deleteBindingButton.set("disabled", false);
+                } else {
+                    context.widget._Binding.set("disabled", true);
+                    context.addBindingButton.set("disabled", false);
+                    context.deleteBindingButton.set("disabled", true);
+                }
+            }
+
             this.inherited(arguments);
-            /*if (this.params.hasConfig()) {*/
-                //this.widget._Configuration.set("disabled", false);
-            //} 
-            //else {
-                this.widget._Configuration.set("disabled", true);
-                /*if (this.getSelectedChild().id === this.widget._Configuration.id) {
-                    this.selectChild(this.widget._Summary.id);
-                }*/
-            //}
-            /*if (this.params.hasLogs()) {
-                this.widget._Logs.set("disabled", false);
-            } else {*/
-                this.widget._Binding.set("disabled", true);
-                /*if (this.getSelectedChild().id === this.widget._Logs.id) {
-                    this.selectChild(this.widget._Summary.id);
-                }*/
-            //}
             this.initTab();
         },
 
@@ -163,41 +282,25 @@ define([
                     }
                     this.details.setContent(table);
                 }
-                /*var esdlSummary = null;
-                if (this.params.__hpcc_type === "ESP Process") {
-                    esdlSummary = this.params;
-                } else if (this.params.__hpcc_parentNode && this.params.__hpcc_parentNode.__hpcc_treeItem.__hpcc_type === "ESP Process") {
-                    tpMachine = this.params.__hpcc_parentNode.__hpcc_treeItem;
-                };*/
-                
+            } else if (currSel.id == this.widget._Binding.id && !this.widget._Binding.__hpcc_initalized) {
+                this.widget._Binding.__hpcc_initalized = true;
 
-                /*if (esdlSummary) {
-                    var tr = domConstruct.create("tr", {}, table);
-                    domConstruct.create("td", {
-                        innerHTML: "<b>URL:&nbsp;&nbsp;</b>"
-                    }, tr);
-                    var td = domConstruct.create("td", {
-                    }, tr);
-                    var url = tpBinding.Protocol + "://" + tpMachine.Netaddress + ":" + tpBinding.Port + "/";
-                    domConstruct.create("a", {
-                        href: url,
-                        innerHTML: url
-                    }, td);
-                }*/
-                
-            } /*else if (currSel.id === this.widget._Configuration.id && !this.widget._Configuration.__hpcc_initalized) {
-                this.widget._Configuration.__hpcc_initalized = true;
-                this.params.getConfig().then(function (response) {
-                    var xml = context.formatXml(response);
-                    context.widget._Configuration.init({
-                        sourceMode: "xml"
-                    });
-                    context.widget._Configuration.setText(xml);
+                var xml = context.formatXml(context.params.__binding_info.Definition.Interface)
+                context.widget.Definition.init({
+                    sourceMode: "xml"
                 });
-            } else if (currSel.id == this.widget._Logs.id && !this.widget._Logs.__hpcc_initalized) {
-                this.widget._Logs.__hpcc_initalized = true;
-                this.widget._Logs.init(this.params);
-            }*/
+                context.widget.Definition.setText(xml);
+
+                if (!context.widget.Configuration.initalized) {
+                    context.widget.Configuration.init({
+                        Configuration: context.params
+                });
+                } else if (context.widget.Configuration.refresh) {
+                    context.widget.Configuration.refresh({
+                        Configuration: context.params
+                    });
+                }
+            }
         },
 
         updateInput: function (name, oldValue, newValue) {
@@ -205,9 +308,7 @@ define([
             if (registryNode) {
                 registryNode.set("value", newValue);
             }
-        },
-
-        refreshActionState: function () {
         }
+
     });
 });

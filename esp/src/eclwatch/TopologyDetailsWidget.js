@@ -118,6 +118,7 @@ define([
                 this.widget._Configuration.set("disabled", false);
             } else {
                 this.widget._Configuration.set("disabled", true);
+                console.log(this.getSelectedChild().id)
                 if (this.getSelectedChild().id === this.widget._Configuration.id) {
                     this.selectChild(this.widget._Summary.id);
                 }
@@ -125,6 +126,7 @@ define([
             if (this.params.hasLogs()) {
                 this.widget._Logs.set("disabled", false);
             } else {
+                console.log(this.getSelectedChild().id);
                 this.widget._Logs.set("disabled", true);
                 if (this.getSelectedChild().id === this.widget._Logs.id) {
                     this.selectChild(this.widget._Summary.id);
