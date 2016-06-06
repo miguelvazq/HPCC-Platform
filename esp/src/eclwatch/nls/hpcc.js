@@ -140,6 +140,7 @@ define({root:
     EnableScopeScans: "Enable Scope Scans",
     EnableScopeScansConfirm: "Are you sure you want to enable Scope Scans? Changes will revert to configuration settings on DALI reboot.",
     EnglishQ: "English?",
+    Environment: "Environment:",
     Error: "Error",
     Errorparsingserverresult: "Error parsing server result",
     Errors: "Error(s)",

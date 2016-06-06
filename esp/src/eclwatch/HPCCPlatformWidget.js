@@ -196,6 +196,9 @@ define([
                 }
             });
 
+
+            console.log(location);
+
             this.activity = ESPActivity.Get();
             this.activity.watch("Build", function (name, oldValue, newValue) {
                 context.build = WsSMC.parseBuildString(newValue);
