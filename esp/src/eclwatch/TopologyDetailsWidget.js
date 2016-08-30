@@ -86,6 +86,7 @@ define([
             this.details = registry.byId(this.id + "_Details");
             this.configurationWidget = registry.byId(this.id + "_Configuration");
             this.logsWidget = registry.byId(this.id + "_Logs");
+            this.preflightWidget = registry.byId(this.id + "_Preflight");
         },
 
         startup: function (args) {
@@ -113,7 +114,11 @@ define([
             this.widget._Summary.__hpcc_initalized = false;
             this.widget._Configuration.__hpcc_initalized = false;
             this.widget._Logs.__hpcc_initalized = false;
+            this.widget._Preflight.__hpcc_initalized = false;
+            this.widget._Preflight.set("disabled", true);
+
             this.inherited(arguments);
+
             if (this.params.hasConfig()) {
                 this.widget._Configuration.set("disabled", false);
             } else {
@@ -197,7 +202,12 @@ define([
             } else if (currSel.id == this.widget._Logs.id && !this.widget._Logs.__hpcc_initalized) {
                 this.widget._Logs.__hpcc_initalized = true;
                 this.widget._Logs.init(this.params);
-            }
+            } /*else if (currSel.id == this.preflightWidget.id && !this.preflightWidgetLoaded) {
+                this.preflightWidgetLoaded = true;
+                this.preflightWidget.init({
+                   params: params.params
+                });
+            }*/
         },
 
         updateInput: function (name, oldValue, newValue) {
