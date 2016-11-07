@@ -609,11 +609,13 @@ define([
                         label: this.i18n.Username,
                         formatter: function (_name, idx) {
                             return "<a href='#' class='dgrid-row-url'>" + _name + "</a>"
-                        }
+                        },
+                        sortable: true
                     },
                     employeeID: {
                         width: 180,
-                        label: this.i18n.EmployeeID
+                        label: this.i18n.EmployeeID,
+                        sortable: true
                     },
                     fullname: {
                         label: this.i18n.FullName
@@ -636,6 +638,22 @@ define([
                 if (context._onUsersRowDblClick) {
                     var item = context.usersGrid.row(evt).data;
                     context._onUsersRowDblClick(item.username,item.employeeID,item.fullname,item.passwordexpiration);
+                }
+            });
+            this.usersGrid.on("dgrid-sort", function (event) {
+                if (event.sort[0].attribute === "employeeID") {
+                    var sort = event.sort[0];
+                    event.preventDefault();
+                    var aValue,bValue;
+                    if (sort.attribute && typeof sort.attribute == "string") {
+                        aValue = sort.attribute.toLowerCase();
+                    }
+                    if (sort.attribute && typeof sort.attribute == "string") {
+                        bValue = sort.attribute.toLowerCase();
+                    }
+                    var result = aValue > bValue ? 1 : -1;
+                    return result * (sort.descending ? -1 : 1);
+                    context.usersGrid.updateSortArrow(event.sort, true);
                 }
             });
             this.usersGrid.onSelectionChanged(function (event) {
