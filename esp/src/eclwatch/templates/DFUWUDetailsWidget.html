@@ -12,7 +12,9 @@
                     <div id="${id}Abort" data-dojo-attach-event="onClick:_onAbort" data-dojo-type="dijit.form.Button">${i18n.Abort}</div>
                     <span data-dojo-type="dijit.ToolbarSeparator"></span>
                     <div id="${id}Resubmit" data-dojo-attach-event="onClick:_onResubmit" data-dojo-type="dijit.form.Button">${i18n.Resubmit}</div>
-                    <div id="${id}Modify" data-dojo-attach-event="onClick:_onModify" data-dojo-type="dijit.form.Button">${i18n.Modify}</div>
+                    <span data-dojo-type="dijit.ToolbarSeparator"></span>
+                    <div id="${id}Modify" data-dojo-attach-event="onClick:_onModify" data-dojo-props="checked: false" data-dojo-type="dijit.form.ToggleButton">Modify Mode</div>
+                    <div id="${id}Submit" data-dojo-attach-event="onClick:_onSubmit" data-dojo-props="disabled:true" data-dojo-type="dijit.form.ToggleButton">${i18n.Submit}</div>
                     <span data-dojo-type="dijit.ToolbarSeparator"></span>
                     <div id="${id}NewPage" class="right" data-dojo-attach-event="onClick:_onNewPage" data-dojo-props="iconClass:'iconNewPage', showLabel:false" data-dojo-type="dijit.form.Button">${i18n.OpenInNewPage}</div>
                 </div>
@@ -91,7 +93,7 @@
                             <ul>
                                 <li>
                                     <label for="${id}SourceIP">${i18n.IP}:</label>
-                                    <div id="${id}SourceIP"></div>
+                                    <input id="${id}SourceIP" data-dojo-props="trim:true,disabled:true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}SourceDirectory">${i18n.Directory}:</label>
@@ -103,7 +105,7 @@
                                 </li>
                                 <li>
                                     <label for="${id}SourceLogicalName">${i18n.LogicalName}:</label>
-                                    <div id="${id}SourceLogicalName"></div>
+                                    <input id="${id}SourceLogicalName" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}SourceNumParts">${i18n.NumberofParts}:</label>
@@ -119,7 +121,7 @@
                                 </li>
                                 <li>
                                     <label for="${id}SourceRecordSize">${i18n.RecordSize}:</label>
-                                    <div id="${id}SourceRecordSize"></div>
+                                    <input id="${id}SourceRecordSize" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}RowTag">${i18n.RowTag}:</label>
@@ -127,7 +129,7 @@
                                 </li>
                                 <li>
                                     <label for="${id}SourceCsvSeparate">${i18n.Separators}:</label>
-                                    <div id="${id}SourceCsvSeparate"></div>
+                                    <input id="${id}SourceCsvSeparate" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}SourceCsvEscape">${i18n.Escape}:</label>
@@ -135,11 +137,11 @@
                                 </li>
                                 <li>
                                     <label for="${id}SourceCsvTerminate">${i18n.Terminators}:</label>
-                                    <div id="${id}SourceCsvTerminate"></div>
+                                    <input id="${id}SourceCsvTerminate" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}SourceCsvQuote">${i18n.Quote}:</label>
-                                    <div id="${id}SourceCsvQuote"></div>
+                                    <input id="${id}SourceCsvQuote" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                             </ul>
                         </form>
@@ -149,7 +151,7 @@
                             <ul>
                                 <li>
                                     <label for="${id}DestIP">${i18n.IP}:</label>
-                                    <div id="${id}DestIP"></div>
+                                    <input id="${id}DestIP" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}DestDirectory">${i18n.Directory}:</label>
@@ -161,11 +163,15 @@
                                 </li>
                                 <li>
                                     <label for="${id}DestLogicalName">${i18n.LogicalName}:</label>
-                                    <div id="${id}DestLogicalName"></div>
+                                    <input id="${id}DestLogicalName" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
+                                </li>
+                                <li>
+                                    <label for="${id}DestPrefixName">${i18n.Prefix}:</label>
+                                    <input id="${id}DestPrefixName" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                                 <li>
                                     <label for="${id}DestGroupName">${i18n.GroupName}:</label>
-                                    <div id="${id}DestGroupName"></div>
+                                    <input id="${id}DestGroupName" style="width: 10%;" name="destGroup" data-dojo-props="trim:true, disabled: true" data-dojo-type="TargetSelectWidget" />
                                 </li>
                                 <li>
                                     <label for="${id}DestNumParts">${i18n.NumberofParts}:</label>
@@ -178,6 +184,10 @@
                                 <li>
                                     <label for="${id}DestRecordSize">${i18n.RecordSize}:</label>
                                     <div id="${id}DestRecordSize"></div>
+                                </li>
+                                <li>
+                                    <label for="${id}Prefix">${i18n.Prefix}:</label>
+                                    <input id="${id}Prefix" data-dojo-props="trim:true, disabled: true" data-dojo-type="dijit.form.TextBox" />
                                 </li>
                             </ul>
                         </form>
@@ -199,15 +209,19 @@
                                 </li>
                                 <li>
                                     <label for="${id}Overwrite">${i18n.Overwrite}:</label>
-                                    <div id="${id}Overwrite"></div>
+                                    <input id="${id}Overwrite" data-dojo-props="trim:true, disabled: true" value=true data-dojo-type="dijit.form.CheckBox" />
                                 </li>
                                 <li>
                                     <label for="${id}Replicate">${i18n.Replicate}:</label>
-                                    <div id="${id}Replicate"></div>
+                                    <input id="${id}Replicate" data-dojo-props="trim:true, disabled: true" value=true data-dojo-type="dijit.form.CheckBox" />
                                 </li>
                                 <li>
                                     <label for="${id}Compress">${i18n.Compress}:</label>
-                                    <div id="${id}Compress"></div>
+                                    <input id="${id}Compress" data-dojo-props="trim:true, disabled: true" value=true data-dojo-type="dijit.form.CheckBox" />
+                                </li>
+                                <li>
+                                    <label for="${id}NoSplit">${i18n.NoSplit}:</label>
+                                    <input id="${id}NoSplit" data-dojo-props="trim:true, disabled: true" value=true data-dojo-type="dijit.form.CheckBox" />
                                 </li>
                             </ul>
                         </form>

@@ -35,6 +35,9 @@ define([
     "dijit/registry",
     "dijit/ProgressBar",
 
+    "dojox/form/Uploader",
+    "dojox/form/uploader/FileList",
+
     "hpcc/_TabContainerWidget",
     "hpcc/FileSpray",
     "hpcc/ESPDFUWorkunit",
@@ -48,6 +51,7 @@ define([
 
 ], function (exports, declare, lang, i18n, nlsHPCC, arrayUtil, dom, domAttr, domClass, domStyle, query,
                 BorderContainer, TabContainer, ContentPane, Toolbar, Textarea, TitlePane, registry, ProgressBar,
+                Uploader, FileList,
                 _TabContainerWidget, FileSpray, ESPDFUWorkunit, DelayLoadWidget,
                 template) {
     exports.fixCircularDependency = declare("DFUWUDetailsWidget", [_TabContainerWidget], {
@@ -69,6 +73,7 @@ define([
             this.inherited(arguments);
             this.summaryWidget = registry.byId(this.id + "_Summary");
             this.xmlWidget = registry.byId(this.id + "_XML");
+            this.destGroupSelect = registry.byId(this.id + "DestGroupName");
             var stateOptions = [];
             for (var key in FileSpray.States) {
                 stateOptions.push({
@@ -93,9 +98,23 @@ define([
         },
         _onSave: function (event) {
             var protectedCheckbox = registry.byId(this.id + "isProtected");
+            var overwriteCheckbox = registry.byId(this.id + "Overwrite");
+            var replicateCheckbox = registry.byId(this.id + "Replicate");
+            var restGroupNameSelect = registry.byId(this.id + "DestGroupName");
             var context = this;
             this.wu.update({
+                /*SourceIP: dom.byId(context.id + "SourceIP").value,
+                SourceLogicalName: dom.byId(context.id + "SourceLogicalName").value,
+                SourceRecordSize: dom.byId(context.id   + "SourceRecordSize").value,
+                SourceCsvSeparate: dom.byId(context.id + "SourceCsvSeparate").value,
+                SourceCsvTerminate: dom.byId(context.id + "SourceCsvTerminate").value,
+                SourceCsvQuote: dom.byId(context.id + "SourceCsvQuote").value,
+                DestIP: dom.byId(context.id + "DestIP").value,
+                DestLogicalName: dom.byId(context.id + "DestLogicalName").value,
+                DestGroupName: restGroupNameSelect.get("value"),*/
                 JobName: dom.byId(context.id + "JobName").value,
+                /*Overwrite: overwriteCheckbox.get("value"),
+                Replicate: replicateCheckbox.get("value"),*/
                 isProtected: protectedCheckbox.get("value")
             }, null);
         },
@@ -110,7 +129,48 @@ define([
             this.wu.resubmit();
         },
         _onModify: function (event) {
-            //TODO
+            switch (this.widget.Modify.get("checked")) {
+                case true:
+                    registry.byId(this.id + "Save").set("disabled", true);
+                    registry.byId(this.id + "Delete").set("disabled", true);
+                    registry.byId(this.id + "JobName").set("disabled", true);
+                    registry.byId(this.id + "isProtected").set("disabled", true);
+                    registry.byId(this.id + "StateMessage").set("disabled", true);
+                    registry.byId(this.id + "Submit").set("disabled", false);
+                    registry.byId(this.id + "SourceIP").set("disabled", false);
+                    registry.byId(this.id + "DestIP").set("disabled", false);
+                    registry.byId(this.id + "Compress").set("disabled", false);
+                    registry.byId(this.id + "Replicate").set("disabled", false);
+                    registry.byId(this.id + "Overwrite").set("disabled", false);
+                    registry.byId(this.id + "SourceLogicalName").set("disabled", false);
+                    registry.byId(this.id + "SourceCsvQuote").set("disabled", false);
+                    registry.byId(this.id + "SourceCsvTerminate").set("disabled", false);
+                    registry.byId(this.id + "SourceCsvSeparate").set("disabled", false);
+                    registry.byId(this.id + "SourceRecordSize").set("disabled", false);
+                    registry.byId(this.id + "DestGroupName").set("disabled", false);
+                    registry.byId(this.id + "DestLogicalName").set("disabled", false);
+                    break;
+                case false:
+                    registry.byId(this.id + "Save").set("disabled", false);
+                    registry.byId(this.id + "Delete").set("disabled", false);
+                    registry.byId(this.id + "JobName").set("disabled", false);
+                    registry.byId(this.id + "isProtected").set("disabled", false);
+                    registry.byId(this.id + "StateMessage").set("disabled", false);
+                    registry.byId(this.id + "Submit").set("disabled", true);
+                    registry.byId(this.id + "SourceIP").set("disabled", true);
+                    registry.byId(this.id + "DestIP").set("disabled", true);
+                    registry.byId(this.id + "Compress").set("disabled", true);
+                    registry.byId(this.id + "Replicate").set("disabled", true);
+                    registry.byId(this.id + "Overwrite").set("disabled", true);
+                    registry.byId(this.id + "SourceLogicalName").set("disabled", true);
+                    registry.byId(this.id + "SourceCsvQuote").set("disabled", true);
+                    registry.byId(this.id + "SourceCsvTerminate").set("disabled", true);
+                    registry.byId(this.id + "SourceCsvSeparate").set("disabled", true);
+                    registry.byId(this.id + "SourceRecordSize").set("disabled", true);
+                    registry.byId(this.id + "DestGroupName").set("disabled", true);
+                    registry.byId(this.id + "DestLogicalName").set("disabled", true);
+                    break;
+            }
         },
 
         //  Implementation  ---
@@ -136,6 +196,13 @@ define([
                 });
                 this.wu.refresh();
             }
+            registry.byId(this.id + "Resubmit").set("disabled", true);
+
+            this.destGroupSelect.init({
+                Groups: true
+            });
+
+            console.log(ESPDFUWorkunit._DestFormatSetter());
         },
 
         initTab: function () {
@@ -287,7 +354,6 @@ define([
             registry.byId(this.id + "Delete").set("disabled", !this.wu.isComplete() || this.wu.isDeleted());
             registry.byId(this.id + "Abort").set("disabled", this.wu.isComplete() || this.wu.isDeleted());
             registry.byId(this.id + "Resubmit").set("disabled", !this.wu.isComplete() || this.wu.isDeleted());
-            registry.byId(this.id + "Modify").set("disabled", true);  //TODO
             registry.byId(this.id + "JobName").set("readOnly", false);
             registry.byId(this.id + "isProtected").set("readOnly", !this.wu.isComplete() || this.wu.isDeleted());
 
