@@ -23,6 +23,8 @@ define([
 
     "hpcc/_TabContainerWidget",
     "hpcc/ESPRequest",
+    "hpcc/PreflightVisualizationWidget",
+    "hpcc/PreflightAddWidget",
 
     "dojo/text!../templates/HPCCPlatformOpsWidget.html",
 
@@ -35,7 +37,7 @@ define([
 
 ], function (declare, lang, i18n, nlsHPCC,
                 registry,
-                _TabContainerWidget, ESPRequest,
+                _TabContainerWidget, ESPRequest, PreflightVisualizationWidget, PreflightAddWidget,
                 template) {
     return declare("HPCCPlatformOpsWidget", [_TabContainerWidget], {
         templateString: template,
