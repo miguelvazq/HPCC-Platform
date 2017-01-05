@@ -446,6 +446,7 @@ define({root:
     Prefix: "Prefix",
     PrefixPlaceholder: "filename{:length}, filesize{:[B|L][1-8]}",
     Preflight: "Preflight",
+    PreflightVisualizations: "Preflight Visualization",
     PreserveCompression: "Preserve Compression",
     Preview: "Preview",
     PrimaryLost: "Primary Lost",

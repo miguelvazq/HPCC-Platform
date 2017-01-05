@@ -40,10 +40,17 @@ define([
     "hpcc/_TabContainerWidget",
     "hpcc/ESPWorkunit",
     "hpcc/ESPRequest",
+    "hpcc/ESPUtil",
+    "hpcc/ESPTopology",
     "hpcc/TargetSelectWidget",
     "hpcc/ECLSourceWidget",
     "hpcc/LogWidget",
     "hpcc/WsTopology",
+    "hpcc/PreflightTargetClustersWidget",
+    "hpcc/FilterDropDownWidget",
+/*    "hpcc/SystemServersWidget",
+    "hpcc/PreflightClustersWidget",
+    "hpcc/PreflightClusterProcessesWidget",*/
 
     "dojo/text!../templates/PreflightAddWidget.html",
 
@@ -67,18 +74,28 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, dom, domConstruct, domForm, domAttr, iframe, domClass, query, Memory, Observable,
                 registry,
                 OnDemandGrid, Keyboard, Selection, selector, ColumnResizer, DijitRegistry,
-                _TabContainerWidget, ESPWorkunit, ESPRequest, TargetSelectWidget, ECLSourceWidget, LogWidget, WsTopology,
+                _TabContainerWidget, ESPWorkunit, ESPRequest, ESPUtil, ESPTopology, TargetSelectWidget, ECLSourceWidget, LogWidget, WsTopology, PreflightTargetClustersWidget, FilterDropDownWidget,/* SystemServersWidget, PreflightClustersWidget, PreflightClusterProcessesWidget,*/
                 template) {
     return declare("PreflightAddWidget", [_TabContainerWidget], {
         templateString: template,
         baseClass: "PreflightAddWidget",
         i18n: nlsHPCC,
 
-        summaryWidget: null,
+        targetClustersTab: null,
+        targetClustersGrid: null,
+        clustersTab: null,
+        clustersGrid: null,
+        systemServersTab: null,
+        systemServersGrid: null,
+
+        filter: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
-            this.details = registry.byId(this.id + "_Details");
+            this.targetClustersTab = registry.byId(this.id + "_TargetClusters");
+            this.clustersTab = registry.byId(this.id + "_Clusters");
+            this.systemServersTab = registry.byId(this.id + "_SystemServers");
+            this.filter = registry.byId(this.id + "Filter");
         },
 
         startup: function (args) {
@@ -95,22 +112,174 @@ define([
 
         //  Hitched actions  ---
         _onRefresh: function (event) {
+             this.refreshGrid();
         },
 
         //  Implementation  ---
         init: function (params) {
-           
             this.initTab();
+            this.initTargetClusters();
+            this.initClusters();
+            this.initSystemServers();
+            this.refreshGrid();
         },
 
         initTab: function () {
+            var currSel = this.getSelectedChild();
+            if (currSel && !currSel.initalized) {
+                if (currSel.init) {
+                    currSel.init({});
+                }
+            }
+        },
+
+         getFilter: function () {
+            var retVal = this.filter.toObject();
+            return retVal;
+        },
+
+        initTargetClusters: function () {
             var context = this;
+            this.store = new ESPTopology.CreatePreflightTargetClusterStore();
+            this.targetClustersGrid = new declare([ESPUtil.Grid(true, true)])({
+                store: this.store,
+                query: this.getFilter(),
+                columns: {
+                    col1: selector({
+                        width: 27,
+                        selectorType: 'checkbox'
+                    }),
+                    Name: {
+                        sortable: false,
+                        label: "Name"
+                    }
+                }
+            }, this.id + "TargetClustersGrid");
+
+            var context = this;
+            this.targetClustersGrid.on(".dgrid-row-url:click", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.targetClustersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.targetClustersGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.targetClustersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.targetClustersGrid.on(".dgrid-row:contextmenu", function (evt) {
+                if (context._onRowContextMenu) {
+                    var item = context.targetClustersGrid.row(evt).data;
+                    var cell = context.targetClustersGrid.cell(evt);
+                    var colField = cell.column.field;
+                    var mystring = "item." + colField;
+                    context._onRowContextMenu(item, colField, mystring);
+                }
+            });
+            this.targetClustersGrid.startup();
+        },
+
+        initClusters: function () {
+            var context = this;
+            this.store = new ESPTopology.CreatePreflightSystemServersStore();
+            this.clustersGrid = new declare([ESPUtil.Grid(true, true)])({
+                store: this.store,
+                query: this.getFilter(),
+                columns: {
+                    col1: selector({
+                        width: 27,
+                        selectorType: 'checkbox'
+                    }),
+                    Name: {
+                        width: 25,
+                        sortable: false,
+                        label: "Name"
+                    }
+                }
+            }, this.id + "ClustersGrid");
+
+            var context = this;
+            this.clustersGrid.on(".dgrid-row-url:click", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.clustersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.clustersGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.clustersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.clustersGrid.on(".dgrid-row:contextmenu", function (evt) {
+                if (context._onRowContextMenu) {
+                    var item = context.clustersGrid.row(evt).data;
+                    var cell = context.clustersGrid.cell(evt);
+                    var colField = cell.column.field;
+                    var mystring = "item." + colField;
+                    context._onRowContextMenu(item, colField, mystring);
+                }
+            });
+            this.clustersGrid.startup();
+        },
+
+        initSystemServers: function () {
+            var context = this;
+            this.store = new ESPTopology.CreatePreflightSystemServersStore();
+            this.systemServersGrid = new declare([ESPUtil.Grid(true, true)])({
+                store: this.store,
+                query: this.getFilter(),
+                columns: {
+                    col1: selector({
+                        width: 27,
+                        selectorType: 'checkbox'
+                    }),
+                    Name: {
+                        width: 25,
+                        sortable: false,
+                        label: "Name"
+                    }
+                }
+            }, this.id + "SystemServersGrid");
+
+            var context = this;
+            this.systemServersGrid.on(".dgrid-row-url:click", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.systemServersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.systemServersGrid.on(".dgrid-row:dblclick", function (evt) {
+                if (context._onRowDblClick) {
+                    var item = context.systemServersGrid.row(evt).data;
+                    context._onRowDblClick(item.Wuid);
+                }
+            });
+            this.systemServersGrid.on(".dgrid-row:contextmenu", function (evt) {
+                if (context._onRowContextMenu) {
+                    var item = context.systemServersGrid.row(evt).data;
+                    var cell = context.systemServersGrid.cell(evt);
+                    var colField = cell.column.field;
+                    var mystring = "item." + colField;
+                    context._onRowContextMenu(item, colField, mystring);
+                }
+            });
+            this.systemServersGrid.startup();
         },
 
         updateInput: function (name, oldValue, newValue) {
             var registryNode = registry.byId(this.id + name);
             if (registryNode) {
                 registryNode.set("value", newValue);
+            }
+        },
+
+        refreshGrid: function (clearSelection) {
+            this.targetClustersGrid.set("query", this.getFilter());
+            if (clearSelection) {
+                this.targetClustersGrid.clearSelection();
             }
         },
 

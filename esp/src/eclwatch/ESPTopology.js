@@ -26,9 +26,10 @@ define([
     "hpcc/WsTopology",
     "hpcc/WsSMC",
     "hpcc/ESPUtil",
-    "hpcc/ESPTree"
+    "hpcc/ESPTree",
+    "hpcc/ESPRequest",
 ], function (declare, lang, arrayUtil, Deferred, all, Memory, Observable, QueryResults,
-    WsTopology, WsSMC, ESPUtil, ESPTree) {
+    WsTopology, WsSMC, ESPUtil, ESPTree, ESPRequest) {
 
     var ThorCache = {
     };
@@ -655,7 +656,42 @@ define([
         }
     });
 
+    var PreflightTargetClusterStore = declare([ESPRequest.Store], {
+        service: "WsTopology",
+        action: "TpTargetClusterQuery",
+        responseQualifier: "TpTargetClusterQueryResponse.TpTargetClusters.TpTargetCluster",
+        idProperty: "Name",
+        startProperty: "PageStartFrom",
+        countProperty: "PageSize",
+    });
+
     return {
+        CreatePreflightTargetClusterStore: function (options) {
+            var store = new PreflightTargetClusterStore(options);
+            return Observable(store);
+        },
+
+        CreatePreflightSystemServersStore: function (params) {
+            return ESPRequest.send("WsTopology", "TpServiceQuery", params).then(function(response) {
+                if (lang.exists("TpServiceQueryResponse.ServiceList", response)) {
+                    arrayUtil.forEach(response.Exceptions.Exception, function (item, idx) {
+                        if (item.Code === 20080) {
+                            lang.mixin(response, {
+                                GetDFUWorkunitResponse: {
+                                    result: {
+                                        Wuid: params.request.Wuid,
+                                        State: 999,
+                                        StateMessage: "not found"
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+                return response;
+            });
+        },
+
         GetThor: function (thorName) {
             if (!ThorCache[thorName]) {
                 ThorCache[thorName] = new Thor({
