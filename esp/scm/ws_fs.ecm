@@ -547,7 +547,7 @@ ESPresponse [exceptions_inline] FileListResponse
 ESPrequest [nil_remove] DropZoneFileSearchRequest
 {
     string DropZoneName;
-    [min_ver("1.15")] Server;
+    [min_ver("1.15")] string Server;
     [min_ver("1.15")] bool ECLWatchVisibleOnly(false);
     string NameFilter;
 };

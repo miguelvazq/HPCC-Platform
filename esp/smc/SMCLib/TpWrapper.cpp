@@ -1654,77 +1654,90 @@ void CTpWrapper::getTpDropZones(double clientVersion, const char* name, bool ECL
 {
     Owned<IEnvironmentFactory> envFactory = getEnvironmentFactory();
     Owned<IConstEnvironment> constEnv = envFactory->openEnvironment();
-    IConstDropZoneInfoIterator* it = constEnv->getDropZoneIterator();
-    ForEach(*it)
+    if (!isEmptyString(name))
     {
-        IConstDropZoneInfo& dropZoneInfo = it->query();
-
-        bool isECLWatchVisible = dropZoneInfo.isECLWatchVisible();
-        if (ECLWatchVisibleOnly && !isECLWatchVisible)
-            continue;
-
-        SCMStringBuffer dropZoneName, description, directory, umask, build, computer;
-        dropZoneInfo.getName(dropZoneName);
-        if (!isEmptyString(name) && !strieq(name, dropZoneName.str()))
-            continue;
-
-        dropZoneInfo.getDescription(description);
-        dropZoneInfo.getDirectory(directory);
-        dropZoneInfo.getUMask(umask);
-        dropZoneInfo.getComputerName(computer);
-
-        Owned<IEspTpDropZone> dropZone = createTpDropZone();
-        if (dropZoneName.length() > 0)
-            dropZone->setName(dropZoneName.str());
-        if (description.length() > 0)
-            dropZone->setDescription(description.str());
-        if (directory.length() > 0)
-            dropZone->setPath(directory.str());
-        if (build.length() > 0)
-            dropZone->setBuild(build.str());
-        dropZone->setECLWatchVisible(isECLWatchVisible);
-
-        IArrayOf<IEspTpMachine> tpMachines;
-        if (computer.length() == 0)
+        IConstDropZoneInfo* pDropZoneInfo = constEnv->getDropZone(name);
+        if (pDropZoneInfo)
         {
-            IConstDropZoneServerInfoIterator* itr = dropZoneInfo.getServers();
-            ForEach(*itr)
-            {
-                IConstDropZoneServerInfo& dropZoneServer = itr->query();
-
-                StringBuffer name, server, networkAddress;
-                dropZoneServer.getName(name);
-                dropZoneServer.getServer(server);
-                if (name.isEmpty() && server.isEmpty())
-                    continue;
-
-                Owned<IEspTpMachine> machine = createTpMachine();
-                if (!name.isEmpty())
-                    machine->setName(name.str());
-                if (!server.isEmpty())
-                {
-                    IpAddress ipAddr;
-                    ipAddr.ipset(server.str());
-                    ipAddr.getIpText(networkAddress);
-                    machine->setNetaddress(networkAddress.str());
-                }
-                if (directory.length() > 0)
-                {
-                    machine->setDirectory(directory.str());
-                    machine->setOS(getPathSepChar(directory.str()) == '/' ? MachineOsLinux : MachineOsW2K);
-                }
-                tpMachines.append(*machine.getLink());
-            }
+            bool isECLWatchVisible = pDropZoneInfo->isECLWatchVisible();
+            if (!ECLWatchVisibleOnly || isECLWatchVisible)
+                appendTpDropZone(clientVersion, constEnv, *pDropZoneInfo, list);
         }
-        else //legacy DZ settings in environment.xml
+    }
+    else
+    {
+        IConstDropZoneInfoIterator* it = constEnv->getDropZoneIterator();
+        ForEach(*it)
         {
-            if (streq(computer.str(), "."))
-                computer.set("localhost");
+            IConstDropZoneInfo& dropZoneInfo = it->query();
+            bool isECLWatchVisible = dropZoneInfo.isECLWatchVisible();
+            if (!ECLWatchVisibleOnly || isECLWatchVisible)
+                appendTpDropZone(clientVersion, constEnv, dropZoneInfo, list);
+        }
+    }
+}
 
-            IConstMachineInfo* machineInfo = constEnv->getMachine(computer.str());
-            if (!machineInfo)
+
+void CTpWrapper::appendTpDropZone(double clientVersion, IConstEnvironment* constEnv, IConstDropZoneInfo& dropZoneInfo, IArrayOf<IConstTpDropZone>& list)
+{
+    SCMStringBuffer dropZoneName, description, directory, umask, build, computer;
+    dropZoneInfo.getName(dropZoneName);
+    dropZoneInfo.getDescription(description);
+    dropZoneInfo.getDirectory(directory);
+    dropZoneInfo.getUMask(umask);
+    dropZoneInfo.getComputerName(computer);
+
+    Owned<IEspTpDropZone> dropZone = createTpDropZone();
+    if (dropZoneName.length() > 0)
+        dropZone->setName(dropZoneName.str());
+    if (description.length() > 0)
+        dropZone->setDescription(description.str());
+    if (directory.length() > 0)
+        dropZone->setPath(directory.str());
+    if (build.length() > 0)
+        dropZone->setBuild(build.str());
+    dropZone->setECLWatchVisible(dropZoneInfo.isECLWatchVisible());
+
+    IArrayOf<IEspTpMachine> tpMachines;
+    if (computer.length() == 0)
+    {
+        IConstDropZoneServerInfoIterator* itr = dropZoneInfo.getServers();
+        ForEach(*itr)
+        {
+            IConstDropZoneServerInfo& dropZoneServer = itr->query();
+
+            StringBuffer name, server, networkAddress;
+            dropZoneServer.getName(name);
+            dropZoneServer.getServer(server);
+            if (name.isEmpty() && server.isEmpty())
                 continue;
 
+            Owned<IEspTpMachine> machine = createTpMachine();
+            if (!name.isEmpty())
+                machine->setName(name.str());
+            if (!server.isEmpty())
+            {
+                IpAddress ipAddr;
+                ipAddr.ipset(server.str());
+                ipAddr.getIpText(networkAddress);
+                machine->setNetaddress(networkAddress.str());
+            }
+            if (directory.length() > 0)
+            {
+                machine->setDirectory(directory.str());
+                machine->setOS(getPathSepChar(directory.str()) == '/' ? MachineOsLinux : MachineOsW2K);
+            }
+            tpMachines.append(*machine.getLink());
+        }
+    }
+    else //legacy DZ settings in environment.xml
+    {
+        if (streq(computer.str(), "."))
+            computer.set("localhost");
+
+        IConstMachineInfo* machineInfo = constEnv->getMachine(computer.str());
+        if (machineInfo)
+        {
             Owned<IEspTpMachine> machine = createTpMachineEx(computer.str(), "DropZone", machineInfo);
             if (directory.length() > 0)
             {
@@ -1737,12 +1750,10 @@ void CTpWrapper::getTpDropZones(double clientVersion, const char* name, bool ECL
             }
             tpMachines.append(*machine.getLink());
         }
-        dropZone->setTpMachines(tpMachines);
-
-        list.append(*dropZone.getLink());
-        if (!isEmptyString(name))
-            break;
     }
+    dropZone->setTpMachines(tpMachines);
+
+    list.append(*dropZone.getLink());
 }
 
 IEspTpMachine* CTpWrapper::createTpMachineEx(const char* name, const char* type, IConstMachineInfo* machineInfo)

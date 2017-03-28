@@ -309,15 +309,15 @@ void CFileSpraySoapBindingEx::appendDropZones(double clientVersion, IConstEnviro
     IArrayOf<IConstTpDropZone> list;
     CTpWrapper dummy;
     dummy.getTpDropZones(clientVersion, nullptr, true, list);
-    ForEachItemIn(i, list)
+    ForEachItemIn(currentDZIndex, list)
     {
-        IConstTpDropZone& dropZone = list.item(i);
+        IConstTpDropZone& dropZone = list.item(currentDZIndex);
 
         const char* dropZoneName = dropZone.getName();
         IArrayOf<IConstTpMachine>& tpMachines = dropZone.getTpMachines();
-        ForEachItemIn(ii, tpMachines)
+        ForEachItemIn(currentMachineIndex, tpMachines)
         {
-            IConstTpMachine& tpMachine = tpMachines.item(ii);
+            IConstTpMachine& tpMachine = tpMachines.item(currentMachineIndex);
             const char* name = tpMachine.getName();
             const char* networkAddress = tpMachine.getNetaddress();
             const char* machineDirectory = tpMachine.getDirectory();
@@ -334,11 +334,11 @@ void CFileSpraySoapBindingEx::appendDropZones(double clientVersion, IConstEnviro
                 dropZone->setProp("@computer", name);
             if (!isEmptyString(networkAddress))
             {
-                IpAddress ipAddr(networkAddress);
                 dropZone->addProp("@netAddress", networkAddress);
 
                 if (!isEmptyString(dfuwuidSourcePartIP))
                 {
+                    IpAddress ipAddr(networkAddress);
                     IpAddress ip(dfuwuidSourcePartIP);
                     if (ip.ipequals(ipAddr))
                         dropZone->addProp("@sourceNode", "1");

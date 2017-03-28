@@ -134,6 +134,7 @@ private:
     const char* getNodeNameTag(const char* MachineType);
     void fetchInstances(const char* ServiceType, IPropertyTree& service, IArrayOf<IEspTpMachine>& tpMachines);
     bool checkGroupReplicateOutputs(const char* groupName, const char* kind);
+    void appendTpDropZone(double clientVersion, IConstEnvironment* constEnv, IConstDropZoneInfo& dropZoneInfo, IArrayOf<IConstTpDropZone>& list);
 
 public:
     IMPLEMENT_IINTERFACE;

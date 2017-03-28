@@ -117,7 +117,7 @@ protected:
     StringBuffer& getAcceptLanguage(IEspContext& context, StringBuffer& acceptLanguage);
     void appendGroupNode(IArrayOf<IEspGroupNode>& groupNodes, const char* nodeName, const char* clusterType, bool replicateOutputs);
     bool getOneDFUWorkunit(IEspContext& context, const char* wuid, IEspGetDFUWorkunitsResponse& resp);
-    void getDropZoneInfoByIP(const char* destIP, const char* destFile, StringBuffer& path, StringBuffer& mask);
+    void getDropZoneInfoByIP(double clientVersion, const char* destIP, const char* destFile, StringBuffer& path, StringBuffer& mask);
     void queryDropZoneInfo(double clientVersion, const char* dropZone, bool ECLWatchVisibleOnly, IArrayOf<IConstTpDropZone>& dropZones);
     bool checkDropZoneIPAndPath(double clientVersion, const char* dropZone, const char* netAddr, const char* path);
     void addDropZoneFile(IEspContext& context, IDirectoryIterator* di, const char* name, const char* dropZonePath, StringBuffer& relativePath,
