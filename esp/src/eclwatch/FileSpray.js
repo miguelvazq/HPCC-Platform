@@ -81,7 +81,7 @@ define([
                     return retVal;
                 },
                 getLogicalFile: function () {
-                    //var filePath = this.DropZone.Path + "/" + 
+                    //var filePath = this.DropZone.Path + "/" +
                     return "~file::" + this.DropZone.NetAddress + this.lfEncode(this.fullPath);
                 }
             };
@@ -89,12 +89,14 @@ define([
             return retVal;
         },
         preProcessRow: function (row) {
-            var partialPath = this.parent.partialPath + row.name + (row.isDir ? "/" : "");
-            var fullPath = this.parent.fullPath + row.name + (row.isDir ? "/" : "");
+            var partialPath = this.parent.DropZone.partialPath + row.name + (row.isDir ? "/" : "");
+            var fullPath = this.parent.DropZone.fullPath + row.name + (row.isDir ? "/" : "");
             var fullFolderPathParts = fullPath.split("/");
             fullFolderPathParts.pop();
             lang.mixin(row, {
-                calculatedID: this.parent.DropZone.NetAddress + fullPath,
+                calculatedID: this.parent.NetAddress + fullPath,
+                NetAddress: this.parent.NetAddress,
+                OS: this.parent.OS,
                 partialPath: partialPath,
                 fullPath: fullPath,
                 fullFolderPath: fullFolderPathParts.join("/"),
@@ -116,7 +118,16 @@ define([
                 }
                 return 1;
             });
-        }
+        },
+
+        mayHaveChildren: function (item) {
+            switch (item.type) {
+                case "dropzone":
+                case "folder":
+                    return true;
+            }
+            return false;
+        },
     });
 
     var LandingZonesFilterStore = declare([ESPRequest.Store], {
@@ -146,9 +157,9 @@ define([
     });
 
     var LandingZonesStore = declare([ESPRequest.Store], {
-        service: "FileSpray",
-        action: "DropZoneFiles",
-        responseQualifier: "DropZoneFilesResponse.DropZones.DropZone",
+        service: "WsTopology",
+        action: "TpDropZoneQuery",
+        responseQualifier: "TpDropZoneQueryResponse.TpDropZones.TpDropZone",
         idProperty: "calculatedID",
         constructor: function (options) {
             if (options) {
@@ -182,7 +193,7 @@ define([
                 OS: row.Linux === "true" ? 2 : 0
             });
             lang.mixin(row, {
-                calculatedID: row.NetAddress+row.Name,
+                calculatedID: row.Path+row.Name,
                 displayName: row.Name,
                 type: "dropzone",
                 partialPath: "",
@@ -194,20 +205,40 @@ define([
             switch (item.type) {
                 case "dropzone":
                 case "folder":
+                case "machine":
                     return true;
             }
             return false;
         },
         getChildren: function (parent, options) {
-            var store = Observable(new FileListStore({
-                parent: parent
-            }));
-            return store.query({
-                Netaddr: parent.DropZone.NetAddress,
-                Path: parent.fullPath,
-                Mask: "",
-                OS: parent.DropZone.OS
-            });
+            var children = [];
+            if (parent.TpMachines) {
+                arrayUtil.forEach(parent.TpMachines.TpMachine, function (item, idx) {
+                    children.push({
+                        calculatedID: item.Name,
+                        displayName: item.Netaddress,
+                        NetAddress: item.Netaddress,
+                        type: "machine",
+                        isMachine: true,
+                        isDir: false,
+                        OS: item.OS,
+                        fullPath: item.Directory,
+                        DropZone: parent.DropZone
+                    });
+                });
+                return QueryResults(children);
+            } else if (parent.isMachine) {
+                var store = Observable(new FileListStore({
+                    parent: parent
+                }));
+                return store.query({
+                    Netaddr: parent.displayName,
+                    Path: parent.fullPath,
+                    Mask: "",
+                    OS: parent.OS,
+                    DropZone: parent.DropZone
+                });
+            }
         }
     });
 
@@ -293,6 +324,11 @@ define([
 
         CreateFileListStore: function (options) {
             var store = new FileListStore(options);
+            return Observable(store);
+        },
+
+        CreateMachineListStore: function (options) {
+            var store = new MachineListStore(options);
             return Observable(store);
         },
 
@@ -431,4 +467,3 @@ define([
         }
     };
 });
-

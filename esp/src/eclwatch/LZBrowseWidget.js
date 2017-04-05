@@ -282,7 +282,7 @@ define([
             arrayUtil.forEach(this.landingZonesGrid.getSelected(), function (item, idx) {
                 var downloadIframeName = "downloadIframe_" + item.calculatedID;
                 var frame = iframe.create(downloadIframeName);
-                var url = ESPRequest.getBaseURL("FileSpray") + "/DownloadFile?Name=" + encodeURIComponent(item.name) + "&NetAddress=" + item.DropZone.NetAddress + "&Path=" + encodeURIComponent(item.fullFolderPath) + "&OS=" + item.DropZone.OS;
+                var url = ESPRequest.getBaseURL("FileSpray") + "/DownloadFile?Name=" + encodeURIComponent(item.name) + "&NetAddress=" + item.NetAddress + "&Path=" + encodeURIComponent(item.DropZone.Path) + "&OS=" + item.DropZone.OS;
                 iframe.setSrc(frame, url, true);
             });
         },
@@ -295,9 +295,9 @@ define([
                 arrayUtil.forEach(selection, function (item, idx) {
                     FileSpray.DeleteDropZoneFile({
                         request:{
-                            NetAddress: item.DropZone.NetAddress,
+                            NetAddress: item.NetAddress,
                             Path: item.DropZone.Path,
-                            OS: item.DropZone.OS,
+                            OS: item.OS,
                             Names: item.partialPath
                         },
                         load: function (response) {
@@ -332,7 +332,7 @@ define([
                 arrayUtil.forEach(selections, function (item, idx) {
                     var request = domForm.toObject(context.id + formID);
                     lang.mixin(request, {
-                        sourceIP: item.DropZone.NetAddress,
+                        sourceIP: item.NetAddress,
                         sourcePath: item.fullPath,
                         destLogicalName: request.namePrefix + (request.namePrefix && !context.endsWith(request.namePrefix, "::") && item.targetName && !context.startsWith(item.targetName, "::") ? "::" : "") + item.targetName
                     });
@@ -615,6 +615,7 @@ define([
                                 switch (item.type) {
                                     case "dropzone":
                                     case "folder":
+                                    case "machine":
                                         return true;
                                 }
                             }
@@ -630,7 +631,10 @@ define([
                             var name = _name;
                             if (row.isDir === undefined) {
                                 img = dojoConfig.getImageHTML("server.png");
-                                name += " [//" + row.NetAddress + row.Path + "]";
+                                name += " [" + row.Path + "]";
+                            } else if (row.isMachine) {
+                                img = dojoConfig.getImageHTML("machine.png");
+                                name;
                             } else if (row.isDir) {
                                 img = dojoConfig.getImageHTML("folder.png");
                             } else {

@@ -218,9 +218,11 @@ define([
         TpGetServicePlugins: function (params) {
             return ESPRequest.send("WsTopology", "TpGetServicePlugins", params);
         },
-        TpGetComponentFile: function (params) {
-            params.handleAs = "text";
-            return ESPRequest.send("WsTopology", "TpGetComponentFile", params);
+        TpGetServicePlugins: function (params) {
+            return ESPRequest.send("WsTopology", "TpGetServicePlugins", params);
+        },
+        TpDropZoneQuery: function (params) {
+            return ESPRequest.send("WsTopology", "TpDropZoneQuery", params);
         },
         TpLogFile: function (params) {
             return ESPRequest.send("WsTopology", "TpLogFile", params);
