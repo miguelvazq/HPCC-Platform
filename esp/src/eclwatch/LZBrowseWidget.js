@@ -526,6 +526,7 @@ define([
             });
             this.filter.on("clear", function (evt) {
                 context.refreshGrid();
+                context.serverFilterSelect.reset();
             });
             this.filter.on("apply", function (evt) {
                 context.refreshGrid();
