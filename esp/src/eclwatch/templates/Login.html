@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html>
     <head>
         <title class="loginStr"></title>
@@ -9,14 +9,14 @@
                 background-color: #1A9BD7;
             }
 
-            .container {
+            .loginContainer {
                 width: 99%;
                 position: absolute;
                 top: 50%;
                 transform: translateY(-50%);
             }
 
-            .formContainer {
+            .loginFormContainer {
                 width: 500px;
                 padding: 20px 0 20px 0;
                 border-radius: 25px;
@@ -41,16 +41,16 @@
                 width: 300px;
             }
 
-            img {
+            .loginFormContainer img {
                 display: block;
                 margin: auto;
             }
 
-            p {
+            .loginFormContainer p {
                 text-align: center
             }
 
-            #button {
+            .login #button {
                 background-color: #1A9BD7;
                 border: none;
                 color: white;
@@ -68,12 +68,12 @@
                 display: block;
             }
 
-            .button:hover {
+            .login .button:hover {
                 background-color: #13b1f9;
                 color: white;
             }
 
-            .visible {
+            .containerVisible {
                 display: none;
             }
         </style>
@@ -113,18 +113,25 @@
         </script>
     </head>
     <body>
-        <div id="container" class="container visible">
-            <div class="formContainer">
-                <img src="../img/Loginlogo.png" alt="HPCC Systems">
-                <p class="loginStr"></p>
-                <div class="login">
-                    <form method="POST" action="/esp/login">
-                        <input type="text" name="username" placeholder="" class="loginStr"></input>
-                        <input type="password" name="password" placeholder="" class="loginStr"></input>
-                        <button class="loginStr" id="button" type="submit"></button>
-                    </form>
+       
+    </body>
+</html> -->
+<div class="${baseClass}">
+    <div id="${id}BorderContainer" class="${baseClass}BorderContainer" style="width: 100%; height: 100%;" data-dojo-type="dijit.layout.BorderContainer">
+        <div id="${id}TabContainer" data-dojo-props="region: 'center', tabPosition: 'top'" style="width: 100%; height: 100%; background-color:#1A9BD7;" data-dojo-type="dijit.layout.TabContainer">
+            <div id="loginContainer" class="loginContainer" style="width: 99%; position: absolute; top: 50%; transform: translateY(-50%);">
+                <div class="loginFormContainer" style=" width: 500px; padding: 20px 0 20px 0; border-radius: 25px; background-color: #fff; margin: auto;; font-family: Lucida Sans, Lucida Grande, Arial !important; font-size: 15px !important;">
+                    <img src="../img/Loginlogo.png" alt="HPCC Systems" style=" display: block; margin: auto;">
+                    <p class="loginStr" style="text-align: center">Please log in into eclwatch</p>
+                    <div class="login" style="width: 400px; margin: auto;">
+                        <form method="POST" action="/esp/login" style="margin: auto; width: 300px;">
+                            <input type="text" name="username" placeholder="" class="loginStr" style="margin-bottom: 20px; width: 300px; padding: 8px; border: 1px solid #bfbfbf;"></input>
+                            <input type="password" name="password" placeholder="" class="loginStr" style="margin-bottom: 20px; width: 300px; padding: 8px;border: 1px solid #bfbfbf;"></input>
+                            <button class="loginStr" id="button" type="submit" style="background-color: #1A9BD7; border: none; color: white; padding: 15px 32px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; border-radius: 4px; cursor: pointer; -webkit-transition-duration: 0.4s; /* Safari */ transition-duration: 0.4s; margin: auto; display: block;">Login</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
-    </body>
-</html>
+    </div>
+</div>

@@ -1548,3 +1548,71 @@ button.clippy img {
     width:13px;
     height:16px;
 }
+
+.loginContainer {
+    width: 99%;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.loginFormContainer {
+    width: 500px;
+    padding: 20px 0 20px 0;
+    border-radius: 25px;
+    background-color: #fff;
+    margin: auto;
+}
+
+.login {
+    width: 400px;
+    margin: auto;
+}
+
+.login input {
+    margin-bottom: 20px;
+    width: 300px;
+    padding: 8px;
+    border: 1px solid #bfbfbf;
+}
+
+.login form {
+    margin: auto;
+    width: 300px;
+}
+
+.loginFormContainer img {
+    display: block;
+    margin: auto;
+}
+
+.loginFormContainer p {
+    text-align: center
+}
+
+.login #button {
+    background-color: #1A9BD7;
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    -webkit-transition-duration: 0.4s;
+    /* Safari */
+    transition-duration: 0.4s;
+    margin: auto;
+    display: block;
+}
+
+.login .button:hover {
+    background-color: #13b1f9;
+    color: white;
+}
+
+.containerVisible {
+    display: none;
+}

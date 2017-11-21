@@ -319,6 +319,7 @@ define({root:
     Local: "Local",
     LocalFileSystemsOnly: "Local File Systems Only",
     Location: "Location",
+    Lock: "Lock",
     LogFile: "Log File",
     LoggedInAs: "Logged in as",
     LogicalFile: "Logical File",
