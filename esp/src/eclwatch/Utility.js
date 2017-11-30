@@ -489,6 +489,9 @@
             case "LogWidget":
                 require(["hpcc/LogWidget"], doLoad);
                 break;
+            case "LoginWidget":
+                require(["hpcc/LoginWidget"], doLoad);
+                break;
             case "LZBrowseWidget":
                 require(["hpcc/LZBrowseWidget"], doLoad);
                 break;

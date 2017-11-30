@@ -19,6 +19,7 @@ define([
     "dojo/i18n",
     "dojo/i18n!./nls/hpcc",
     "dojo/_base/array",
+    "dojo/dom",
     "dojo/dom-class",
     "dojo/Stateful",
     "dojo/query",
@@ -38,7 +39,7 @@ define([
     "dgrid/extensions/ColumnHider",
     "dgrid/extensions/DijitRegistry",
     "dgrid/extensions/Pagination"
-], function (declare, lang, i18n, nlsHPCC, arrayUtil, domClass, Stateful, query, json, aspect, Evented, on,
+], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domClass, Stateful, query, json, aspect, Evented, on,
     registry, Tooltip,
     Grid, OnDemandGrid, Keyboard, Selection, ColumnResizer, ColumnHider, DijitRegistry, Pagination) {
 
@@ -242,6 +243,15 @@ define([
         }
     });
 
+    var SessionWatcher = dojo.declare([Evented], {
+        unlocked: function(){
+            var context = this;
+            on(dom.byId("Unlock"), "click", function (){
+                context.emit("unlocked", {});
+            });
+        }
+    });
+
     var IdleWatcher = dojo.declare([Evented], {
         constructor: function(idleDuration) {
             idleDuration = idleDuration || 30 * 1000;
@@ -286,6 +296,7 @@ define([
         Singleton: SingletonData,
         Monitor: Monitor,
         IdleWatcher: IdleWatcher,
+        SessionWatcher: SessionWatcher,
 
         FormHelper: declare(null, {
             getISOString: function (dateField, timeField) {

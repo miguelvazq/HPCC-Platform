@@ -1,0 +1,15 @@
+<div class="${baseClass}">
+    <div id="loginContainer" class="loginContainer">
+        <div class="loginFormContainer">
+            <img src="/esp/files/eclwatch/img/Loginlogo.png" alt="HPCC Systems">
+            <p class="loginStr" style="text-align: center">${i18n.PleaseLogin}</p>
+            <div class="login">
+                <form method="POST" action="/esp/login">
+                    <input type="text" name="username" placeholder="username" class="loginStr"></input>
+                    <input type="password" name="password" placeholder="password" class="loginStr"></input>
+                    <button class="loginStr" id="button" type="submit">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

@@ -41,6 +41,7 @@ define([
 ], function (fx, dom, domStyle, ioQuery, ready, lang, arrayUtil, topic, xhr, cookie,
             Dialog, Button,
             ESPUtil, Utility,
+            Intercom,
             entities, Toaster) {
 
     var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000  || 7200 * 1000;

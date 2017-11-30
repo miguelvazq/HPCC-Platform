@@ -21,8 +21,10 @@ define([
     "dojo/_base/array",
     "dojo/dom",
     "dojo/dom-class",
+    "dojo/query",
     "dojo/dom-form",
     "dojo/dom-style",
+    "dojo/on",
     "dojo/dom-geometry",
     "dojo/cookie",
     "dojo/topic",
@@ -34,11 +36,10 @@ define([
     "dojox/widget/UpgradeBar",
     "dojox/widget/ColorPicker",
 
-    "src/CodeMirror",
-
     "hpcc/_TabContainerWidget",
     "hpcc/ESPRequest",
     "hpcc/ESPActivity",
+    "hpcc/ESPUtil",
     "hpcc/ws_account",
     "hpcc/ws_access",
     "hpcc/WsSMC",
@@ -46,6 +47,8 @@ define([
     "hpcc/GraphWidget",
     "hpcc/DelayLoadWidget",
     "hpcc/ws_machine",
+
+    "src/Intercom",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -60,6 +63,7 @@ define([
     "dijit/form/Textarea",
     "dijit/form/CheckBox",
     "dijit/Dialog",
+    "dijit/ConfirmDialog",
     "dijit/MenuSeparator",
     "dijit/PopupMenuItem",
 
@@ -67,11 +71,11 @@ define([
     "hpcc/TableContainer",
     "hpcc/InfoGridWidget"
 
-], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domClass, domForm, domStyle, domGeo, cookie, topic, xhr,
+], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domClass, query, domForm, domStyle, on, domGeo, cookie, topic, xhr,
                 registry, Tooltip,
                 UpgradeBar, ColorPicker,
-                CodeMirror,
-                _TabContainerWidget, ESPRequest, ESPActivity, WsAccount, WsAccess, WsSMC, WsTopology, GraphWidget, DelayLoadWidget, WsMachine,
+                _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, GraphWidget, DelayLoadWidget, WsMachine,
+                Intercom,
                 template) {
 
     declare("HPCCColorPicker", [ColorPicker], {
@@ -89,11 +93,19 @@ define([
 
         bannerContent: "",
         upgradeBar: null,
+        intercom: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
             this.searchText = registry.byId(this.id + "FindText");
+            this.sessionBackground = registry.byId(this.id + "SessionBackground");
             this.logoutBtn = registry.byId(this.id + "Logout");
+            this.unlockLogo = registry.byId("UnlockLogo");
+            this.unlockStatus = registry.byId(this.id + "UnlockStatus");
+            this.unlockDialog = registry.byId(this.id + "UnlockDialog");
+            this.unlockUserName = registry.byId(this.id + "UnlockUserName");
+            this.unlockPassword = registry.byId(this.id + "UnlockPassword");
+            this.logoutConfirm = registry.byId(this.id + "LogoutConfirm");
             this.aboutDialog = registry.byId(this.id + "AboutDialog");
             this.setBannerDialog = registry.byId(this.id + "SetBannerDialog");
             this.stackContainer = registry.byId(this.id + "TabContainer");
@@ -151,6 +163,7 @@ define([
 
         refreshUserName: function () {
             dom.byId(this.id + "UserID").textContent = this.userName ? this.userName : "";
+            dom.byId("Lock").textContent = this.i18n.Lock;
         },
 
         init: function (params) {
@@ -229,6 +242,29 @@ define([
 
             topic.subscribe("hpcc/monitoring_component_update", function (topic) {
                 context.checkMonitoring(topic.status);
+            });
+
+            this.intercom = new Intercom();
+            this.intercom.on("locked", function(data) {
+                context._onLock();
+            });
+            this.intercom.on("unlocked", function(data) {
+                context._onUnlock();
+            });
+
+            var lock = dom.byId("Lock");
+            var unlock = dom.byId("Unlock");
+
+            on(lock, "click", function(evt){
+                event.preventDefault();
+                context.intercom.emit('locked', {});
+                return false;
+            });
+
+            on(unlock, "click", function(evt){
+                event.preventDefault();
+                context.intercom.emit('unlocked', {});
+                return false;
             });
         },
 
@@ -364,7 +400,7 @@ define([
                     });
                     context.configSourceCM.setSize("100%", "100%");
                     context.configSourceCM.setValue(context.configText);
-                }); 
+                });
             }
             this.stackContainer.selectChild(this.widget._Config);
         },
@@ -440,18 +476,77 @@ define([
         _onAboutClose: function (evt) {
             this.aboutDialog.hide();
         },
-		
-        _onLogout: function (evt) {
-            xhr("esp/logout", {
-                method: "post"
+
+        _onLock: function (evt) {
+             var context = this;
+
+            xhr("esp/lock", {
+                method: "post",
+                handleAs: "xml",
             }).then(function(data){
-                if (data){
-                    document.cookie = "ESPSessionID" + location.port + " = '' "; "expires=Thu, 01 Jan 1970 00:00:00 GMT"; // or -1
-                    window.location.reload();
-                }
+                // var xmlConversion = Utility.parseXML(data.childNodes[0].innerHTML);
+                // if (xmlConversion) {
+                context.unlockDialog.show();
+                context.unlockUserName.set("value", context.userName);
+                domClass.add("SessionLock", "overlay");
+                dojo.removeClass(context.id + "UnlockDialog_underlay", "dijitDialogUnderlay _underlay");
+                dojo.removeClass(context.unlockDialog, "tableContainer-labelCell");
+                //}
+            },
+            function (err) {
+                console.log("Error: " + err);
             });
-        },
-        
+         },
+
+        _onUnlock: function (evt) {
+             var context = this;
+
+             // xhr("esp/unlock", {
+              //     method: "post",
+              //     handleAs: "json",
+              //     query: {
+              //         username: this.unlockUserName.get("value"),
+              //         password: this.unlockPassword.get("value")
+              //     },
+              //     headers: {
+              //         "Content-Type": "application/json"
+              //     }
+              // }).then(function (response){
+              //     //var xmlConversion = Utility.parseXML(data.childNodes[0].innerHTML);
+              //     //var error = "<UnlockResponse><Error>1</Error><Message>Invalid user name or password</Message></UnlockResponse>"
+              //     if (xmlConversion) {
+              //         alert("issue here");
+              //     } else {
+              //         domClass.remove("SessionLock", "overlay");
+              //     }
+              // });
+            WsAccount.Unlock({
+                request: {
+                    username: this.unlockUserName.get("value"),
+                    password: this.unlockPassword.get("value")
+                }
+            }).then(function (response) {
+                //if (response) {
+                    domClass.remove("SessionLock", "overlay");
+                //}
+            });
+         },
+
+        _onLogout: function (evt) {
+            this.logoutConfirm.show();
+            query(".dijitDialogUnderlay").style("opacity", "0.5");
+            this.logoutConfirm.on("execute", function(){
+                xhr("esp/logout",{
+                    method: "post"
+                }).then(function(data){
+                    if (data){
+                        document.cookie = "ESPSessionID" + location.port + " = '' "; "expires=Thu, 01 Jan 1970 00:00:00 GMT"; // or -1
+                        window.location.reload();
+                    }
+                });
+            });
+         },
+
         _onMonitoring: function (evt) {
             this.stackContainer.selectChild(this.operationsPage);
             this.operationsPage.ensureWidget().then(function (operationsPage) {
