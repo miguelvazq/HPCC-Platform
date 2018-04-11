@@ -75,6 +75,7 @@ define([
         filter: null,
         clusterTargetSelect: null,
         stateSelect: null,
+        userName: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
@@ -274,6 +275,16 @@ define([
             return retVal;
         },
 
+        _onMine: function  (event) {
+            if (event) {
+                this.filter.setValue(this.id + "Owner", this.userName);
+                this.filter._onFilterApply();
+            } else {
+                this.filter._onFilterClear();
+                this.filter._onFilterApply();
+            }
+        },
+
         //  Implementation  ---
         init: function (params) {
             if (this.inherited(arguments))
@@ -319,6 +330,9 @@ define([
                     context.refreshGrid();
                 }
             });
+
+            context.userName = dojoConfig.username;
+
         },
 
         initTab: function () {
