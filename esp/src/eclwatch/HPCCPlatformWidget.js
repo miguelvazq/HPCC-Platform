@@ -109,7 +109,7 @@ define([
             this.operationsPage = registry.byId(this.id + "_OPS");
             registry.byId(this.id + "SetBanner").set("disabled", true);
             this.sessionBackground = registry.byId(this.id + "SessionBackground");
-            this.unlockDialog = registry.byId(this.id + "UnlockDialog");
+            this.lockDialog = registry.byId(this.id + "LockDialog");
             this.unlockUserName = registry.byId(this.id + "UnlockUserName");
             this.unlockPassword = registry.byId(this.id + "UnlockPassword");
             this.logoutConfirm = registry.byId(this.id + "LogoutConfirm");
@@ -460,10 +460,14 @@ define([
         },
 
         _onLock: function (evt) {
-            var LockDialog = new LockDialogWidget({
-                id: this.id + 'LockDialogWidget'
-            });
-            LockDialog._onLock();
+            this.lockDialog._onLock();
+            // var LockDialog = new LockDialogWidget({
+            //     //id: this.id + '_LockDialogWidget'
+            // });
+            // LockDialog.init({});
+            // LockDialog._onLock();
+            //LockDialog.destroy();
+
         },
 
         _onLogout: function (evt) {

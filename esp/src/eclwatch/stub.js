@@ -159,10 +159,6 @@ define([
                     if (!cookie("ECLWatchUser")) {
                         dojo.cookie("ECLWatchUser", "true");
                     }
-                    
-                    var LockDialog = new LockDialogWidget({
-                        id: webParams.id + '_LockDialogWidget'
-                    });
 
                     idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
                     monitorLockClick = new ESPUtil.MonitorLockClick();

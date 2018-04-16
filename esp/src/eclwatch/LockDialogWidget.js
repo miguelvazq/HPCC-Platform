@@ -25,6 +25,7 @@ define([
     "dojo/on",
     "dojo/dom-style",
     "dojo/request/xhr",
+    "dojo/keys",
 
     "dijit/registry",
     "dijit/form/Select",
@@ -44,7 +45,7 @@ define([
 
     "hpcc/TableContainer"
 
-], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domClass, on, domStyle, xhr,
+], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domClass, on, domStyle, xhr, keys,
                 registry, Select, CheckBox,
                 _Widget, Utility, WsAccount,
                 template) {
@@ -74,6 +75,10 @@ define([
             this.unlockDialog.show();
         },
 
+        hide: function (event) {
+            this.unlockDialog.hide();
+        },
+
         _onUnlock: function (event) {
             var context = this;
 
@@ -90,8 +95,11 @@ define([
                         if (status.innerHTML !== "") {
                             status.innerHTML = "";
                         }
-                        context.unlockDialog.hide();
+                        context.hide();
                         domClass.remove("SessionLock", "overlay");
+                        console.log(context);
+                        //dojo.destroy(context.id);
+                        //context.destroyRecursive() || dojo.destroy("stub_LockDialogWidget") || dojo.destroy(context) || 
                     } else {
                         status.innerHTML = response.UnlockResponse.Message
                     }
@@ -101,6 +109,13 @@ define([
 
         _onLock: function (event) {
             var context = this;
+
+            on(this.unlockPassword, "keypress", function (event) {
+                if (event.key === "Enter") {
+                    context._onUnlock();
+                }
+            });
+
             WsAccount.MyAccount({
             }).then(function (response) {
                 var username = response.MyAccountResponse.username;
@@ -108,8 +123,9 @@ define([
                     method: "post",
                 }).then(function(data){
                     context.unlockUserName.set("value", username);
-                    domClass.add("SessionLock", "overlay");
                     context.show();
+                    domClass.add("SessionLock", "overlay");
+                    dojo.removeClass(context.id + "UnlockDialog_underlay", "dijitDialogUnderlay _underlay");
                 });
             });
         },
