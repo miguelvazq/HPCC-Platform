@@ -95,6 +95,7 @@ define([
 
         bannerContent: "",
         upgradeBar: null,
+        intercom: null,
 
         postCreate: function (args) {
             this.inherited(arguments);
@@ -247,6 +248,31 @@ define([
 
             topic.subscribe("hpcc/monitoring_component_update", function (topic) {
                 context.checkMonitoring(topic.status);
+            });
+
+            this.intercom = new Intercom();
+
+            this.intercom.on("locked", function (data) {
+                context._onLock();
+            });
+
+            this.intercom.on("unlocked", function (data) {
+                context._onUnlock();
+            });
+
+            var lock = dom.byId("Lock");
+            var unlock = dom.byId("Unlock");
+
+            on(lock, "click", function (evt) {
+                event.preventDefault();
+                context.intercom.emit('locked', {});
+                return false;
+            });
+
+            on(unlock, "click", function (evt) {
+                event.preventDefault();
+                context.intercom.emit('unlocked', {});
+                return false;
             });
         },
 
