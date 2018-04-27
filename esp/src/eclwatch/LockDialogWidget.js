@@ -102,6 +102,7 @@ define([
                         context.hide();
                         context.unlockDialog.destroyRecursive();
                         domClass.remove("SessionLock", "overlay");
+                        Utility.lockMechanism("unlocked");
                     } else {
                         status.innerHTML = response.UnlockResponse.Message
                     }
@@ -112,6 +113,8 @@ define([
         _onLock: function (event) {
             xhr("esp/lock", {
                 method: "post",
+            }).then(function (response) {
+                Utility.lockMechanism("locked");
             });
         },
 

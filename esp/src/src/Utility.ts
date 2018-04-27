@@ -1,5 +1,9 @@
 ﻿import * as arrayUtil from "dojo/_base/array";
 import * as entities from "dojox/html/entities";
+import * as ESPUtil from "./ESPUtil";
+import * as cookie from "dojo/cookie";
+import * as xhr from "dojo/request/xhr";
+//import * as LockDialogWidget from "../eclwatch/LockDialogWidget";
 
 declare const dojoConfig;
 declare const ActiveXObject;
@@ -704,5 +708,47 @@ export function debounce(func, threshold, execAsap) {
         else if (execAsap)
             func.apply(obj, args);
         timeout = setTimeout(delayed, threshold || 100);
+    }
+}
+
+export function _resetESPTime(evt) {
+    var SESSION_RESET_FREQ = 30 * 1000;
+    var _prevReset = Date.now();
+    if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
+        _prevReset = Date.now();
+        xhr("esp/reset_session_timeout", {
+            method: "post"
+        }).then(function (data) {
+        });
+    }
+}
+
+export function lockMechanism (action) {
+    var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 10;
+
+    var monitorLockClick = new ESPUtil.MonitorLockClick();
+    var idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
+
+    idleWatcher.on("active", function () {
+        this._resetESPTime();
+    });
+
+    idleWatcher.on("idle", function () {
+        idleWatcher.stop();
+        // var LockDialog = new ../eclwatch/LockDialogWidget({});
+        // LockDialog.show();
+    });
+    idleWatcher.start();
+
+    if (action === "unlocked") {
+        monitorLockClick.on("unlocked", function () {
+            idleWatcher.start();
+        });
+        monitorLockClick.unlocked();
+    } else if (action === "locked") {
+        monitorLockClick.on("locked", function () {
+            idleWatcher.stop();
+        });
+        monitorLockClick.locked();
     }
 }

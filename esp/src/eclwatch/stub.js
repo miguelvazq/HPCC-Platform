@@ -44,22 +44,22 @@ define([
             ESPUtil, Utility, LockDialogWidget,
             entities, Toaster) {
 
-    var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000;
-    var SESSION_RESET_FREQ = 30 * 1000;
-    var idleWatcher;
-    var monitorLockClick;
-    var _prevReset = Date.now();
+    // var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 10;
+    // var SESSION_RESET_FREQ = 30 * 1000;
+    // var idleWatcher;
+    // var monitorLockClick;
+    // var _prevReset = Date.now();
     var sessionIsActive = cookie("ESPSessionTimeoutSeconds");
 
-    function _resetESPTime(evt) {
-        if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
-            _prevReset = Date.now();
-            xhr("esp/reset_session_timeout", {
-                method: "post"
-            }).then(function (data) {
-            });
-        }
-    }
+    // function _resetESPTime(evt) {
+    //     if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
+    //         _prevReset = Date.now();
+    //         xhr("esp/reset_session_timeout", {
+    //             method: "post"
+    //         }).then(function (data) {
+    //         });
+    //     }
+    // }
 
     function _onLogout(evt) {
         xhr("esp/logout", {
@@ -155,21 +155,28 @@ define([
                         dojo.cookie("ECLWatchUser", "true");
                     }
 
-                    idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
-                    monitorLockClick = new ESPUtil.MonitorLockClick();
-                    monitorLockClick.on("unlocked", function (){
-                        idleWatcher.start();
-                    });
-                    idleWatcher.on("active", function () {
-                        _resetESPTime();
-                    });
-                    idleWatcher.on("idle", function () {
-                        idleWatcher.stop();
-                        var LockDialog = new LockDialogWidget({});
-                        LockDialog.show();
-                    });
-                    idleWatcher.start();
-                    monitorLockClick.unlocked();
+                    //idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
+                    //monitorLockClick = new ESPUtil.MonitorLockClick();
+                    
+                    // monitorLockClick.on("unlocked", function (){
+                    //     idleWatcher.start();
+                    // });
+
+                    // monitorLockClick.on("locked", function (){
+                    //     idleWatcher.stop();
+                    // })
+
+                    // idleWatcher.on("active", function () {
+                    //     _resetESPTime();
+                    // });
+
+                    // idleWatcher.on("idle", function () {
+                    //     idleWatcher.stop();
+                    //     var LockDialog = new LockDialogWidget({});
+                    //     LockDialog.show();
+                    // });
+                    // idleWatcher.start();
+                    Utility.lockMechanism("unlocked");
                 } else if (dojo.cookie("ECLWatchUser")) {
                     window.location.replace(dojoConfig.urlInfo.basePath + "/Login.html");
                 }
