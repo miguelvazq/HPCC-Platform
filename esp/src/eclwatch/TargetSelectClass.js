@@ -193,7 +193,6 @@ define([
                     load: function (response) {
                         if (lang.exists("FilePermissionResponse.Groups.Group", response)) {
                             var targetData = response.FilePermissionResponse.Groups.Group;
-                            Utility.stringLowerSort(targetData, "name");
                             for (var i = 0; i < targetData.length; ++i) {
                                 context.options.push({
                                     label: targetData[i].name,
@@ -212,7 +211,6 @@ define([
                     load: function (response) {
                         if (lang.exists("FilePermissionResponse.Users.User", response)) {
                             var targetData = response.FilePermissionResponse.Users.User;
-                            Utility.stringLowerSort(targetData, "username");
                             for (var i = 0; i < targetData.length; ++i) {
                                 context.options.push({
                                     label: targetData[i].username,
@@ -359,7 +357,7 @@ define([
                 return str.indexOf(suffix, str.length - suffix.length) !== -1;
             },
 
-            loadDropZoneFolders: function (pathSepChar, defaultPath) {
+            loadDropZoneFolders: function (pathSepChar) {
                 var context = this;
                 this.getDropZoneFolder = function () {
                     var baseFolder = this._dropZoneTarget.machine.Directory;
@@ -379,7 +377,6 @@ define([
                             })
                         });
                         context.set("store", store);
-                        context.set("placeholder", defaultPath)
                         context._postLoad();
                     });
                 }
