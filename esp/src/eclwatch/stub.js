@@ -30,7 +30,8 @@ define([
     ESPUtil, Utility, LockDialogWidget,
     entities, Toaster) {
 
-        var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000;
+        //var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000;
+        var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 10;
         var SESSION_RESET_FREQ = 30 * 1000;
         var idleWatcher;
         var monitorLockClick;
@@ -72,16 +73,25 @@ define([
             }).play();
         }
 
-        function initUnlockListener() {
-            var unlock = dom.byId("unlock");
-            on(unlock, "click", function (event) {
-                monitorLockClick.unlocked();
-            });
-        }
+        // function initUnlockListener() {
+        //     var unlock = dom.byId("unlock");
+        //     on(unlock, "click", function (event) {
+        //         monitorLockClick.unlocked();
+        //     });
+        // }
 
         function initUI() {
             var params = ioQuery.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search.substr(0, 1) === "?" ? 1 : 0)));
             var hpccWidget = params.Widget ? params.Widget : "HPCCPlatformWidget";
+
+            topic.subscribe("hpcc/session_management_status", function (status) {
+                switch(status.status) {
+                    case "Locked":
+                    monitorLockClick.locked();
+                    case "Unlocked":
+                    monitorLockClick.unlocked();
+                }
+            });
 
             Utility.resolve(hpccWidget, function (WidgetClass) {
                 var webParams = {
@@ -161,7 +171,7 @@ define([
                     });
                     monitorLockClick.on("locked", function () {
                         idleWatcher.stop();
-                        initUnlockListener();
+                       // initUnlockListener();
                     });
                     idleWatcher.on("active", function () {
                         _resetESPTime();
