@@ -109,17 +109,19 @@ define([
                         context._onUnlock();
                     }
                 });
-
-                xhr("esp/lock", {
-                    method: "post",
-                }).then(function(response){
-                    if (response) {
-                        topic.publish("hpcc/session_management_status", {
-                            status: "Locked"
-                        });
-                        cookie("Status", "Locked");
-                    }
-                });
+                if (cookie("Status") === "Unlocked") {
+                    xhr("esp/lock", {
+                        method: "post",
+                    }).then(function(response){
+                        if (response) {
+                            topic.publish("hpcc/session_management_status", {
+                                status: "Locked"
+                            });
+                            cookie("Status", "Locked");
+                            localStorage.setItem("Status", "locked");
+                        }
+                    });
+                }
             },
 
             init: function (params) {

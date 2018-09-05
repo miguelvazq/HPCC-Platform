@@ -95,6 +95,8 @@ define([
             topic.subscribe("hpcc/session_management_status", function (publishedMessage) {
                 if (publishedMessage.status === "Unlocked") {
                     monitorLockClick.unlocked();
+                } else if (publishedMessage.status === "Locked") {
+                    monitorLockClick.locked();
                 }
             })
 

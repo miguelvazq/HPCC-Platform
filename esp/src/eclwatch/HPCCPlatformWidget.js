@@ -234,6 +234,18 @@ define([
                 topic.subscribe("hpcc/monitoring_component_update", function (topic) {
                     context.checkMonitoring(topic.status);
                 });
+
+                if (typeof Storage !== void(0)) {
+                    window.addEventListener('storage', function (event) {
+                        if (event.newValue) {
+                            context._onUpdateFromStorage(event.newValue);
+                        } else {
+                            context._onUpdateFromStorage(event.oldValue);
+                        }
+                    });
+                } else {
+                    alert("Your browser does not support web storage. Please use one that does.")
+                }
             },
 
             initTab: function () {
@@ -439,6 +451,16 @@ define([
                 this.aboutDialog.hide();
             },
 
+            _onUpdateFromStorage (newValue){
+                switch (newValue) {
+                    case "logged_out":
+                        window.location.reload();
+                    case "locked":
+                        this._onLock();
+                }
+                localStorage.removeItem("Status");
+            },
+
             _onLock: function (evt) {
                 var LockDialog = new LockDialogWidget({});
                 LockDialog.show();
@@ -455,6 +477,7 @@ define([
                             cookie("ECLWatchUser", "", { expires: -1 });
                             cookie("ESPSessionID" + location.port + " = '' ", "", { expires: -1 });
                             window.location.reload();
+                            localStorage.setItem("Status", "logged_out");
                         }
                     });
                 });
