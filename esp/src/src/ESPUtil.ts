@@ -242,6 +242,32 @@ var GridHelper = declare(null, {
     }
 });
 
+export var LocalStorage = dojo.declare([Evented], {
+    start: function () {
+        var context = this;
+        if (typeof Storage !== void(0)) {
+            window.addEventListener('storage', function (event) {
+                context.emit('storageUpdate', {event});
+            });
+        } else {
+            console.log("Browser doesn't support multi tab communication");
+        };
+    },
+    setItem: function (key, value) {
+        localStorage.setItem(key, value);
+    },
+    removeItem: function (key) {
+        localStorage.removeItem(key);
+    },
+    getItem: function (key) {
+        localStorage.getItem(key)
+    },
+    clear: function () {
+        localStorage.clear();
+    }
+});
+
+
 export var MonitorLockClick = dojo.declare([Evented], {
     unlocked: function () {
         var context = this;

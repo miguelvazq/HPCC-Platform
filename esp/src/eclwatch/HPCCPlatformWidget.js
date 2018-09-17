@@ -79,6 +79,7 @@ define([
 
             bannerContent: "",
             upgradeBar: null,
+            storage: null,
 
             postCreate: function (args) {
                 this.inherited(arguments);
@@ -235,18 +236,24 @@ define([
                     context.checkMonitoring(topic.status);
                 });
 
-                if (typeof Storage !== void(0)) {
-                    window.addEventListener('storage', function (event) {
-                        if (event.newValue) {
-                            context._onUpdateFromStorage(event.newValue);
-                        } else {
-                            context._onUpdateFromStorage(event.oldValue);
-                        }
-                    });
-                } else {
-                    alert("Your browser does not support web storage. Please use one that does.")
+                this.storage = new ESPUtil.LocalStorage();
+                this.storage.start();
+                this.storage.on("storageUpdate", function(event) {
+                    context._onUpdateFromStorage(event)
+                });
+            },
+
+            _onUpdateFromStorage (value){
+                var context = this;
+                if (value.event.newValue === "logged_out") {
+                    window.location.reload();
+                } else if (value.event.newValue === "Locked") {
+                    context._onShowLock();
+                } else if (value.event.newValue === "Unlocked" || value.event.oldValue === "Locked") {
+                    context._onHideLock();
                 }
             },
+
 
             initTab: function () {
                 var currSel = this.getSelectedChild();
@@ -451,22 +458,23 @@ define([
                 this.aboutDialog.hide();
             },
 
-            _onUpdateFromStorage (newValue){
-                switch (newValue) {
-                    case "logged_out":
-                        window.location.reload();
-                    case "locked":
-                        this._onLock();
-                }
-                localStorage.removeItem("Status");
+            _onShowLock: function (evt) {
+                var LockDialog = new LockDialogWidget({});
+                LockDialog.show()
             },
 
             _onLock: function (evt) {
                 var LockDialog = new LockDialogWidget({});
-                LockDialog.show();
+                LockDialog._onLock();
+            },
+
+            _onHideLock: function (evt) {
+                var LockDialog = new LockDialogWidget({});
+                LockDialog.hide();
             },
 
             _onLogout: function (evt) {
+                var context = this;
                 this.logoutConfirm.show();
                 query(".dijitDialogUnderlay").style("opacity", "0.5");
                 this.logoutConfirm.on("execute", function () {
@@ -477,7 +485,7 @@ define([
                             cookie("ECLWatchUser", "", { expires: -1 });
                             cookie("ESPSessionID" + location.port + " = '' ", "", { expires: -1 });
                             window.location.reload();
-                            localStorage.setItem("Status", "logged_out");
+                            context.storage.setItem("Status", "logged_out");
                         }
                     });
                 });
