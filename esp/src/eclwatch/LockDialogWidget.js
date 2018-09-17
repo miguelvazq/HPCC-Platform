@@ -21,6 +21,7 @@ define([
     "hpcc/_Widget",
     "src/Utility",
     "src/ws_account",
+    "src/ESPUtil",
 
     "dojo/text!../templates/LockDialogWidget.html",
 
@@ -34,7 +35,7 @@ define([
 
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, dom, domForm, domClass, on, domStyle, xhr, keys, cookie, topic,
     registry, Select, CheckBox,
-    _Widget, Utility, WsAccount,
+    _Widget, Utility, WsAccount, ESPUtil,
     template) {
         return declare("LockDialogWidget", [_Widget], {
             templateString: template,
@@ -43,6 +44,7 @@ define([
 
             _width: "480px",
             lockDialogWidget: null,
+            storage: null,
 
             postCreate: function (args) {
                 this.inherited(arguments);
@@ -58,15 +60,32 @@ define([
             },
 
             show: function (event) {
+                var context = this;
+                on(this.unlockPassword, "keypress", function (event) {
+                    if (event.key === "Enter") {
+                        context._onUnlock();
+                    }
+                });
+
                 this.unlockDialog.show();
                 domClass.add("SessionLock", "overlay");
                 dojo.removeClass(this.id + "UnlockDialog_underlay", "dijitDialogUnderlay _underlay");
                 this.unlockUserName.set("value", dojoConfig.username);
-                this._onLock();
+
+                topic.publish("hpcc/session_management_status", {
+                    status: "Locked"
+                });
             },
 
             hide: function (event) {
                 this.unlockDialog.hide();
+            },
+
+            _onUpdateFromStorage (newValue){
+                var context = this;
+                if (newValue === "locked") {
+                    this.show();
+                }
             },
 
             _onUnlock: function (event) {
@@ -93,6 +112,7 @@ define([
                                 status: "Unlocked"
                             });
                             cookie("Status", "Unlocked");
+                            context.storage.removeItem("Status");
                         } else {
                             status.innerHTML = response.UnlockResponse.Message;
                             cookie("Status", "Locked");
@@ -109,16 +129,21 @@ define([
                         context._onUnlock();
                     }
                 });
+
                 if (cookie("Status") === "Unlocked") {
                     xhr("esp/lock", {
                         method: "post",
                     }).then(function(response){
                         if (response) {
+                            context.unlockDialog.show();
+                            domClass.add("SessionLock", "overlay");
+                            dojo.removeClass(context.id + "UnlockDialog_underlay", "dijitDialogUnderlay _underlay");
+                            context.unlockUserName.set("value", dojoConfig.username);
                             topic.publish("hpcc/session_management_status", {
                                 status: "Locked"
                             });
                             cookie("Status", "Locked");
-                            localStorage.setItem("Status", "locked");
+                            context.storage.setItem("Status", "Locked");
                         }
                     });
                 }
@@ -127,6 +152,8 @@ define([
             init: function (params) {
                 if (this.inherited(arguments))
                     return;
+
+                this.storage = new ESPUtil.LocalStorage();
             }
         });
     });

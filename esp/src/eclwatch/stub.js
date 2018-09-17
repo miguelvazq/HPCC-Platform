@@ -30,7 +30,8 @@ define([
     ESPUtil, Utility, LockDialogWidget,
     entities, Toaster) {
 
-        var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000;
+        var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 10;
+        //var IDLE_TIMEOUT = cookie("ESPSessionTimeoutSeconds") * 1000;
         var SESSION_RESET_FREQ = 30 * 1000;
         var idleWatcher;
         var monitorLockClick;
@@ -56,7 +57,7 @@ define([
             idleWatcher.on("idle", function () {
                 idleWatcher.stop();
                 var LockDialog = new LockDialogWidget({});
-                LockDialog.show();
+                LockDialog._onLock();
             });
             idleWatcher.start();
             monitorLockClick.unlocked();
