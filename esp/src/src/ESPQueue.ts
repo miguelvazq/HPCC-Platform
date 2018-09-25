@@ -1,5 +1,6 @@
 ﻿import * as declare from "dojo/_base/declare";
 import * as lang from "dojo/_base/lang";
+import * as arrayUtil from "dojo/_base/array";
 import * as Memory from "dojo/store/Memory";
 
 import * as WsSMC from "./WsSMC";
@@ -154,6 +155,16 @@ var Queue = declare([ESPUtil.Singleton, ESPUtil.Monitor], {
 
     getChildCount: function () {
         return this.children.data.length;
+    },
+
+    queryQueues: function () {
+        arrayUtil.forEach(this.Queues.ServerJobQueue, function (item, idx){
+            lang.mixin(item, {
+                DisplayName:item.QueueName,
+                State: item.QueueStatus
+            });
+        });
+        return this.Queues.ServerJobQueue;
     },
 
     queryChildren: function () {
@@ -311,15 +322,19 @@ var ServerJobQueue = declare([Queue], {
     }),
 
     getStateImageName: function () {
-        switch (this.QueueStatus) {
-            case "running":
-                return "server.png";
-            case "paused":
-                return "server_paused.png";
-            default:
-                console.log("ESPQueue:  New State - " + this.QueueStatus);
+        if (this.Queues.ServerJobQueue.length) {
+            return "machine.png";
+        } else {
+            switch (this.QueueStatus) {
+                case "running":
+                    return "server.png";
+                case "paused":
+                    return "server_paused.png";
+                default:
+                    console.log("ESPQueue:  New State - " + this.QueueStatus);
+            }
+            return "server.png";
         }
-        return "server.png";
     },
 
     getStateImage: function () {

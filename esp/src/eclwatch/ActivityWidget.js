@@ -368,7 +368,12 @@ define([
                         col1: selector({
                             width: 27,
                             selectorType: 'checkbox',
-                            sortable: false
+                            sortable: false,
+                            disabled: function (item) {
+                                if (item.Queues) {
+                                    return true;
+                                }
+                            }
                         }),
                         Priority: {
                             renderHeaderCell: function (node) {
@@ -397,12 +402,18 @@ define([
                                 return previouslyExpanded;
                             },
                             formatter: function (_name, row) {
-                                var img = row.getStateImage();
-                                if (context.activity.isInstanceOfQueue(row)) {
-                                    if (row.ClusterType === 3) {
-                                        return "<img src='" + img + "'/>&nbsp;<a href='#' class='dgrid-row-url'>" + _name + "</a>";
-                                    } else {
-                                        return "<img src='" + img + "'/>&nbsp;" + _name;
+                                if (row.Queues) {
+                                    return Utility.getImageHTML("machine.png") + "&nbsp;<a href='#' class='dgrid-row-url'>" + _name + "</a>";
+                                } else {
+                                    var img = row.getStateImage();
+                                    if (context.activity.isInstanceOfQueue(row)) {
+                                        if (row.ClusterType === 3) {
+                                            return "<img src='" + img + "'/>&nbsp;<a href='#' class='dgrid-row-url'>" + _name + "</a>";
+                                        } else if (row.Queues) {
+                                            return "<img src='" + img + "'/>&nbsp;" + row.Queues.ServerJobQueue[0].QueueName;
+                                        } else {
+                                            return "<img src='" + img + "'/>&nbsp;" + _name;
+                                        }
                                     }
                                 }
                                 return "<img src='" + img + "'/>&nbsp;<a href='#' class='dgrid-row-url'>" + row.Wuid + "</a>";

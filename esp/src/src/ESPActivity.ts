@@ -14,10 +14,10 @@ import * as WsWorkunits from "./WsWorkunits";
 var Store = declare([Memory], {
     idProperty: "__hpcc_id",
     mayHaveChildren: function (item) {
-        return (item.getChildCount && item.getChildCount());
+        return (item.getChildCount && item.getChildCount() || item.Queues);
     },
     getChildren: function (parent, options) {
-        return parent.queryChildren();
+        return parent.queryQueues();
     }
 });
 
@@ -119,9 +119,10 @@ var Activity = declare([ESPUtil.Singleton, ESPUtil.Monitor], {
                 var queue = null;
                 if (item.ClusterName) {
                     queue = ESPQueue.GetTargetCluster(item.ClusterName);
-                } else {
+                } else if (item.Queues) {
                     queue = ESPQueue.GetServerJobQueue(item.ServerName);
                 }
+                //queue.updateData(item.Queues ? item.Queues.ServerJobQueue : item);
                 queue.updateData(item);
                 queue.set("DisplayName", queue.getDisplayName());
                 queue.clearChildren();
