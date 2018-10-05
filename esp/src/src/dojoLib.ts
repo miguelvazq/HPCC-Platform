@@ -15,3 +15,5 @@ import "dojo/i18n";
 // @ts-ignore
 import * as _nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 export const nlsHPCC: any = _nlsHPCC;
+import * as _cookie from "dojo/cookie";
+export const cookie:any = _cookie;
