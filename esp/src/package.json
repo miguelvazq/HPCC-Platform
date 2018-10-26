@@ -29,7 +29,10 @@
     "test": "run-s lint"
   },
   "main": "src/stub.js",
-  "dependencies": {},
+  "dependencies": {
+    "deep-object-diff": "^1.1.0",
+    "diff": "^3.5.0"
+  },
   "devDependencies": {
     "@types/dojo": "1.9.40",
     "@hpcc-js/chart": "2.1.2",
