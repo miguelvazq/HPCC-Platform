@@ -486,6 +486,7 @@ define([
                             context.storage.setItem("Status", "logged_out");
                             cookie("Status", "", { expires: -1 });
                             cookie("User", "", { expires: -1 });
+                            cookie("ESPSessionReq", true);
                         }
                     });
                 });
