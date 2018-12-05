@@ -12,6 +12,10 @@ export const dom:any = _dom;
 import * as _on from "dojo/on";
 export const on:any = _on;
 import "dojo/i18n";
+import * as _espUtil from "./ESPUtil";
+export const ESPUtil:any = _espUtil;
+import * as _espRequest from "./ESPRequest";
+export const ESPRequest:any = _espRequest;
 // @ts-ignore
 import * as _nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 export const nlsHPCC: any = _nlsHPCC;
