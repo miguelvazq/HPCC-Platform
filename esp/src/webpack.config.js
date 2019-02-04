@@ -19,11 +19,11 @@ module.exports = function (env) {
         }),
 
         // Copy non-packed resources needed by the app to the release directory
-        new CopyWebpackPlugin([{
-            context: "node_modules",
-            from: "dojo/resources/blank.gif",
-            to: "dojo/resources"
-        }]),
+        // new CopyWebpackPlugin([{
+        //     context: "node_modules",
+        //     from: "dojo/resources/blank.gif",
+        //     to: "dojo/resources"
+        // }]),
 
         // For plugins registered after the DojoAMDPlugin, data.request has been normalized and
         // resolved to an absMid and loader-config maps and aliases have been applied
@@ -41,20 +41,33 @@ module.exports = function (env) {
     ];
 
     return {
-        context: __dirname,
-        entry: {
-            stub: "eclwatch/stub",
-            dojoLib: "lib/src/dojoLib"
-        },
+        //context: __dirname,
+        // entry: {
+        //     stub: "eclwatch/stub",
+        //     dojoLib: "lib/src/dojoLib"
+        // },
+        // output: {
+        //     filename: "[name].eclwatch.js",
+        //     chunkFilename: "[name].eclwatch.js",
+        //     path: path.join(__dirname, "build/dist"),
+        //     publicPath: "/esp/files/dist/",
+        //     pathinfo: true
+        // },
+        devtool: 'source-map',
+        entry: "./src/index.tsx",
         output: {
-            filename: "[name].eclwatch.js",
-            chunkFilename: "[name].eclwatch.js",
-            path: path.join(__dirname, "build/dist"),
-            publicPath: "/esp/files/dist/",
-            pathinfo: true
+            filename: "[name].bundle.js",
+            path: path.resolve(__dirname, 'dist'),
+        },
+        resolve: {
+            extensions: ['.js', '.json', '.ts', '.tsx'],
         },
         module: {
             rules: [
+                {
+                    test: /\.(ts|tsx)$/,
+                    loader: "awesome-typescript-loader"
+                },
                 {
                     test: /\.(png|jpg|gif)$/,
                     use: [

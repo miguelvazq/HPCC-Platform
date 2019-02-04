@@ -1,9 +1,11 @@
 {
     "compilerOptions": {
-        "outDir": "./lib",
-        "target": "es5",
-        "module": "amd",
+        //"outDir": "./lib",
+        "target": "ES5",
+        //"module": "amd",
+        "module": "ESNext",
         "moduleResolution": "node",
+        "allowSyntheticDefaultImports": true,
         "sourceMap": true,
         "noImplicitAny": false,
         "noEmitOnError": false,
@@ -14,6 +16,7 @@
         "allowJs": true,
         "skipLibCheck": true,
         "noImplicitUseStrict": true,
+        "jsx": "react",
         "lib": [
             "dom",
             "es5",
