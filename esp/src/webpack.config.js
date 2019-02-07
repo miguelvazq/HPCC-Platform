@@ -41,10 +41,12 @@ module.exports = function (env) {
     ];
 
     return {
+        devtool: "source-map",
         context: __dirname,
         entry: {
             stub: "eclwatch/stub",
-            dojoLib: "lib/src/dojoLib"
+            dojoLib: "lib/src/dojoLib",
+            react: "./src/index.tsx"
         },
         output: {
             filename: "[name].eclwatch.js",
@@ -55,6 +57,15 @@ module.exports = function (env) {
         },
         module: {
             rules: [
+                // {
+                //     test: /\.tsx?$/,
+                //     loader: "ts-loader"
+                // },
+                {
+                    enforce: "pre",
+                    test: /\.js$/,
+                    loader: "source-map-loader"
+                },
                 {
                     test: /\.(png|jpg|gif)$/,
                     use: [
@@ -79,6 +90,7 @@ module.exports = function (env) {
                 }]
         },
         resolve: {
+            extensions: [".tsx", ".js", ".json", ".jsx"],
             alias: {
                 "clipboard": path.resolve(__dirname, 'node_modules/clipboard/dist/clipboard')
             }
@@ -104,6 +116,10 @@ module.exports = function (env) {
                 })
             ]
         },
-        devtool: false
+        externals: {
+            "react": "React",
+            "react-dom": "ReactDOM"
+        }
+        //devtool: false
     }
 };

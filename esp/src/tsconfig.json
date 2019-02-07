@@ -2,7 +2,8 @@
     "compilerOptions": {
         "outDir": "./lib",
         "target": "es5",
-        "module": "amd",
+        //"module": "amd",
+        "module": "commonjs",
         "moduleResolution": "node",
         "sourceMap": true,
         "noImplicitAny": false,
@@ -19,8 +20,8 @@
             "es5",
             "es2015"
         ],
-        "typeRoots": [],
-        "types": []
+        // "typeRoots": [],
+        // "types": []
     },
     "include": [
         "src/**/*"
