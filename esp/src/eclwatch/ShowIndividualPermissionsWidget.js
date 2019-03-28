@@ -155,48 +155,51 @@ define([
             calcPermissionState: function (field, value, row) {
                 switch (field) {
                     case "allow_access":
-                        row.allow_full = value && row.allow_read && row.allow_write;
+                        row.allow_access = value;
                         if (value)
                             this.calcPermissionState("deny_access", false, row);
                         break;
                     case "allow_read":
-                        row.allow_full = row.allow_access && value && row.allow_write;
+                        row.allow_read = value;
                         if (value)
                             this.calcPermissionState("deny_read", false, row);
                         break;
                     case "allow_write":
-                        row.allow_full = row.allow_access && row.allow_read && value;
+                        row.allow_write = value;
                         if (value)
                             this.calcPermissionState("deny_write", false, row);
                         break;
                     case "allow_full":
-                        row.allow_access = value;
-                        row.allow_read = value;
-                        row.allow_write = value;
+                        row.allow_full = value;
                         if (value)
                             this.calcPermissionState("deny_full", false, row);
                         break;
                     case "deny_access":
-                        row.deny_full = value && row.deny_read && row.deny_write;
+                        row.deny_access = value;
                         if (value)
                             this.calcPermissionState("allow_access", false, row);
                         break;
                     case "deny_read":
-                        row.deny_full = row.deny_access && value && row.deny_write;
+                        row.deny_read = value;
                         if (value)
                             this.calcPermissionState("allow_read", false, row);
                         break;
                     case "deny_write":
-                        row.deny_full = row.deny_access && row.deny_read && value;
+                        row.deny_write = value;
                         if (value)
                             this.calcPermissionState("allow_write", false, row);
                         break;
                     case "deny_full":
-                        row.deny_access = value;
-                        row.deny_read = value;
-                        row.deny_write = value;
-                        if (value)
+                        if (value) {
+                            this.calcPermissionState("allow_access", false, row);
+                            this.calcPermissionState("allow_read", false, row);
+                            this.calcPermissionState("allow_write", false, row);
                             this.calcPermissionState("allow_full", false, row);
+
+                            row.deny_access = value;
+                            row.deny_read = value;
+                            row.deny_write = value;
+                        }   
                         break;
                 }
                 row[field] = value;
