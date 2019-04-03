@@ -103,6 +103,17 @@ export function convertedSize(intsize: number): string {
     return (intsize / Math.pow(1024, x)).toFixed(2) + " " + unitConversion[x];
 }
 
+export function returnOSName(OS:number) {
+    switch (OS) {
+        case 0:
+            return "Windows"
+        case 1:
+            return "Solaris"
+        case 2:
+            return "Linux"
+    }
+}
+
 export function unitTest(size, unit) {
     var nsIndex = size.indexOf(unit);
     if (nsIndex !== -1) {
@@ -377,6 +388,9 @@ export function resolve(hpccWidget, callback) {
         case "ActivityWidget":
             require(["hpcc/ActivityWidget"], doLoad);
             break;
+        case "ClusterProcessesQueryWidget":
+            require(["hpcc/ClusterProcessesQueryWidget"], doLoad);
+            break;
         case "CurrentUserDetailsWidget":
             require(["hpcc/CurrentUserDetailsWidget"], doLoad);
             break;
@@ -623,6 +637,12 @@ export function resolve(hpccWidget, callback) {
             break;
         case "SourceFilesWidget":
             require(["hpcc/SourceFilesWidget"], doLoad);
+            break;
+        case "SystemServersQueryWidget":
+            require(["hpcc/SystemServersQueryWidget"], doLoad);
+            break;
+        case "TargetClustersQueryWidget":
+            require(["hpcc/TargetClustersQueryWidget"], doLoad);
             break;
         case "TargetComboBoxWidget":
             require(["hpcc/TargetComboBoxWidget"], doLoad);

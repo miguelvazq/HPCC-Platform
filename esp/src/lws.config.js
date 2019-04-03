@@ -1,7 +1,7 @@
 const CLUSTER_MV = "192.168.99.103";
 const CLUSTER_GJS = "192.168.3.22";
 const CLUSTER_160 = "10.173.160.101";
-const debugServerIP = CLUSTER_MV ;
+const debugServerIP = CLUSTER_160 ;
 const debugHPCC_JS = false; //  Should never be TRUE in a PR  ---
 
 let rewrite = [
