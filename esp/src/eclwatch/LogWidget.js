@@ -141,18 +141,33 @@ define([
 
         //  Implementation  ---
         init: function (params) {
-            if (this.params.__hpcc_id === params.__hpcc_id)
-                return;
-
-            this.initalized = false;
-            this.inherited(arguments);
+            
+            //this.initalized = false;
+            //this.inherited(arguments);
 
             this.logTargetSelect.reset();
-            this.logTargetSelect.init({
-                Logs: true,
-                includeBlank: false,
-                treeNode: this.params
-            });
+            if (params.newPreflight) {
+                if (this.inherited(arguments))
+                    return;
+
+                this.logTargetSelect.init({
+                    Logs: true,
+                    includeBlank: false,
+                    treeNode: this.params
+                });
+            } else {
+                if (this.params.__hpcc_id === params.__hpcc_id)
+                return;
+
+                this.initalized = false;
+                this.inherited(arguments);
+
+                this.logTargetSelect.init({
+                    Logs: true,
+                    includeBlank: false,
+                    treeNode: this.params
+                });
+            }
 
             this.initLogGrid();
             if (!this.rawText.initialized) {
@@ -218,7 +233,7 @@ define([
         refreshGrid: function (clearSelection) {
             this.rawText.setText(this.i18n.loadingMessage);
             var filter = lang.mixin(this.getFilter(), {
-                Name: "//" + this.params.getNetaddress()+this.params.getLogDirectory() + "/" + this.logTargetSelect.get("value"),
+                Name: "//" + this.params.params.Netaddress + this.params.LogDirectory + "/" + this.logTargetSelect.get("value"),
                 Type: "tpcomp_log",
                 LoadData: 1
             });
