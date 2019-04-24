@@ -346,8 +346,8 @@ define([
 
             //  Implementation  ---
             getFilter: function () {
+                var retVal = this.filter.toObject();
                 if (this.workunitsGrid) {
-                    var retVal = this.filter.toObject();
                     if (retVal.Sortby) {
                         switch (retVal.Sortby) {
                             case "Smallest":
@@ -360,14 +360,13 @@ define([
                                 this.workunitsGrid.updateSortArrow([{ attribute: "Modified", "descending": false }]);
                                 break;
                             case "Newest":
-                            /* falls through */
+                            console.log(retVal)
                             default:
                                 this.workunitsGrid.updateSortArrow([{ attribute: "Modified", "descending": true }]);
                                 break;
                         }
                     }
                 }
-                var retVal = this.filter.toObject();
                 if (retVal.StartDate && retVal.FromTime) {
                     lang.mixin(retVal, {
                         StartDate: this.getISOString("FromDate", "FromTime")
@@ -424,7 +423,6 @@ define([
                     Groups: true,
                     includeBlank: true
                 });
-                var context = this;
                 this.importTargetSelect.init({
                     Groups: true
                 });
@@ -446,6 +444,12 @@ define([
                 if (!params.searchResults) {
                     this.checkIfWarning();
                 }
+
+                ESPUtil.MonitorVisibility(this.workunitsTab, function (visibility) {
+                    if (visibility) {
+                        context.refreshGrid();
+                    }
+                });
 
                 this.filter.on("clear", function (evt) {
                     context.refreshHRef();
@@ -661,9 +665,9 @@ define([
                         RecordCount: { label: this.i18n.Records, width: 85 },
                         IntSize: {
                             label: this.i18n.Size, width: 100,
-                            formatter: function (intsize, row) {
-                                return Utility.convertedSize(intsize);
-                            }
+                            // formatter: function (intsize, row) {
+                            //     return Utility.convertedSize(intsize);
+                            // }
                         },
                         Parts: { label: this.i18n.Parts, width: 60 },
                         Modified: { label: this.i18n.ModifiedUTCGMT, width: 162 }
