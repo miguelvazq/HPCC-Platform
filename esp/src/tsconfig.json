@@ -16,6 +16,7 @@
         "allowJs": true,
         "skipLibCheck": true,
         "noImplicitUseStrict": true,
+        "jsx": "react",
         "lib": [
             "dom",
             "es5",
