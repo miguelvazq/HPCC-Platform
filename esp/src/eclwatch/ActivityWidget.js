@@ -36,7 +36,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, domAttr,
     registry, Button, ToggleButton, ToolbarSeparator, Tooltip,
     selector, tree,
-    GridDetailsWidget, ESPActivity, DelayLoadWidget, ESPUtil, Utility, DiskUsage, Clippy, HelloMod,
+    GridDetailsWidget, ESPActivity, DelayLoadWidget, ESPUtil, Utility, DiskUsage, Clippy,
     template
 ) {
         var DelayedRefresh = declare("DelayedRefresh", [], {
@@ -259,8 +259,6 @@ define([
             init: function (params) {
                 if (this.inherited(arguments))
                     return;
-
-                HelloMod.renderHello(document.getElementById(this.id + "React"), { message: "Some Message" });
 
                 var context = this;
                 // Would like to use like this <Hello message="Activity widget" />;

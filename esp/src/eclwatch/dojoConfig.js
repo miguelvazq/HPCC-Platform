@@ -55,8 +55,6 @@ function getConfig(env) {
             "codemirror": baseUrl + "/node_modules/codemirror",
             "crossfilter": baseUrl + "/node_modules/crossfilter2/crossfilter.min",
             "font-awesome": baseUrl + "/node_modules/@hpcc-js/common/font-awesome",
-            "react": baseUrl + "/node_modules/react/umd/react.production.min",
-            "react-dom": baseUrl + "/node_modules/react-dom/umd/react-dom.production.min",
             "tslib": baseUrl + "/node_modules/tslib/tslib"
         },
         packages: [
