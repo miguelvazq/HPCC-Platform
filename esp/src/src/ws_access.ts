@@ -109,6 +109,7 @@ var ResourcesStore = declare([Memory], {
     },
 
     refreshResources: function (query) {
+        var context = this;
         return Resources({
             request: {
                 basedn: this.parentRow.basedn,
@@ -117,7 +118,109 @@ var ResourcesStore = declare([Memory], {
             }
         }).then(lang.hitch(this, function (response) {
             if (lang.exists("ResourcesResponse.Resources.Resource", response)) {
-                return response.ResourcesResponse.Resources.Resource;
+                var alreadyExists = false;
+                var results = response.ResourcesResponse.Resources.Resource;
+                var newResults = [];
+                var indexAt;
+
+                //ES6 specific data structure
+                const categories = new Set();
+
+                arrayUtil.forEach(results, function(row, idx) {
+                    //var nameParts = row.name.split("::");
+                    //var cleanResource = nameParts[0];
+                    
+                    
+
+                    if (row.name.indexOf("hpccinternal") > -1 && alreadyExists === false) {
+                        newResults.push({
+                            name: row.name,
+                            __hpcc_type: "Category",
+                            __hpcc_id: "hpccinternal",
+                            __hpcc_parent: context.parentRow,
+                            children: []
+                        });
+                        alreadyExists = true;
+                    } else if (row.name.indexOf("hpccinternal") > -1 && alreadyExists) {
+                        indexAt = idx - 1;
+                        newResults[indexAt].children.push(lang.mixin(row, {
+                            __hpcc_parent: "hpccinternal",
+                            __hpcc_id: "hpccinternal" + CONCAT_SYMBOL + row.name
+                        }));
+                    } else {
+                        newResults.push(row);
+                    }
+
+                    // if (categories.has(cleanResource)) {
+                    //     arrayUtil.forEach(newResults, function(subRow, subRowIdx){
+                    //         if (subRow.name === cleanResource) {
+                    //             lang.mixin(row, {
+                    //                 __hpcc_id: row.name + idx,
+                    //                 __hpcc_parent: context.parentRow,
+                    //                 __hpcc_type: "Permission",
+                    //                 name: row.name,
+                    //                 children: []
+                    //             });
+                    //             children.push(row)
+                    //         }
+                    //     });
+                        
+                    //     //newResults[idx - 1].children.push(row)
+                    //     // row.children.push({
+                    //     //     name: row.name,
+                    //     //     __hpcc_parent: cleanResource + idx,
+                    //     //     __hpcc_id: row.name + idx
+                    //     // });
+                    //     // lang.mixin(row, {
+                    //     //     __hpcc_parent: cleanResource,
+                    //     //     __hpcc_id: row.name + idx,
+                    //     //     __hpcc_type: "Permission",
+                    //     //     name: cleanResource
+                    //     // newResults.push({
+                    //     //     name: cleanResource,
+                    //     //     __hpcc_type: "Category",
+                    //     //     __hpcc_id: cleanResource,
+                    //     //     __hpcc_parent: this.parentRow,
+                    //     //     children: []
+                    //     // });
+                    //     newResults.push(row);
+                    // } else {
+                    //     categories.add(cleanResource);
+                    //     newResults.push(row);
+                    // }
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    // if (row.name.indexOf("hpccinternal") > -1 && alreadyExists === false) {
+                    //     newResults.push({
+                    //         name: row.name,
+                    //         __hpcc_type: "Category",
+                    //         __hpcc_id: "hpccinternal",
+                    //         __hpcc_parent: this.parentRow,
+                    //         children: []
+                    //     });
+                    //     alreadyExists = true;
+                    // } else if (row.name.indexOf("hpccinternal") > -1) {
+                    //     newResults[0].children.push(lang.mixin(row, {
+                    //         __hpcc_parent: "hpccinternal",
+                    //         __hpcc_id: "hpccinternal" + CONCAT_SYMBOL + row.name
+                    //     }));
+                    // }
+                });
+
+                // arrayUtil.forEach(results, function(row, idx) {
+                //     if (row.name.indexOf("hpccinternal")) {
+                //         newResults.push(row);
+                //     }
+                // });
+                //return response.ResourcesResponse.Resources.Resource;
+                console.log(newResults)
+                console.log(categories)
+                return newResults;
             }
             return [];
         }));
