@@ -39,6 +39,7 @@ define([
             markers: [],
             highlightLines: [],
             readOnly: false,
+            findText: "",
 
             buildRendering: function (args) {
                 this.inherited(arguments);
@@ -83,6 +84,7 @@ define([
                 this.editor = CodeMirror.fromTextArea(document.getElementById(this.id + "EclCode"), {
                     tabMode: "indent",
                     matchBrackets: true,
+                    autofocus: true,
                     lineNumbers: true,
                     mode: mode,
                     readOnly: this.readOnly,
@@ -183,7 +185,39 @@ define([
 
             getText: function () {
                 return this.editor.getValue();
-            }
+            },
+
+            _doFind(prev) {
+                if (this.findText !== this.widget.FindField.value) {
+                    this.findText = this.widget.FindField.value;
+                    this.found = this.editor.execCommand("find");
+                    // this.syncSelectionFrom(this.found);
+                    // this.foundIndex = -1;
+                }
+                // this.foundIndex += prev ? -1 : +1;
+                // if (this.foundIndex < 0) {
+                //     this.foundIndex = this.found.length - 1;
+                // } else if (this.foundIndex >= this.found.length) {
+                //     this.foundIndex = 0;
+                // }
+                // if (this.found.length) {
+                //     this._graph.centerOnItem(this._gc.item(this.found[this.foundIndex]));
+                // }
+                // this.refreshActionState();
+            },
+
+            _onFind(prev) {
+                this.findText = "";
+                this._doFind(false);
+            },
+        
+            _onFindNext() {
+                this._doFind(false);
+            },
+        
+            _onFindPrevious() {
+                this._doFind(true);
+            },
 
         });
     });
