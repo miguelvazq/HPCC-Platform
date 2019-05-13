@@ -16,6 +16,7 @@ define([
 
     "src/ESPUtil",
     "src/Utility",
+    "src/Session",
     "hpcc/LockDialogWidget",
 
     "dojox/html/entities",
@@ -27,52 +28,24 @@ define([
 
 ], function (fx, dom, domStyle, ioQuery, ready, lang, arrayUtil, topic, xhr, cookie, on,
     Dialog, Button,
-    ESPUtil, Utility, LockDialogWidget,
+    ESPUtil, Utility, Session, LockDialogWidget,
     entities, Toaster) {
-
-        var espTimeoutSeconds = cookie("ESPSessionTimeoutSeconds") || 600;  // 10 Minutes?
-        var IDLE_TIMEOUT = espTimeoutSeconds * 1000;
-        var SESSION_RESET_FREQ = 30 * 1000;
+        
+        var session = new Session.SessionHelper();
         var idleWatcher;
-        var monitorLockClick;
-        var _prevReset = Date.now();
-        var sessionIsActive = espTimeoutSeconds;
 
-        function _resetESPTime(evt) {
-            if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
-                _prevReset = Date.now();
-                xhr("esp/reset_session_timeout", {
-                    method: "post"
-                }).then(function (data) {
-                });
-            }
-        }
+        if (session.sessionIsActive) {
+            idleWatcher = new ESPUtil.IdleWatcher(session.IDLE_TIMEOUT);
 
-        if (sessionIsActive > -1) {
-            cookie("Status", "Unlocked");
-            cookie("ECLWatchUser", "true");
-
-            idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
-            monitorLockClick = new ESPUtil.MonitorLockClick();
-
-            monitorLockClick.on("unlocked", function () {
-                idleWatcher.start();
-            });
-            monitorLockClick.on("locked", function () {
-                idleWatcher.stop();
-            });
             idleWatcher.on("active", function () {
-                _resetESPTime();
+                session._resetESPTime();
             });
             idleWatcher.on("idle", function (idleCreator) {
                 idleWatcher.stop();
-                var LockDialog = new LockDialogWidget({});
-                LockDialog._onLock(idleCreator);
+                var lockDialog = new LockDialogWidget({});
+                lockDialog._onLock(idleCreator);
             });
             idleWatcher.start();
-            monitorLockClick.unlocked();
-        } else if (cookie("ECLWatchUser")) {
-            window.location.replace(dojoConfig.urlInfo.basePath + "/Login.html");
         }
 
         function startLoading(targetNode) {
@@ -93,15 +66,15 @@ define([
             var params = ioQuery.queryToObject(dojo.doc.location.search.substr((dojo.doc.location.search.substr(0, 1) === "?" ? 1 : 0)));
             var hpccWidget = params.Widget ? params.Widget : "HPCCPlatformWidget";
 
-            topic.subscribe("hpcc/session_management_status", function (publishedMessage) {
-                if (publishedMessage.status === "Unlocked") {
-                    monitorLockClick.unlocked();
-                } else  if (publishedMessage.status === "Locked") {
-                    monitorLockClick.locked();
-                } else if (publishedMessage.status === "DoIdle") {
-                    idleWatcher.fireIdle();
-                }
-            })
+            // topic.subscribe("hpcc/session_management_status", function (publishedMessage) {
+            //     if (publishedMessage.status === "Unlocked") {
+            //         session.monitorLockClick.unlocked();
+            //     } else  if (publishedMessage.status === "Locked") {
+            //         session.monitorLockClick.locked();
+            //     } else if (publishedMessage.status === "DoIdle") {
+            //         idleWatcher.fireIdle();
+            //     }
+            // })
 
             Utility.resolve(hpccWidget, function (WidgetClass) {
                 var webParams = {
