@@ -32,6 +32,7 @@ define([
     "src/ws_access",
     "src/WsSMC",
     "src/WsTopology",
+    "src/Session",
     "hpcc/DelayLoadWidget",
     "src/ws_machine",
     "hpcc/LockDialogWidget",
@@ -61,7 +62,7 @@ define([
     registry, Tooltip,
     UpgradeBar, ColorPicker,
     CodeMirror,
-    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, DelayLoadWidget, WsMachine, LockDialogWidget,
+    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, Session, DelayLoadWidget, WsMachine, LockDialogWidget,
     template) {
 
         declare("HPCCColorPicker", [ColorPicker], {
@@ -317,7 +318,7 @@ define([
             },
 
             checkIfSessionsAreActive: function () {
-                if (cookie("ESPSessionTimeoutSeconds")) {
+                if (Session.checkIfSessionsAreActive()) {
                     this.logoutBtn.set("disabled", false);
                     dom.byId("UserDivider").textContent = " / ";
                     dom.byId("Lock").textContent = this.i18n.Lock;

@@ -30,23 +30,23 @@ define([
     ESPUtil, Utility, LockDialogWidget,
     entities, Toaster) {
 
-        var espTimeoutSeconds = cookie("ESPSessionTimeoutSeconds") || 600;  // 10 Minutes?
-        var IDLE_TIMEOUT = espTimeoutSeconds * 1000;
-        var SESSION_RESET_FREQ = 30 * 1000;
-        var idleWatcher;
-        var monitorLockClick;
-        var _prevReset = Date.now();
-        var sessionIsActive = espTimeoutSeconds;
+        // var espTimeoutSeconds = cookie("ESPSessionTimeoutSeconds") || 600;  // 10 Minutes?
+        // var IDLE_TIMEOUT = espTimeoutSeconds * 1000;
+        // var SESSION_RESET_FREQ = 30 * 1000;
+        // var idleWatcher;
+        // var monitorLockClick;
+        // var _prevReset = Date.now();
+        // var sessionIsActive = espTimeoutSeconds;
 
-        function _resetESPTime(evt) {
-            if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
-                _prevReset = Date.now();
-                xhr("esp/reset_session_timeout", {
-                    method: "post"
-                }).then(function (data) {
-                });
-            }
-        }
+        // function _resetESPTime(evt) {
+        //     if (Date.now() - _prevReset > SESSION_RESET_FREQ) {
+        //         _prevReset = Date.now();
+        //         xhr("esp/reset_session_timeout", {
+        //             method: "post"
+        //         }).then(function (data) {
+        //         });
+        //     }
+        // }
 
         if (sessionIsActive > -1) {
             cookie("Status", "Unlocked");
@@ -54,6 +54,7 @@ define([
 
             idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
             monitorLockClick = new ESPUtil.MonitorLockClick();
+            session = new ESPUtil.LocalStorage();
 
             monitorLockClick.on("unlocked", function () {
                 idleWatcher.start();
@@ -63,9 +64,12 @@ define([
             });
             idleWatcher.on("active", function () {
                 _resetESPTime();
+                session.setItem("clearTabIdle", true);
+
             });
             idleWatcher.on("idle", function (idleCreator) {
                 idleWatcher.stop();
+                session.setItem("clearTabIdle", false);
                 var LockDialog = new LockDialogWidget({});
                 LockDialog._onLock(idleCreator);
             });
