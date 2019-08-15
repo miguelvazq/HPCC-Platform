@@ -22,6 +22,7 @@ define([
     "src/Utility",
     "src/DiskUsage",
     "src/Clippy",
+    "src/Components/Button",
 
     "dojo/text!../templates/ActivityPageWidget.html",
 
@@ -34,7 +35,7 @@ define([
 ], function (declare, lang, i18n, nlsHPCC, arrayUtil, domAttr,
     registry, Button, ToggleButton, ToolbarSeparator, Tooltip,
     selector, tree,
-    GridDetailsWidget, ESPActivity, DelayLoadWidget, ESPUtil, Utility, DiskUsage, Clippy,
+    GridDetailsWidget, ESPActivity, DelayLoadWidget, ESPUtil, Utility, DiskUsage, Clippy, CustomButton,
     template
 ) {
         var DelayedRefresh = declare("DelayedRefresh", [], {
@@ -83,7 +84,7 @@ define([
             //  Hitched actions  ---
             _onRefresh: function (event) {
                 this.inherited(arguments);
-                this.refreshUsage(true);
+                this.refreshUsage(false);
             },
 
             _onPause: function (event, params) {
@@ -259,6 +260,7 @@ define([
                     return;
 
                 var context = this;
+                CustomButton.addName(document.getElementById(this.id + "React"), { message: "React Button" });
                 this._diskUsage = new DiskUsage.Summary()
                     .target(this.id + "DiskSummary")
                     .on("click", function (gauge, details) {
