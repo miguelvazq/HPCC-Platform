@@ -39,15 +39,22 @@ var TpLogFileStore = declare([Memory, Evented], {
             }).then(lang.hitch(this, function (response) {
                 var data = [];
                 if (lang.exists("TpLogFileResponse.LogData", response)) {
+                    var columns = [response.TpLogFileResponse.LogFieldNames.Item];
+                    ReturnColumnNames(columns);
+                    arrayUtil.forEach(response.TpLogFileResponse.LogFieldNames.Item, function(fileColumnName, columnIdx){
+                        ReturnColumnNames(fileColumnName);
+                    });
                     this.lastPage = response.TpLogFileResponse.LogData;
                     this.emit("pageLoaded", this.lastPage);
                     arrayUtil.forEach(response.TpLogFileResponse.LogData.split("\n"), function (item, idx) {
+                        
                         if (options.start === 0 || idx > 0) {
                             //  Throw away first line as it will probably only be a partial line  ---
                             var itemParts = item.split(" ");
-                            var lineNo, audience, time, pid, tid, date, details;
+
+                            var lineNo, time, pid, tid, date, details;
                             if (itemParts.length) lineNo = nextItem(itemParts);
-                            if (itemParts.length) audience = nextItem(itemParts);
+                            //if (itemParts.length) audience = nextItem(itemParts);
                             if (itemParts.length) date = nextItem(itemParts);
                             if (itemParts.length) time = nextItem(itemParts);
                             if (itemParts.length) pid = nextItem(itemParts);
@@ -57,7 +64,7 @@ var TpLogFileStore = declare([Memory, Evented], {
                             data.push({
                                 __hpcc_id: response.TpLogFileResponse.PageNumber + "_" + idx,
                                 lineNo: lineNo,
-                                audience: audience,
+                                //audience: audience,
                                 date: date,
                                 time: time,
                                 pid: pid,
@@ -80,6 +87,19 @@ var TpLogFileStore = declare([Memory, Evented], {
         return QueryResults(deferredResults);
     }
 });
+
+export function ReturnColumnNames(columns) {
+    var obj = {};
+    
+    if (columns[0].length) {
+        for (var x = 0; x < columns[0].length; ++x) {
+            lang.mixin(obj, {
+                [columns[0][x]]: columns[0][x]
+            });
+        }
+        return obj;
+    }
+}
 
 export function TpServiceQuery(params) {
     lang.mixin(params.request, {

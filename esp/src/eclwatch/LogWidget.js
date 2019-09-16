@@ -173,6 +173,10 @@ define([
                     mode: "text"
                 });
             }
+
+            //this.setColumns(params.LogFieldNames.Item);
+
+
         },
 
         initTab: function () {
@@ -196,7 +200,8 @@ define([
                 this.logGrid = new declare([ESPUtil.Grid(true, true, { rowsPerPage: 500, pageSizeOptions: [500, 1000] })])({
                     store: store,
                     query: this.getFilter(),
-                    columns: {
+                    columns:
+                    {
                         lineNo: {width: 80 },
                         audience: { label: this.i18n.Audience, width: 60},
                         date: { label: this.i18n.Date, width: 100 },
@@ -225,6 +230,14 @@ define([
                     context.refreshActionState();
                 });
                 this.logGrid.startup();
+            }
+        },
+
+        setColumns: function (params) {
+            var dynamicColumns = {
+                Location: {label: this.i18n.Location, id: this.i18n.Location, width: 350},
+                Component: {label: this.i18n.Component, id: this.i18n.Component, width: 275},
+                ComputerUpTime: { label: this.i18n.ComputerUpTime, width: 75 }
             }
         },
 
