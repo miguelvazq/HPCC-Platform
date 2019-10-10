@@ -31,8 +31,6 @@ define([
     ESPUtil, Utility, Session, LockDialogWidget,
     entities, Toaster) {
 
-        Session.initSession();
-
         function startLoading(targetNode) {
             domStyle.set(dom.byId("loadingOverlay"), "display", "block");
             domStyle.set(dom.byId("loadingOverlay"), "opacity", "255");
@@ -126,6 +124,7 @@ define([
                 stopLoading();
             }
             );
+            Session.initSession();
         }
 
         function parseUrl() {

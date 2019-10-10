@@ -8,14 +8,14 @@ const IDLE_TIMEOUT = espTimeoutSeconds * 1000;
 const SESSION_RESET_FREQ = 30 * 1000;
 const idleWatcher = new ESPUtil.IdleWatcher(IDLE_TIMEOUT);
 const monitorLockClick = new ESPUtil.MonitorLockClick();
-const sessionIsActive = espTimeoutSeconds;
+const sessionIsActive = cookie(("ESPSessionState"));
 
 let _prevReset = Date.now();
 
 declare const dojoConfig;
 
 export function initSession() {
-    if (sessionIsActive > -1) {
+    if (sessionIsActive !== "false") {
         cookie("Status", "Unlocked");
         cookie("ECLWatchUser", "true");
 
@@ -32,8 +32,10 @@ export function initSession() {
 
         idleWatcher.start();
         monitorLockClick.unlocked();
-    } else if (cookie("ECLWatchUser")) {
+    } else if (cookie("ECLWatchUser") && sessionIsActive !== "false") { // check if user changed configuration without clearing cookies
         window.location.replace(dojoConfig.urlInfo.basePath + "/Login.html");
+    } else {
+        return;
     }
 }
 
