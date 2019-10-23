@@ -176,6 +176,12 @@ hr.dashedLine {
     padding: 0px;
 }
 
+.flat .resetBtn .dijitButtonNode {
+    background-color: #ff0000;
+    font-weight: bold;
+    color: #fff;
+}
+
 .flat .glow .dijitToggleButton .dijitButtonNode {
     background: none;
     border:none;
@@ -185,9 +191,7 @@ hr.dashedLine {
 }
 
 .flat .hpccTitlebar .dijitToggleButtonChecked .dijitButtonNode {
-    border-width: 1px;
-    border-style: solid;
-    border-color: #759dc0;
+    border-width: 0px;
     margin: 0px;
     align-content:center;
 }
