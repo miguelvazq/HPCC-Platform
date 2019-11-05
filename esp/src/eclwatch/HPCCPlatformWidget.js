@@ -36,6 +36,7 @@ define([
     "hpcc/DelayLoadWidget",
     "src/ws_machine",
     "hpcc/LockDialogWidget",
+    "src/Utility",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -62,7 +63,7 @@ define([
     registry, Tooltip,
     UpgradeBar, ColorPicker,
     CodeMirror,
-    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, KeyValStore, DelayLoadWidget, WsMachine, LockDialogWidget,
+    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, KeyValStore, DelayLoadWidget, WsMachine, LockDialogWidget, Utility,
     template) {
 
         declare("HPCCColorPicker", [ColorPicker], {
@@ -256,14 +257,18 @@ define([
                 this.storage.setItem("Status", "Unlocked");
 
                 this.ws_store.get("HPCCPlatformWidget_Toolbar_Color").then(function(val) {
+                var textColor = "black";
                     if (val) {
                         domStyle.set(context.id + "Titlebar", {
                             "backgroundColor": val
                         });
                         context.toolbarColor.set("value", val);
+                    textColor = Utility.textColor(val);
                     } else {
                         context.toolbarColor.set("value", "#2196F3");
+                    textColor = Utility.textColor("#2196F3");
                     }
+                alert(textColor);
                 });
 
                 this.ws_store.get("HPCCPlatformWidget_Toolbar_Text").then(function(val){
