@@ -243,7 +243,11 @@ define([
                             MachineInformationCount++;
                             if (item.Component === "SystemServers") { //request params are unique for system servers vs cluster processes
                                 request["SystemServers"] = true;
-                                request["Addresses." + idx] = item.Netaddress + "|" + item.Netaddress + ":" + item.Type + ":" + item.Name + ":" + 2 + ":" + item.Directory;
+                                if (item.Type === null) {
+                                    request["Addresses." + idx] = item.Netaddress + "|" + item.Netaddress + "::" + item.Name + ":" + 2 + ":" + item.Directory;
+                                } else {
+                                    request["Addresses." + idx] = item.Netaddress + "|" + item.Netaddress + ":" + item.Type + ":" + item.Name + ":" + 2 + ":" + item.Directory;
+                                }
                                 request["Addresses.itemcount"] = MachineInformationCount;
 
                             } else {
