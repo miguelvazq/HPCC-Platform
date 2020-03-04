@@ -34,6 +34,7 @@ define([
     "src/ws_machine",
     "hpcc/LockDialogWidget",
     "src/UserPreferences/EnvironmentTheme",
+    "src/react/index",
 
     "dojo/text!../templates/HPCCPlatformWidget.html",
 
@@ -61,7 +62,7 @@ define([
     registry, Tooltip,
     UpgradeBar, ColorPicker,
     CodeMirror,
-    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, WsMachine, LockDialogWidget, EnvironmentTheme,
+    _TabContainerWidget, ESPRequest, ESPActivity, ESPUtil, WsAccount, WsAccess, WsSMC, WsTopology, WsMachine, LockDialogWidget, EnvironmentTheme, srcReact,
     template) {
 
     declare("HPCCColorPicker", [ColorPicker], {
@@ -262,6 +263,9 @@ define([
                     context.environmentText.set("value", "");
                 }
             });
+
+            this.globalSearch = dom.byId(this.id + "GlobalSearch");
+            srcReact.render(srcReact.GlobalSearch, { }, this.globalSearch);
         },
 
         _onUpdateFromStorage: function (msg) {

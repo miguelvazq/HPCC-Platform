@@ -871,7 +871,7 @@ table.miniSelect span {
 }
 
 .searchUserMoreComponents{
-    float:right;
+    width: 20%;
 }
 
 .navBarLoggedin{
