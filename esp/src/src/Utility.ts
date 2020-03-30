@@ -273,6 +273,21 @@ export function isObjectEmpty(obj) {
     return true;
 }
 
+export function checkForKey(obj, arrayOfKeys) {
+    arrayUtil.forEach(arrayOfKeys, function(item, idx){
+        if (obj.hasOwnProperty(item)) {
+            console.log("True");
+            return true;
+        }
+        console.log("false");
+        return false;
+    });
+
+    // }for (const prop in obj) {
+    //     if (obj)
+    // }
+}
+
 /* alphanum.js (C) Brian Huisman
  * Based on the Alphanum Algorithm by David Koelle
  * The Alphanum Algorithm is discussed at http://www.DaveKoelle.com

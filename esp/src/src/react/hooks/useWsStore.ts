@@ -12,6 +12,6 @@ export const useGet = (key: string, filter?: object) => {
             .then(response => {
                 setResponseState({ data: response, loading: false });
             });
-    }, [filter]);
+    }, []);
     return responseState;
 };

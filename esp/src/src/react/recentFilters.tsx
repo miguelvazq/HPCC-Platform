@@ -18,6 +18,7 @@ interface RecentFilterProps {
 export const RecentFilters: React.FunctionComponent<RecentFilterProps> = ({
     ws_key, widget, filter
 }) => {
+    
     const {data, loading} = useGet(ws_key, filter);
 
     const handleClick = (e) => {
@@ -32,6 +33,7 @@ export const RecentFilters: React.FunctionComponent<RecentFilterProps> = ({
 
     return (
         <>
+        {console.log("rendered")}
             <Typography variant="h4" noWrap>
                 {nlsHPCC.RecentFilters}
             </Typography>
