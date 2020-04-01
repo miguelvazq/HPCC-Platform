@@ -1,5 +1,6 @@
 import * as React from "react";
 import { resolve } from "../Utility";
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 export interface DojoProps {
     widget: string;
@@ -29,6 +30,7 @@ export class DojoComponent extends React.Component<DojoProps, DojoState> {
     }
 
     componentDidMount() {
+        console.log("dojo component rendered")
         resolve(this.props.widget, WidgetClass => {
             const widget = new WidgetClass({
                 id: this.state.widgetID,
@@ -52,7 +54,8 @@ export class DojoComponent extends React.Component<DojoProps, DojoState> {
     }
 
     render() {
-        return <div id={this.state.placeholderID}>...loading {this.props.widget}...</div>;
+        return <div id={this.state.placeholderID}><CircularProgress color="primary"/></div>;
+        //return <div id={this.state.placeholderID}>...loading {this.props.widget}...</div>;
     }
 
 }

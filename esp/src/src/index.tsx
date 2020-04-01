@@ -1,11 +1,9 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import { MuiThemeProvider, createMuiTheme } from "@material-ui/core";
-import CssBaseline from "@material-ui/core/CssBaseline";
-import deepOrange from "@material-ui/core/colors/deepOrange";
 import { Frame } from "./react/frame";
 import { globalKeyValStore } from "./KeyValStore";
 import { initSession } from "./Session";
+import * as ESPRequest from "./ESPRequest";
 
 import "css!hpcc/css/ecl.css";
 import "css!dojo-themes/flat/flat.css";
@@ -25,27 +23,22 @@ dojoConfig.urlInfo = {
     fullPath: location.origin + "/esp/files"
 };
 
+function getUserData () {
+    return new Promise(function(resolve, reject) {
+        ESPRequest.send("ws_account", "MyAccount")
+        .then(function(value) {
+            resolve (dojoConfig.user = value.MyAccountResponse)
+        });
+    });
+}
+
 const store = globalKeyValStore();
 store.set("", "", false, "HPCCApps", "ECLWatch");
 initSession();
-
-const theme = createMuiTheme({
-    palette: {
-        primary: {
-            light: "#8561c5",
-            main: "#673ab7",
-            dark: "#482880",
-            contrastText: "#fff"
-        },
-        secondary: deepOrange
-    }
-});
+getUserData();
 
 ReactDOM.render(
-    <MuiThemeProvider theme={theme}>
-        <CssBaseline>
-            <Frame />
-        </CssBaseline>
-    </MuiThemeProvider>,
+    <Frame />,
     document.getElementById("app")
 );
+

@@ -3,11 +3,11 @@ import Skeleton from '@material-ui/lab/Skeleton';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Typography, Paper } from "@material-ui/core";
 import { ThemeProvider } from "@material-ui/core/styles";
 import Tooltip from '@material-ui/core/Tooltip';
-import { theme } from './theme';
+import { theme } from '../theme';
 import "dojo/i18n";
 // @ts-ignore
 import * as nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
-import { useGet } from "./hooks/useWsStore";
+import { useGet } from "../hooks/useWsStore";
 
 interface RecentFilterProps {
     ws_key: string;
