@@ -1,4 +1,4 @@
-export * from "./dojoComponent";
+export * from "./components/DojoComponent";
 export * from "./render";
-export * from "./wuStatus";
-export * from "./recentFilters";
+export * from "./components/WUStatus";
+export * from "./components/RecentFilters";
