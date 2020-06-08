@@ -16,6 +16,7 @@
         "skipLibCheck": true,
         "noImplicitUseStrict": true,
         "downlevelIteration": true,
+        "esModuleInterop": false,
         "jsx": "react",
         "lib": [
             "dom",
