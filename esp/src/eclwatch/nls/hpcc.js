@@ -196,6 +196,7 @@ define({
             Directory: "Directory",
             DisableScopeScans: "Disable Scope Scans",
             DisableScopeScanConfirm: "Are you sure you want to disable Scope Scans?  Changes will revert to configuration settings on DALI reboot.",
+            Disk: "Disk",
             DiskUsage: "Disk Usage",
             Distance: "Distance",
             DistanceTooltip: "Maximum Activity Neighbourhood Distance",
