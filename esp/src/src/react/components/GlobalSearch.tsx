@@ -1,15 +1,16 @@
 import * as React from "react";
 import { makeStyles, Theme, createStyles } from "@material-ui/core/styles";
 import { InputBase, IconButton, Popper, ClickAwayListener, Paper, Grow, List, ListSubheader, ListItem, ListItemText, ListItemIcon } from "@material-ui/core";
+import { UserAccountContext } from '../hooks/userContext';
 import SearchIcon from "@material-ui/icons/Search";
 import HistoryIcon from "@material-ui/icons/History";
 import LaunchIcon from "@material-ui/icons/Launch";
-import DATA from "src/data/components"
+import { DATA } from "src/data/components";
 import "dojo/i18n";
 // @ts-ignore
 import * as nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 
-interface GlobalSearchProps{
+interface GlobalSearchProps {
     username: string
 }
 
@@ -18,7 +19,7 @@ const useStyles = makeStyles((theme: Theme) =>
         listItem: {
             minWidth: "28px"
         },
-        halfWidthList:{
+        halfWidthList: {
             width: "600px"
         },
 
@@ -28,7 +29,7 @@ const useStyles = makeStyles((theme: Theme) =>
             flexDirection: "column"
         },
         userDetails: {
-            marginTop:  theme.spacing(1),
+            marginTop: theme.spacing(1),
             padding: 0
         },
         search: {
@@ -38,10 +39,10 @@ const useStyles = makeStyles((theme: Theme) =>
             marginLeft: 0,
             width: "600px",
             [theme.breakpoints.up("sm")]: {
-              marginLeft: theme.spacing(1),
-              width: "auto",
+                marginLeft: theme.spacing(1),
+                width: "auto",
             }
-          },
+        },
         searchIcon: {
             height: "100%",
             position: "absolute",
@@ -78,6 +79,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
     const [open, setOpen] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState("");
     const [searchResults, setSearchResults] = React.useState([]);
+    const {userAccount} = React.useContext(UserAccountContext);
     const anchorRef = React.useRef<HTMLButtonElement>(null);
     const prevOpen = React.useRef(open);
     const components = DATA;
@@ -101,7 +103,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
             const results = autoCompleteSearchTerms.filter(name => (name.name.toLowerCase().includes(searchTerm.toLowerCase())));
             setSearchResults(results);
         }
-    },[searchTerm]);
+    }, [searchTerm]);
 
     React.useEffect(() => {
         if (prevOpen.current === true && open === false) {
@@ -141,10 +143,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
             >
                 {({ TransitionProps, placement }) => (
                     <Grow
-                    {...TransitionProps}
-                    style={{
-                        transformOrigin: placement === "bottom" ? "center top" : "center bottom"
-                    }}
+                        {...TransitionProps}
+                        style={{
+                            transformOrigin: placement === "bottom" ? "center top" : "center bottom"
+                        }}
                     >
                         <Paper className={classes.userDetails}>
                             <ClickAwayListener onClickAway={handleClose}>
@@ -190,19 +192,19 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
                                     {searchResults.length > 0 ? (
                                         <List dense disablePadding
                                             subheader={
-                                            <ListSubheader component="div" id="nested-list-subheader">{nlsHPCC.Components}</ListSubheader>
+                                                <ListSubheader component="div" id="nested-list-subheader">{nlsHPCC.Components}</ListSubheader>
                                             }
                                         >
                                             {searchResults.map((item, idx) => (
                                                 <ListItem key={idx} role={undefined} dense button className={classes.halfWidthList}>
                                                     <ListItemIcon>
-                                                        <LaunchIcon color="primary"/>
+                                                        <LaunchIcon color="primary" />
                                                     </ListItemIcon>
                                                     <ListItemText id={item.name} primary={item.name} />
                                                 </ListItem>
                                             ))}
                                         </List>
-                                    ) : "" }
+                                    ) : ""}
                                 </div>
                             </ClickAwayListener>
                         </Paper>
