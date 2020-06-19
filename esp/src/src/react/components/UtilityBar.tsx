@@ -13,7 +13,6 @@ import { ProfileManager } from "./ProfileManager";
 declare const dojoConfig: any;
 
 interface UtilityBarProps {
-	//sendData: any;
 }
 
 

@@ -3,6 +3,8 @@ import { makeStyles } from "@material-ui/core/styles"
 import { MainList } from "./NavigationMenu";
 import { Body } from "./Body";
 import { UtilityBar } from "./UtilityBar";
+import { UserAccountContext } from "../hooks/userContext";
+import * as ESPRequest from "../../ESPRequest";
 
 declare const dojoConfig;
 
@@ -34,12 +36,20 @@ const useStyles = makeStyles(theme => ({
 export function Frame() {
     const classes = useStyles();
     const [mainWidget, setMainWidget] = React.useState("ActivityWidget");
+    const [userAccount, setUserAccount] = React.useState({});
+
+    React.useEffect(() => {
+        ESPRequest.send("ws_account", "MyAccount").then(function(user){
+            setUserAccount(user.MyAccountResponse);
+        });
+    },[]);
+
     const selectedWidgetCallback = (widget) => {
-        setMainWidget(widget)
+        setMainWidget(widget);
     }
 
     return (
-        <>
+        <UserAccountContext.Provider value={{userAccount, setUserAccount}}>
             <UtilityBar />
             <div className={classes.container}>
                 <div className={classes.nav}>
@@ -49,6 +59,6 @@ export function Frame() {
                     <Body widgetClassID={mainWidget} params={{}} />
                 </div>
             </div>
-        </>
+        </UserAccountContext.Provider>
     );
 }

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { makeStyles, Theme, createStyles } from "@material-ui/core/styles";
 import { InputBase, IconButton, Popper, ClickAwayListener, Paper, Grow, List, ListSubheader, ListItem, ListItemText, ListItemIcon } from "@material-ui/core";
+import { UserAccountContext } from '../hooks/userContext';
 import SearchIcon from "@material-ui/icons/Search";
 import HistoryIcon from "@material-ui/icons/History";
 import LaunchIcon from "@material-ui/icons/Launch";
@@ -78,6 +79,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
     const [open, setOpen] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState("");
     const [searchResults, setSearchResults] = React.useState([]);
+    const {userAccount} = React.useContext(UserAccountContext);
     const anchorRef = React.useRef<HTMLButtonElement>(null);
     const prevOpen = React.useRef(open);
     const components = DATA;

@@ -2,14 +2,13 @@ import * as React from "react";
 import { Theme, makeStyles, createStyles } from "@material-ui/core/styles";
 import { ButtonBase, MenuList, MenuItem, Paper, Avatar, ClickAwayListener, Popper, Grow, Typography, Divider } from "@material-ui/core";
 import KeyboardArrowDownIcon from "@material-ui/icons/KeyboardArrowDown";
+import { UserAccountContext } from '../hooks/userContext';
 import { getPrevious } from "../hooks/prevState";
 import "dojo/i18n";
 // @ts-ignore
 import * as nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 
 interface ProfileManagerProps {
-    username?: string,
-    accountType?: string
 }
 
 const useStyles = makeStyles((theme: Theme) =>
@@ -47,8 +46,7 @@ const useStyles = makeStyles((theme: Theme) =>
             alignItems: "center",
             fontWeight: "bold",
             color: "white",
-            paddingLeft: theme.spacing(2),
-            padding: theme.spacing(0, 0, 1, 2)
+            padding: theme.spacing(0, 0, 0, 2)
         },
         role: {
             color: theme.palette.primary.contrastText,
@@ -76,8 +74,12 @@ export const ProfileManager: React.FC<ProfileManagerProps> = (props) => {
     const classes = useStyles();
     const [open, setOpen] = React.useState(false);
     const anchorRef = React.useRef<HTMLButtonElement>(null);
-
     const prevOpen = getPrevious(open);
+    const {userAccount, setUserAccount} = React.useContext(UserAccountContext);
+
+    const createAvatar = (username) => {
+        return username.substring(0,2).toLocaleUpperCase();
+    };
 
     const handleToggle = () => {
         setOpen(!prevOpen);
@@ -104,10 +106,10 @@ export const ProfileManager: React.FC<ProfileManagerProps> = (props) => {
                 ref={anchorRef}
             >
                 <Paper className={classes.container}>
-                    <Avatar className={classes.avatar}>MV</Avatar>
+                <Avatar className={classes.avatar}>{userAccount.username ? createAvatar(userAccount.username) : "..."}</Avatar>
                     <div className={classes.text}>
-                        <div className={classes.user}>{props.username || nlsHPCC.Loading}</div>
-                        <div className={classes.role}><span>{props.accountType || nlsHPCC.Loading}</span></div>
+                        <div className={classes.user}><Typography variant="h6">{userAccount.username ? userAccount.username : nlsHPCC.Loading}</Typography></div>
+                        <div className={classes.role}><Typography variant="subtitle1">{userAccount.accountType ? userAccount.accountType : nlsHPCC.Loading}</Typography></div>
                     </div>
                 </Paper>
                 <span className={classes.arrow}><KeyboardArrowDownIcon></KeyboardArrowDownIcon></span>
@@ -129,16 +131,16 @@ export const ProfileManager: React.FC<ProfileManagerProps> = (props) => {
                         <Paper className={classes.userDetails}>
                             <ClickAwayListener onClickAway={handleClose}>
                                 <div className={classes.flexCenter}>
-                                    <Avatar className={classes.avatar}>MV</Avatar>
-                                    <Typography variant="h5">{props.username}</Typography>
-                                    <Typography variant="subtitle2">{props.accountType}</Typography>
+                                <Avatar className={classes.avatar}>{userAccount.username ? createAvatar(userAccount.username) : "..."}</Avatar>
+                                <Typography variant="h5">{userAccount.firstName ? userAccount.firstName + " " + userAccount.lastName : userAccount.username}</Typography>
+                                <Typography variant="subtitle1">{userAccount.accountType}</Typography>
                                     <MenuList className={classes.fullWidth} autoFocusItem={open} id="menu-list-grow">
                                         <MenuItem onClick={handleClose}>My Account</MenuItem>
                                         <MenuItem onClick={handleClose}>Set Banner</MenuItem>
                                         <MenuItem onClick={handleClose}>Set Toolbar</MenuItem>
                                         <MenuItem onClick={handleClose}>Lock</MenuItem>
                                         <Divider />
-                                        <MenuItem onClick={handleClose}><Typography color="error">Logout</Typography></MenuItem>
+                                        <MenuItem onClick={handleClose} color="error">Logout</MenuItem>
                                     </MenuList>
                                 </div>
                             </ClickAwayListener>
