@@ -96,10 +96,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
         }
         setOpen(false);
     }
+    const handleComponentClick = widget => {
+        
+    }
     React.useEffect(() => {
         const autoCompleteSearchTerms = components.components;
         if (searchTerm !== "") {
-            setOpen(true)
+            setOpen(true);
             const results = autoCompleteSearchTerms.filter(name => (name.name.toLowerCase().includes(searchTerm.toLowerCase())));
             setSearchResults(results);
         }
@@ -196,7 +199,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
                                             }
                                         >
                                             {searchResults.map((item, idx) => (
-                                                <ListItem key={idx} role={undefined} dense button className={classes.halfWidthList}>
+                                                <ListItem key={idx} role={undefined} dense button className={classes.halfWidthList} onClick={() => { handleComponentClick(item.widget) }}>
                                                     <ListItemIcon>
                                                         <LaunchIcon color="primary" />
                                                     </ListItemIcon>
