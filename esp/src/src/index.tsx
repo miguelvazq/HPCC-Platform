@@ -19,7 +19,7 @@ dojoConfig.urlInfo = {
     resourcePath: baseHost + "/esp/files/eclwatch",
     basePath: baseHost + "/esp/files",
     fullPath: location.origin + "/esp/files"
-};
+}
 
 initSession();
 
