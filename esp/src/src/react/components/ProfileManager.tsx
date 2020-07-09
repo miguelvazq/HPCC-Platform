@@ -37,9 +37,9 @@ const useStyles = makeStyles((theme: Theme) =>
             alignItems: "center"
         },
         avatar: {
-            width: theme.spacing(4),
-            height: theme.spacing(4),
-            backgroundColor: theme.palette.secondary.main,
+            width: theme.spacing(3),
+            height: theme.spacing(3),
+            backgroundColor: theme.palette.primary.dark,
             background: "transparent",
             padding: theme.spacing(1)
         },
@@ -47,8 +47,9 @@ const useStyles = makeStyles((theme: Theme) =>
             alignItems: "center",
             fontWeight: "bold",
             color: "white",
-            paddingLeft: theme.spacing(2),
-            padding: theme.spacing(0, 0, 1, 2)
+            paddingTop: "3px",
+            marginBottom: "3px",
+            paddingLeft: theme.spacing(2)
         },
         role: {
             color: theme.palette.primary.contrastText,
@@ -89,7 +90,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = (props) => {
 
     React.useEffect(() => {
         if (prevOpen) {
-            anchorRef.current!.focus();
+            anchorRef.current?.focus();
         }
     }, [open]);
 

@@ -86,7 +86,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
         setOpen(true);
     };
     const handleSearchText = event => {
-        setSearchTerm(event.target.value);
+        event.target.value === "" ? setSearchResults([]) : setSearchTerm(event.target.value);
     }
     const handleClose = (event: React.MouseEvent<EventTarget>) => {
         if (anchorRef.current && anchorRef.current.contains(event.target as HTMLElement)) {
@@ -100,12 +100,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
             setOpen(true)
             const results = autoCompleteSearchTerms.filter(name => (name.name.toLowerCase().includes(searchTerm.toLowerCase())));
             setSearchResults(results);
+            console.log(results)
         }
     }, [searchTerm]);
 
     React.useEffect(() => {
         if (prevOpen.current === true && open === false) {
-            anchorRef.current!.focus();
+            anchorRef.current?.focus();
         }
 
         prevOpen.current = open;

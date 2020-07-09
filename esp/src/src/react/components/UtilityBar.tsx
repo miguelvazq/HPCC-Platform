@@ -40,7 +40,7 @@ const useStyles = makeStyles((theme: Theme) =>
 		},
 		icons: {
 			paddingRight: theme.spacing(2),
-			marginTop: "5px"
+			marginTop: "8px"
 		},
 		sectionDesktop: {
 			display: "none",
@@ -127,7 +127,7 @@ export const UtilityBar: React.FC<UtilityBarProps> = (props) => {
 				</MenuItem>
 				<MenuItem>
 					<IconButton aria-label="show 11 new notifications" color="inherit">
-						<Badge badgeContent={11} color="secondary">
+						<Badge badgeContent={11}>
 							<NotificationsIcon />
 						</Badge>
 					</IconButton>
@@ -170,7 +170,7 @@ export const UtilityBar: React.FC<UtilityBarProps> = (props) => {
 									<FavoriteIcon />
 								</IconButton>
 								<IconButton aria-label="show 17 new notifications" color="inherit">
-									<Badge badgeContent={17} color="secondary">
+									<Badge badgeContent={17}>
 										<NotificationsIcon />
 									</Badge>
 								</IconButton>
