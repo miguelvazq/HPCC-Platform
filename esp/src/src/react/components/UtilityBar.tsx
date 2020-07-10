@@ -13,7 +13,8 @@ import { ProfileManager } from "./ProfileManager";
 declare const dojoConfig: any;
 
 interface UtilityBarProps {
-	//sendData: any;
+	mainWidget: string;
+	setMainWidget: (widgetID: string) => void;
 }
 
 
@@ -57,7 +58,9 @@ const useStyles = makeStyles((theme: Theme) =>
 	})
 );
 
-export const UtilityBar: React.FC<UtilityBarProps> = (props) => {
+export const UtilityBar: React.FC<UtilityBarProps> = ({
+	mainWidget, setMainWidget
+}) => {
 	const classes = useStyles();
 	const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 	const [mobileMoreAnchorEl, setMobileMoreAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -162,7 +165,7 @@ export const UtilityBar: React.FC<UtilityBarProps> = (props) => {
 							<MenuIcon />
 						</IconButton>
 						<Typography className={classes.title} variant="h6" noWrap>Stu's 160 Cluster</Typography>
-						<GlobalSearch username={dojoConfig.username} />
+						<GlobalSearch mainWidget={mainWidget} setMainWidget={setMainWidget} username={dojoConfig.username} />
 						<div className={classes.grow} />
 						<div className={classes.sectionDesktop}>
 							<div className={classes.icons}>

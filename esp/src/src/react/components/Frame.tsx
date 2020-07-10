@@ -34,16 +34,19 @@ const useStyles = makeStyles(theme => ({
 export function Frame() {
     const classes = useStyles();
     const [mainWidget, setMainWidget] = React.useState("ActivityWidget");
-    const selectedWidgetCallback = (widget) => {
-        setMainWidget(widget)
-    }
+    //const [items, setItems] = useState([])
+
+    // const selectedWidgetCallback = (widget) => {
+    //     setMainWidget(widget)
+    // }
 
     return (
         <>
-            <UtilityBar />
+            <UtilityBar mainWidget={mainWidget} setMainWidget={setMainWidget} />
             <div className={classes.container}>
                 <div className={classes.nav}>
-                    <MainList getWidgetName={selectedWidgetCallback} />
+                    <MainList mainWidget={mainWidget} setMainWidget={setMainWidget}  />
+                    {/* getWidgetName={selectedWidgetCallback} */}
                 </div>
                 <div className={classes.contentWrapper}>
                     <Body widgetClassID={mainWidget} params={{}} />

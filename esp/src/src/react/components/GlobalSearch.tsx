@@ -10,7 +10,9 @@ import "dojo/i18n";
 import * as nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 
 interface GlobalSearchProps {
-    username: string
+    username: string,
+    mainWidget: string;
+    setMainWidget: (widgetID: string) => void;
 }
 
 const useStyles = makeStyles((theme: Theme) =>
@@ -72,7 +74,9 @@ const useStyles = makeStyles((theme: Theme) =>
     })
 )
 
-export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
+export const GlobalSearch: React.FC<GlobalSearchProps> = ({
+    mainWidget, setMainWidget
+}) => {
     const classes = useStyles();
 
     const [open, setOpen] = React.useState(false);
@@ -94,6 +98,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
         }
         setOpen(false);
     }
+    const handleAutoCompleteClick = widget  => {
+        setMainWidget(widget);
+        setOpen(false);
+        setSearchResults([]);
+        setSearchTerm("");
+    }
     React.useEffect(() => {
         const autoCompleteSearchTerms = components.components;
         if (searchTerm !== "") {
@@ -105,7 +115,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
 
     React.useEffect(() => {
         if (prevOpen.current === true && open === false) {
-            anchorRef.current!.focus();
+            anchorRef.current?.focus();
         }
 
         prevOpen.current = open;
@@ -129,6 +139,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
                     onClick={handleToggle}
                     onChange={handleSearchText}
                     ref={anchorRef}
+                    value={searchTerm}
                 />
             </div>
 
@@ -194,7 +205,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = (props) => {
                                             }
                                         >
                                             {searchResults.map((item, idx) => (
-                                                <ListItem key={idx} role={undefined} dense button className={classes.halfWidthList}>
+                                                <ListItem button dense key={idx} role={undefined} onClick={() => handleAutoCompleteClick(item.widget)} className={classes.halfWidthList}>
                                                     <ListItemIcon>
                                                         <LaunchIcon color="primary" />
                                                     </ListItemIcon>
