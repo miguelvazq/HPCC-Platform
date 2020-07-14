@@ -235,8 +235,7 @@ export const ServerJobQueue: React.FunctionComponent<SMCActivity.ServerJobQueue>
 export interface Activities {
 }
 
-export const Activities: React.FunctionComponent<Activities> = ({
-}) => {
+export const Activities: React.FunctionComponent<Activities> = () => {
 
     const [targetClusters, setTargetClusters] = React.useState<SMCActivity.TargetCluster[]>([]);
     const [serverJobQueues, setServerJobQueues] = React.useState<SMCActivity.ServerJobQueue[]>([]);

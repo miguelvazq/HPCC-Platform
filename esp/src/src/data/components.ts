@@ -34,7 +34,7 @@ export const DATA = {
         },
         {
             name: "Landing Zones",
-            widget: "LandingZonesWidget"
+            widget: "LZBrowseWidget"
         },
         {
             name: "Log Visualization",

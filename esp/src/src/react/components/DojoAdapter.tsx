@@ -7,21 +7,19 @@ import "dojo/i18n";
 import * as nlsHPCC from "dojo/i18n!hpcc/nls/hpcc";
 
 export interface DojoProps {
-    widgetClassID: string;
-    params?: object;
+    widgetClassID: { [widget: string]: any}
     onWidgetMount?: (widget) => void;
 }
 
 export interface DojoState {
     uid: number;
-    widgetClassID: string;
+    widgetClassID: { [widget: string]: any}
     widget: any;
 }
 
 let g_id = 0;
 export const DojoAdapter: React.FunctionComponent<DojoProps> = ({
     widgetClassID,
-    params,
     onWidgetMount
 }) => {
 
@@ -35,7 +33,7 @@ export const DojoAdapter: React.FunctionComponent<DojoProps> = ({
         myRef.current.appendChild(elem);
 
         let widget = undefined;
-        resolve(widgetClassID, WidgetClass => {
+        resolve(widgetClassID.widget, WidgetClass => {
             if (widget === undefined) { //  Test for race condition  --
                 widget = new WidgetClass({
                     id: `dojo-component-widget-${uid}`,
@@ -50,7 +48,7 @@ export const DojoAdapter: React.FunctionComponent<DojoProps> = ({
                 widget.startup();
                 widget.resize();
                 if (widget.init) {
-                    widget.init(params || {});
+                    widget.init(widgetClassID.params || {});
                 }
 
                 if (onWidgetMount) {
@@ -74,7 +72,7 @@ export const DojoAdapter: React.FunctionComponent<DojoProps> = ({
             }
             widget = null;  //  Avoid race condition  ---
         }
-    }, [widgetClassID]);
+    }, [widgetClassID.widget]);
 
-    return <div ref={myRef} style={{ width: "100%", height: "800px" }}>{nlsHPCC.Loading} {widgetClassID}...</div>;
+    return <div ref={myRef} style={{ width: "100%", height: "800px" }}>{nlsHPCC.Loading} {widgetClassID.widget}...</div>;
 };
