@@ -16,7 +16,14 @@ const useStyles = makeStyles(theme => ({
     container: {
         display: "flex",
         justifyContent: "space-between",
-        marginTop: "70px;"
+        height: "100vh",
+        flexWrap: "wrap"
+    },
+    utility: {
+        display: "flex",
+        flexWrap: "wrap",
+        width: "100%",
+        height: "64px"
     },
     center: {
         position: "fixed",
@@ -27,18 +34,15 @@ const useStyles = makeStyles(theme => ({
         flexDirection: "column",
         order: 1,
         width: "240px",
-        alignItems: "center",
-
+        alignItems: "center"
     },
     contentWrapper: {
         flexDirection: "column",
         order: 2,
-        marginLeft: "35px",
-        width: "100%",
         alignItems: "center"
     },
     content: {
-        height: "100vh"
+        // height: "100vh"
     }
 }));
 
@@ -65,11 +69,12 @@ export const Frame: React.FunctionComponent<IFrame> = ({
 
     return (
         <MuiThemeProvider theme={theme}>
-            {loading ? <div className={classes.center}>
-                <CircularProgress color="primary" /></div> : (
+            {loading ? <div className={classes.center}> <CircularProgress color="primary" /></div> : (
                     <UserAccountContext.Provider value={{ userAccount, setUserAccount }}>
-                        <UtilityBar />
                         <div className={classes.container}>
+                            <div className={classes.utility}>
+                                <UtilityBar />
+                            </div>
                             <div className={classes.nav}>
                                 <MainList />
                             </div>

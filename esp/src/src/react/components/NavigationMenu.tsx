@@ -28,7 +28,7 @@ const useStyles = makeStyles(theme => ({
     paper: {
         width: drawerWidth,
         top: "65px",
-        broderRight: theme.palette.secondary,
+        height: "auto",
         zIndex: 0
     },
     nested: {
