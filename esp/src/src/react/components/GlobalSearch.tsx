@@ -21,12 +21,12 @@ const useStyles = makeStyles((theme: Theme) =>
             minWidth: "28px"
         },
         halfWidthList: {
-            width: "600px"
+            width: "100%"
         },
 
         flexCenter: {
             display: "flex",
-            width: "600px",
+            width: "100%",
             flexDirection: "column"
         },
         userDetails: {
@@ -38,16 +38,40 @@ const useStyles = makeStyles((theme: Theme) =>
             borderRadius: theme.shape.borderRadius,
             backgroundColor: theme.palette.common.white,
             marginLeft: 0,
-            width: "600px",
+            width: "auto",
+            [theme.breakpoints.down("xs")]: {
+                width: "100%",
+                marginLeft: 0
+            },
             [theme.breakpoints.up("sm")]: {
-                marginLeft: theme.spacing(1),
-                width: "auto",
+                width: "50%",
+                marginLeft: 0
             }
         },
         inputRoot: {
             color: "black",
-            width: "600px",
-            padding: "3px 0"
+            width: "95%",
+            padding: "3px 0",
+            [theme.breakpoints.down("xs")]: {
+                marginLeft: theme.spacing(1),
+                width: "85%"
+            },
+            [theme.breakpoints.down("sm")]: {
+                marginLeft: theme.spacing(1),
+                width: "80%"
+            },
+            [theme.breakpoints.up("md")]: {
+                marginLeft: theme.spacing(1),
+                width: "88%"
+            },
+            [theme.breakpoints.up("lg")]: {
+                marginLeft: theme.spacing(1),
+                width: "90%"
+            },
+            [theme.breakpoints.up("xl")]: {
+                marginLeft: theme.spacing(1),
+                width: "95%"
+            }
         },
         iconButton: {
             padding: 10
@@ -56,13 +80,10 @@ const useStyles = makeStyles((theme: Theme) =>
             padding: theme.spacing(1, 1, 1, 0),
             paddingLeft: `calc(1em + ${theme.spacing(0)}px)`,
             transition: theme.transitions.create("width"),
-            width: "100%",
-            // [theme.breakpoints.up('sm')]: {
-            //   width: '12ch',
-            //   '&:focus': {
-            //     width: '20ch',
-            //   }
-            // }
+            width: "80%"
+        },
+        popperRoot: {
+            width: "100%"
         }
     })
 );
@@ -86,9 +107,11 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         if (event.target.value) {
             setSearchTerm(event.target.value);
         } else {
+            setSearchTerm("");
+            setOpen(false);
             setSearchResults([]);
         }
-    }
+    };
     const handleGlobalSearchText = () => {
         if (searchTerm) {
             addToStack("GlobalRecentSearch", { Term: searchTerm }, 5, true).then(function (val) {
@@ -141,25 +164,22 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     onChange={handleSearchText}
                     ref={anchorRef}
                     value={searchTerm}
-                />\
+                />
                 <IconButton type="submit" disabled={searchTerm.length === 0} href={"#/search/" + searchTerm} onMouseDown={handleGlobalSearchText} className={classes.iconButton} aria-label="search">
                     <SearchIcon />
                 </IconButton>
-            </div>
-
             <Popper
+                className={classes.popperRoot}
                 open={open}
                 anchorEl={anchorRef.current}
                 role={undefined}
                 transition
                 disablePortal
+                placement={"bottom"}
             >
                 {({ TransitionProps, placement }) => (
                     <Grow
                         {...TransitionProps}
-                        style={{
-                            transformOrigin: placement === "bottom" ? "center top" : "center bottom"
-                        }}
                     >
                         <Paper className={classes.userDetails}>
                             <ClickAwayListener onClickAway={handleClose}>
@@ -205,6 +225,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     </Grow>
                 )}
             </Popper>
+        </div>
         </>
-    )
-}
+    );
+};
