@@ -23,12 +23,12 @@ export const RecentFilters: React.FC<RecentFilterProps> = ({
     const handleClick = (e) => {
         const tempObj = JSON.parse(e.currentTarget.value);
         widget.NewPage.onClick(tempObj);
-    }
+    };
 
     const cleanUpFilter = (value: string) => {
         const result = value.replace(/[{}'"]+/g, "");
         return result;
-    }
+    };
 
     return (
         <>
@@ -57,5 +57,5 @@ export const RecentFilters: React.FC<RecentFilterProps> = ({
                     </TableContainer>
                 </ThemeProvider> : <Typography variant="subtitle1">{nlsHPCC.NoRecentFiltersFound}</Typography>)}
         </>
-    )
+    );
 };
